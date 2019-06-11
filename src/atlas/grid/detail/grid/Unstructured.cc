@@ -202,6 +202,29 @@ bool Unstructured::IteratorXYPredicated::next( PointXY& /*xy*/ ) {
 #endif
 }
 
+extern "C" {
+const Unstructured* atlas__grid__Unstructured__points( const double xy[], int shapef[], int stridesf[] ) {
+    size_t nb_points = shapef[1];
+    ATLAS_ASSERT( shapef[0] == 2 );
+    size_t stride_n = stridesf[1];
+    size_t stride_v = stridesf[0];
+    std::vector<PointXY> points;
+    points.reserve( nb_points );
+    for ( idx_t n = 0; n < nb_points; ++n ) {
+        points.emplace_back( PointXY{xy[n * stride_n + 0], xy[n * stride_n + 1 * stride_v]} );
+    }
+    return new Unstructured( std::move( points ) );
+}
+
+const Unstructured* atlas__grid__Unstructured__config( util::Config* conf ) {
+    ATLAS_ASSERT( conf != nullptr );
+    const Unstructured* grid = dynamic_cast<const Unstructured*>( Grid::create( *conf ) );
+    ATLAS_ASSERT( grid != nullptr );
+    return grid;
+}
+}
+
+
 }  // namespace grid
 }  // namespace detail
 }  // namespace grid
