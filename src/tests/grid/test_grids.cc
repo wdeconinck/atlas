@@ -382,6 +382,33 @@ CASE( "test_structured_triangulated" ) {
     }
 }
 
+CASE( "test_structured_from_config" ) {
+    Config config;
+    config.set( "type", "structured" );
+    config.set( "xspace", []() {
+        Config config;
+        config.set( "type", "linear" );
+        config.set( "N", 40 );
+        config.set( "start", 5 );
+        config.set( "end", 365 );
+        config.set( "endpoint", false );
+        return config;
+    }() );
+    config.set( "yspace", []() {
+        Config config;
+        config.set( "type", "custom" );
+        config.set( "N", 9 );
+        config.set( "values", std::vector<double>{5., 15., 25., 35., 45., 55., 65., 75., 85.} );
+        return config;
+    }() );
+    StructuredGrid g{config};
+    Log::info() << g.spec() << std::endl;
+    for ( idx_t j = 0; j < g.ny(); ++j ) {
+        Log::info() << g.nx( j ) << std::endl;
+    }
+}
+
+
 //-----------------------------------------------------------------------------
 
 }  // namespace test
