@@ -177,17 +177,17 @@ void StructuredColumns::setup( const grid::Distribution& distribution, const eck
                             break;
                         }
                     }
-                    auto& __j_begin       = thread_reduce_j_begin[thread_num];
-                    auto& __j_end         = thread_reduce_j_end[thread_num];
-                    auto& __owned         = thread_reduce_owned[thread_num];
-                    idx_t c               = begin;
+                    auto& __j_begin = thread_reduce_j_begin[thread_num];
+                    auto& __j_end   = thread_reduce_j_end[thread_num];
+                    auto& __owned   = thread_reduce_owned[thread_num];
+                    idx_t c         = begin;
 
                     for ( idx_t j = thread_j_begin; j < thread_j_end; ++j ) {
                         auto& __i_begin = thread_reduce_i_begin[j][thread_num];
                         auto& __i_end   = thread_reduce_i_end[j][thread_num];
                         bool j_in_partition{false};
                         for ( idx_t i = thread_i_begin[j]; i < thread_i_end[j]; ++i, ++c ) {
-                            if ( distribution.partition (c) == mpi_rank ) {
+                            if ( distribution.partition( c ) == mpi_rank ) {
                                 j_in_partition = true;
                                 __i_begin      = std::min<idx_t>( __i_begin, i );
                                 __i_end        = std::max<idx_t>( __i_end, i + 1 );
@@ -568,7 +568,7 @@ void StructuredColumns::setup( const grid::Distribution& distribution, const eck
                 if ( gp.i >= 0 && gp.i < grid_->nx( gp.j ) ) {
                     in_domain          = true;
                     gidx_t k           = global_offsets[gp.j] + gp.i;
-                    part( gp.r )       = distribution.partition (k);
+                    part( gp.r )       = distribution.partition( k );
                     global_idx( gp.r ) = k + 1;
                 }
             }
