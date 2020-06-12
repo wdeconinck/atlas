@@ -181,6 +181,9 @@ grid/detail/partitioner/Partitioner.cc
 grid/detail/partitioner/Partitioner.h
 grid/detail/partitioner/RegularBandsPartitioner.cc
 grid/detail/partitioner/RegularBandsPartitioner.h
+grid/detail/partitioner/SerialPartitioner.cc
+grid/detail/partitioner/SerialPartitioner.h
+
 
 grid/detail/spacing/Spacing.cc
 grid/detail/spacing/Spacing.h
