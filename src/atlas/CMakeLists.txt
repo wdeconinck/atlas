@@ -647,6 +647,8 @@ util/Rotation.cc
 util/Rotation.h
 util/SphericalPolygon.cc
 util/SphericalPolygon.h
+util/ConvexSphericalPolygon.cc
+util/ConvexSphericalPolygon.h
 util/UnitSphere.h
 util/vector.h
 util/VectorOfAbstract.h

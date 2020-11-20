@@ -102,6 +102,11 @@ ecbuild_add_test( TARGET atlas_test_healpixmeshgen
   ENVIRONMENT ${ATLAS_TEST_ENVIRONMENT}
 )
 
+ecbuild_add_test( TARGET atlas_test_spherical_geo
+  SOURCES test_spherical_geo.cc
+  LIBS atlas
+  ENVIRONMENT ${ATLAS_TEST_ENVIRONMENT}
+)
 
 ecbuild_add_executable( TARGET atlas_test_mesh_reorder
   SOURCES  test_mesh_reorder.cc
