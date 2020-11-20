@@ -702,6 +702,8 @@ util/Rotation.h
 util/Registry.h
 util/SphericalPolygon.cc
 util/SphericalPolygon.h
+util/ConvexSphericalPolygon.cc
+util/ConvexSphericalPolygon.h
 util/UnitSphere.h
 util/vector.h
 util/VectorOfAbstract.h
