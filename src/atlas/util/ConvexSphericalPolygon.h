@@ -27,7 +27,7 @@ public:
     ConvexSphericalPolygon( const PartitionPolygon& );
 
     ConvexSphericalPolygon( const std::vector<PointLonLat>& points );
-    ConvexSphericalPolygon( const std::vector<PointXYZ>& points );
+    //ConvexSphericalPolygon( const std::vector<PointXYZ>& points );
 
     /*
    * Point-in-polygon test on sphere with spherical polygons
@@ -42,7 +42,7 @@ public:
 
 	static constexpr double eps_ = 1e-16;
 
-protected:
+//protected:
     /*
    * Point-on-segment test on great circle segments
    * @param[in] P given point in (x,y,z) coordinates

@@ -16,59 +16,6 @@ static double deg2rad() { return M_PI / 180.; }
 static double rad2deg() { return 180. * M_1_PI; }
 
 /*
-	// return 0:outside, -1:on_edge, 1:strictly_inside
-	inline int inside( const Point &p ) const {
-		for ( int i = 0; i < nv; i++ ) {
-			const Point& cp = v[i].cross( v[(i!=nv-1 ? i+1 : 0)] );
-			double dp = cp.dot( p );
-			if (  dp < -eps_point() ) {
-				return 0;
-			} 
-			else if ( abs(dp) < eps_point() ) {
-				return -1;
-			}
-		}
-		return 1;
-	}
-
-	Point* nextIntersection() const {
-		if ( !ip ) {
-			lv.emplace_back( *ip );
-		}
-		Point* ip;
-		do {
-			// find next vertex
-			for( int i = 0; i < nv; i++ ) {
-				ip = this->intersect( p.v[i], p.v[(i!=p.nv-1 ? i+1 : 0)] );
-				if ( ip ) {
-					lv.emplace_back( *ip );
-					cout << "  found lv emplace back: " <<*ip <<"\n";
-					break;
-				}
-			}
-		} while ( ip && (*ip != lv[0]) );
-	}
-
-	// intersect first? segment [p1,p2] with this polygon=[v0,v1,...,v_nv]
-	// first? in the order [v0,v1], [v1,v2],...
-	// return type 0:no_intersection, 1:stricly_inside, 2:on_edge
-	int intersect( const Point& p1, const Point& p2, Point& p3 ) const {
-		const Pol& tp = *this;
-		Point& sp1 = p1.cross( p2 );
-		for( int i = 0; i < tp.nv; i++ ) {
-			int ip = ( i != tp.nv-1 ? i+1 : 0 );
-			Point& tpi = tp.v[i].cross( tp.v[ip] );
-			Point& p3 = sp1.cross( tpi );
-			//p3 /= sqrt( v_insc.dot( p3 ) );
-			cout <<" p3 = " <<p3 <<"\n";
-			//type = p3.onSegment( p1, p2 )
-			//if ( type ) {
-		//		return type;
-	//		}
-		}
-		return 0;
-	}
-
 	// return the intersecting polygon of "this" and "p"
 	Pol* intersect( const Pol& pol ) const {
 		std::vector< Point > lv;
@@ -121,26 +68,42 @@ static double rad2deg() { return 180. * M_1_PI; }
 
 CASE( "test_spherical_polygon_intersection" ) {
 	std::vector< PointLonLat > p1;
-	p1.emplace_back( PointLonLat( 10., 0. ) );
-	p1.emplace_back( PointLonLat( 30., 0. ) );
-	p1.emplace_back( PointLonLat( 30., 40. ) );
-	p1.emplace_back( PointLonLat( 10., 20. ) );
+	p1.emplace_back( PointLonLat( 0., 80. ) );
+	p1.emplace_back( PointLonLat( 0., 60. ) );
+	p1.emplace_back( PointLonLat( 40., 60. ) );
+	p1.emplace_back( PointLonLat( 20., 80. ) );
+	p1.emplace_back( PointLonLat( 0., 80. ) );
 	std::vector< PointLonLat > p2;
-	p2.emplace_back( PointLonLat( 20., 20. ) );
-	p2.emplace_back( PointLonLat( 20., 0. ) );
-	p2.emplace_back( PointLonLat( 40., 20. ) );
-	p2.emplace_back( PointLonLat( 40., 40. ) );
+	p2.emplace_back( PointLonLat( 20., 70. ) );
+	p2.emplace_back( PointLonLat( 0., 70. ) );
+	p2.emplace_back( PointLonLat( 20., 50. ) );
+	p2.emplace_back( PointLonLat( 40., 50. ) );
+	p2.emplace_back( PointLonLat( 20., 70. ) );
 
-	atlas::PointXYZ sp1[4];
-	atlas::PointXYZ sp2[4];
+	atlas::PointXYZ sp1[5];
+	atlas::PointXYZ sp2[5];
 	eckit::geometry::Sphere sphere;
-	for( int i=0; i<4; i++ ) {
+	for( int i=0; i<5; i++ ) {
 		sphere.convertSphericalToCartesian( 1., p1[i], sp1[i] );
 		sphere.convertSphericalToCartesian( 1., p2[i], sp2[i] );
 	}
 
 	util::ConvexSphericalPolygon pol1( p1 );
 	util::ConvexSphericalPolygon pol2( p2 );
+
+	int i = 1;
+	int j = 2;
+	PointXYZ ip;
+	bool inters = pol2.intersect( sp1[i], sp1[j], ip, 2 );
+	PointLonLat ip_ll;
+  	sphere.convertCartesianToSpherical( 1., ip, ip_ll );
+	if ( inters ) {
+		std::cout <<"Intersection at " <<ip_ll <<"\n";
+		std::cout <<"  with seg. [" <<p1[i] <<", " <<p1[j] <<"]\n";
+	} else {
+		std::cout <<"No intersection" <<"\n";
+		std::cout <<"  with seg. [" <<p1[i] <<", " <<p1[j] <<"]\n";
+	}
 
 	//Pol* pol_insc = pol1.intersect( pol2 );
 	//pol_insc->info();
