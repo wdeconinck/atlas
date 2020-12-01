@@ -24,10 +24,9 @@ class PartitionPolygon;
 
 class ConvexSphericalPolygon : public PolygonCoordinates {
 public:
-    ConvexSphericalPolygon( const PartitionPolygon& );
-
     ConvexSphericalPolygon( const std::vector<PointLonLat>& points );
     //ConvexSphericalPolygon( const std::vector<PointXYZ>& points );
+    //ConvexSphericalPolygon( const PartitionPolygon& );
 
     /*
    * Point-in-polygon test on sphere with spherical polygons
@@ -40,9 +39,16 @@ public:
 		ATLAS_ASSERT( false );
 	}
 
-	static constexpr double eps_ = 1e-16;
+	static constexpr double eps_ = 1e-6; // 1e-16 does not work, take less
+
+    inline PointXYZ& operator[]( const int i ) {
+		return sph_coords_[i];
+	}
 
 //protected:
+
+	inline int leftOf( const PointXYZ&, const PointXYZ&, const PointXYZ& ) const;
+
     /*
    * Point-on-segment test on great circle segments
    * @param[in] P given point in (x,y,z) coordinates
@@ -57,7 +63,29 @@ public:
    * @param[out] ip intersection point or nullptr
    * @return 0:no_intersection, 1:
    */
-    bool intersect( const PointXYZ& s1, const PointXYZ& s2, PointXYZ& ip, int start = 0 ) const;
+    int intersect( const PointXYZ& s1, const PointXYZ& s2, PointXYZ& ip, int start = 0 ) const;
+
+	/*
+   * intersect a polygon with this polygon
+   * @param[in] pol clipping polygon
+   * @param[out] intersecting polygon
+   */
+	ConvexSphericalPolygon* intersect( const ConvexSphericalPolygon& pol ) const;
+
+private:
+
+	/*
+   * find next vertex of intersection polygon of plg1 and plg2 polygons
+   * @param[out] plg_points collected vertices of intersection polygon
+   * @param[in] i starting edge of plg1
+   * @param[in] j starting edge of plg2
+   */
+	int nextIntersect( std::vector< PointXYZ >& plg_points,
+							 const ConvexSphericalPolygon& plg1,
+							 int i,
+					         const ConvexSphericalPolygon& plg2, 
+          					 int j
+						   ) const;
 
 
 private:
