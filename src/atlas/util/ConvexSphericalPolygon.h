@@ -83,8 +83,8 @@ private:
 	int nextIntersect( std::vector< PointXYZ >& plg_points,
 							 const ConvexSphericalPolygon& plg1,
 							 int i,
-					         const ConvexSphericalPolygon& plg2, 
-          					 int j
+          					 int j,
+							 int inside = 0
 						   ) const;
 
 
