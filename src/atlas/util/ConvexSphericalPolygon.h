@@ -25,7 +25,7 @@ class PartitionPolygon;
 class ConvexSphericalPolygon : public PolygonCoordinates {
 public:
     ConvexSphericalPolygon( const std::vector<PointLonLat>& points );
-    //ConvexSphericalPolygon( const std::vector<PointXYZ>& points );
+    ConvexSphericalPolygon( const std::vector<PointXYZ>& points );
     //ConvexSphericalPolygon( const PartitionPolygon& );
 
     /*
