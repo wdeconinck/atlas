@@ -21,7 +21,8 @@
 #include "atlas/util/ConvexSphericalPolygon.h"
 #include "atlas/util/NormaliseLongitude.h"
 
-#define DEBUG_OUTPUT
+#define DEBUG_OUTPUT 1
+#define DEBUG_OUTPUT_DETAIL 1
 
 namespace atlas {
 namespace util {
@@ -41,12 +42,12 @@ ConvexSphericalPolygon::ConvexSphericalPolygon( const std::vector<PointLonLat>& 
 	}	
 }
 
-// return 0:outside, -1:on_edge, 1:strictly_inside
+// return 0:P_right_of_[p1,p2], -1:overlap_of_[P,p1]_and_[P,p2], 1:P_left_of_[p1,p2]
 inline int ConvexSphericalPolygon::leftOf( const PointXYZ& P, const PointXYZ& p1, const PointXYZ& p2 ) const {
 	const PointXYZ cp = PointXYZ( PointXYZ::cross( p1, p2 ) );
 	ATLAS_ASSERT( PointXYZ::norm(cp) > eps_ );
 	const double dp = PointXYZ::dot( cp, P );
-	if ( dp < eps_ ) {
+	if ( dp < -eps_ ) {
 		return 0;
 	}
 	else if ( fabs(dp) < eps_ ) {
@@ -92,35 +93,39 @@ int ConvexSphericalPolygon::intersect( const PointXYZ& s1, const PointXYZ& s2, P
 	ATLAS_ASSERT( PointXYZ::norm(cp1) > eps_ );
 	int ncoord = sph_coords_.size() - 1;
 
+#if DEBUG_OUTPUT
+	PointLonLat s1ll, s2ll;
+	eckit::geometry::Sphere::convertCartesianToSpherical( 1., s1, s1ll );
+	eckit::geometry::Sphere::convertCartesianToSpherical( 1., s2, s2ll );
+	std::cout <<"   doing intersection with [" <<s1ll <<", " <<s2ll <<"]\n";
+	std::cout.flush();
+#endif
 	for( int i = start; i < start+ncoord; i++ ) {
-		std::cout <<"Check with edge " <<i%ncoord <<"\n";
 		const PointXYZ& sp1 = sph_coords_[ i%ncoord ];
 		const PointXYZ& sp2 = sph_coords_[ (i+1)%ncoord ];
-#ifdef DEBUG_OUTPUT
-		PointLonLat pp1, pp2, ipp;
-		eckit::geometry::Sphere::convertCartesianToSpherical( 1., sp1, pp1 );
-		eckit::geometry::Sphere::convertCartesianToSpherical( 1., sp2, pp2 );
-		std::cout <<"  with seg. [" <<pp1 <<", " <<pp2 <<"]\n";
+#if DEBUG_OUTPUT
+		std::cout <<"     check edge " <<i%ncoord <<" :" <<coordinates_[i%ncoord] <<", " <<coordinates_[(i+1)%ncoord] <<"]\n";
 		std::cout.flush();
 #endif
 		const PointXYZ& cp2 = static_cast< PointXYZ >( PointXYZ::cross( sp1, sp2 ) );
 		ATLAS_ASSERT( PointXYZ::norm(cp2) > eps_ );
 		ip = static_cast< PointXYZ >( PointXYZ::cross( cp1, cp2 ) );
-#ifdef DEBUG_OUTPUT
-		eckit::geometry::Sphere::convertCartesianToSpherical( 1., ip, ipp );
-		std::cout <<"  try intersect " <<ipp <<"\n";
-		std::cout.flush();
-#endif
 
 		if ( PointXYZ::norm( ip ) > eps_ ) {
+#if DEBUG_OUTPUT_DETAIL
+			PointLonLat ipp;
+			eckit::geometry::Sphere::convertCartesianToSpherical( 1., ip, ipp );
+			std::cout <<"       try intersect " <<ipp <<"\n";
+			std::cout.flush();
+#endif
 			ip = PointXYZ::div( ip, PointXYZ::norm( ip ) );
 			if ( onSegment( ip, s1, s2 ) && onSegment( ip, sp1, sp2 ) ) {
 				return 1+i;
 			}
 			ip = PointXYZ::mul( ip, -1. );
-#ifdef DEBUG_OUTPUT
+#if DEBUG_OUTPUT_DETAIL
 			eckit::geometry::Sphere::convertCartesianToSpherical( 1., ip, ipp );
-			std::cout <<"  try intersect " <<ipp <<"\n";
+			std::cout <<"       try intersect " <<ipp <<"\n";
 			std::cout.flush();
 #endif
 			if ( onSegment( ip, s1, s2 ) && onSegment( ip, sp1, sp2 ) ) {
@@ -129,7 +134,32 @@ int ConvexSphericalPolygon::intersect( const PointXYZ& s1, const PointXYZ& s2, P
 		}
 		else {
 			//overlap
-			return -1;
+			if ( onSegment( s1, sp1, sp2 ) && (onSegment( s2, s1, sp2 ) || onSegment( sp2, s1, s2 )) ) {
+				ip = *(new PointXYZ( s1 ));
+#if DEBUG_OUTPUT_DETAIL
+				PointLonLat ipp;
+				eckit::geometry::Sphere::convertCartesianToSpherical( 1., ip, ipp );
+				std::cout <<"       		got first point " <<ipp <<"\n";
+				std::cout.flush();
+#endif
+			}
+			else if ( onSegment( sp1, s1, s2 ) && (onSegment( sp2, sp1, s2 ) || onSegment( s2, sp1, sp2 )) ) {
+				ip = *(new PointXYZ( sp1 ));
+#if DEBUG_OUTPUT_DETAIL
+				PointLonLat ipp;
+				eckit::geometry::Sphere::convertCartesianToSpherical( 1., ip, ipp );
+				std::cout <<"       		got first point " <<ipp <<"\n";
+				std::cout.flush();
+#endif
+			}
+			else {
+				ip = *(new PointXYZ( {0.,0.,0.} ));
+#if DEBUG_OUTPUT_DETAIL
+				std::cout <<"       		no intersection in overlap\n";
+				std::cout.flush();
+#endif
+			}
+			return 1+i;
 		}
 	}
 	return 0;
@@ -141,73 +171,172 @@ int ConvexSphericalPolygon::intersect( const PointXYZ& s1, const PointXYZ& s2, P
 ConvexSphericalPolygon* ConvexSphericalPolygon::intersect( const ConvexSphericalPolygon& plg ) const {
 		std::cout <<" Entered ConvexSphericalPolygon::intersect\n";
 	    std::cout.flush();
-	std::vector< PointXYZ > plg_points;
-	int ii = 0;
-	int jj = 0;
+	std::vector< PointXYZ > iplg_p;
+	int ii = 0; // "this" vertex counter
+	int jj = 0; // "plg" vertex counter
 	PointXYZ ip;
-	const int plgsize = plg.size() - 1;
-	for( ; ii < plgsize; ii++ ) {
-		jj = this->intersect( plg.sph_coords_[ii], plg.sph_coords_[(ii+1)%(plgsize-1)], ip );
-		if ( jj ) {
+	const int n_plg = this->size() - 1;
+	for( ; ii < n_plg; ii++ ) {
+		jj = -1 + plg.intersect( sph_coords_[ii], sph_coords_[(ii+1)%(n_plg-1)], ip );
+		if ( jj != -1 ) {
+#if DEBUG_OUTPUT
+			PointLonLat ipp;
+			eckit::geometry::Sphere::convertCartesianToSpherical( 1., ip, ipp );
+			std::cout <<"  " <<jj <<"th edge intersects with [" <<coordinates_[ii] <<" "
+<<coordinates_[(ii+1)%(n_plg-1)] <<"] at " <<ipp <<"\n";
+			std::cout.flush();
+#endif
 			break;
 		}
+#if DEBUG_OUTPUT
+		std::cout <<"  polygon does not intersects with [" <<coordinates_[ii] <<" " <<coordinates_[(ii+1)%(n_plg-1)] <<"]\n";
+		std::cout.flush();
+#endif
 	}
-	if ( jj ) {
-		plg_points.emplace_back( ip );
-		nextIntersect( plg_points, plg, 0, *this, 0 );
+	if ( jj != -1 ) {
+		iplg_p.emplace_back( ip );
+		nextIntersect( iplg_p, plg, ii, jj, 0 );
 	}
 	else {
-		std::cout <<" plg edges not intersecting: " <<"\n";
+		std::cout <<" polygons edges do not intersect with edges of the other polygon.\n";
 	    std::cout.flush();
 		ATLAS_ASSERT( false );
 	}
 	return nullptr;
-	//return new ConvexSphericalPolygon( plg_points );
+	//return new ConvexSphericalPolygon( iplg_p );
 }
 
-int ConvexSphericalPolygon::nextIntersect( std::vector< PointXYZ >& plg_points,
-							 const ConvexSphericalPolygon& plg1,
-							 int ii,
-					         const ConvexSphericalPolygon& plg2, 
-          					 int jj
+int ConvexSphericalPolygon::nextIntersect( std::vector< PointXYZ >& iplg_p,
+							 const ConvexSphericalPolygon& plg,
+							 int ii0,
+          					 int jj0,
+							 const int inside
 						   ) const {
-	const int nplgi = plg_points.size();
-	if ( nplgi > 2 && plg_points[0] == plg_points[nplgi-1] ) {
-		return 1;
-	}
-	const int nplg1 = plg1.size() - 1;
-    const int nplg2 = plg2.size() - 1;
-	const PointXYZ P = plg_points[nplgi-1];
-	int nii = (ii != nplg1-1) ? ii+1 : 0;
-	int njj = (jj != nplg2-1) ? jj+1 : 0;
-	const PointXYZ& np1 = plg1.sph_coords_[nii];
-	const PointXYZ& np2 = plg2.sph_coords_[njj];
+	const int n_iplg = iplg_p.size() - 1;
+    const int n_plg1 = size() - 1;
+	const int n_plg2 = plg.size() - 1;
+	const PointXYZ P = iplg_p[ n_iplg ];
+	int ii = ii0;
+	int jj = jj0;
+	int nii = (ii != n_plg1-1) ? ii+1 : 0;
+	int njj = (jj != n_plg2-1) ? jj+1 : 0;
 
 #ifdef DEBUG_OUTPUT
-	std::cout <<" == doing nextIntersect( "<<ii<<", "<<jj<<" )\n";
-	std::cout <<" plg_points: ";
-	for( int i = 0; i < nplgi; i++ ) {
-		PointLonLat ip_ll;
-		eckit::geometry::Sphere::convertCartesianToSpherical( 1., plg_points[i], ip_ll );
-		std::cout <<", " <<ip_ll <<"\n";
-	}
+	std::cout <<"\n == doing nextIntersect\n";
 	std::cout.flush();
 #endif
+	const PointXYZ* pnp1 = &sph_coords_[nii];
+	const PointXYZ* pnp2 = &plg.sph_coords_[njj];
+	std::cout <<"\n == doing nextIntersect 2\n";
+	std::cout.flush();
+	if ( !inside && PointXYZ::norm(P - *pnp1) < eps_ ) {
+		int nnii = (nii != n_plg1-1) ? nii+1 : 0;
+		ii = nii;
+		nii = nnii;
+		pnp1 = &sph_coords_[nii];
+	}
+	if ( !inside && PointXYZ::norm(P - *pnp2) < eps_ ) {
+		int nnjj = (njj != n_plg2-1) ? njj+1 : 0;
+		jj = njj;
+		njj = nnjj;
+		pnp2 = &(plg.sph_coords_[njj]);
+	}
+	const PointXYZ& np1 = *pnp1;
+	const PointXYZ& np2 = *pnp2;
 
-
-	if ( P == plg2.sph_coords_[jj] || P == plg1.sph_coords_[ii] ) {
 #ifdef DEBUG_OUTPUT
-		std::cout <<" edges overlap\n";
+	std::cout <<"\n == doing nextIntersect(ii0,ii,nii,j0,jj,njj,inside): "<<ii<<", "<<nii<<", "<<jj<<", "<<njj<<", " <<inside<<"\n";
+	std::cout <<" iplg_p: ";
+	for( int i = 0; i <= n_iplg; i++ ) {
+		PointLonLat ip_ll;
+		eckit::geometry::Sphere::convertCartesianToSpherical( 1., iplg_p[i], ip_ll );
+		std::cout <<", " <<ip_ll;
+	}
+	std::cout <<"\n";
+	PointLonLat ip_ll;
+	eckit::geometry::Sphere::convertCartesianToSpherical( 1., P, ip_ll );
+	std::cout <<"P = " <<ip_ll;
+	std::cout.flush();
+#endif
+	if ( n_iplg > 2 && PointXYZ::norm( iplg_p[0] - iplg_p[n_iplg] ) < eps_ ) {
+		std::cout <<" iplg is finished";
+		return 1;
+	}
+
+	PointXYZ ip; //next vertex of the iplg
+	int new_ii = ii;
+	int new_jj = jj;
+	const bool P_eq_plgi = (PointXYZ::norm(P - sph_coords_[ii]) < eps_);
+	const bool P_eq_plgj = (PointXYZ::norm(P - plg.sph_coords_[jj]) < eps_);
+#if DEBUG_OUTPUT
+	std::cout <<"   P_eq_plgi, P_eq_plgj: "<<P_eq_plgi<<", "<<P_eq_plgj <<"\n";
+	std::cout.flush();
+#endif
+	
+	if ( inside ) {
+		if ( P_eq_plgi ) {
+			new_jj = -1 + plg.intersect( P, np1, ip, njj );
+			bool ip_eq_P = ( PointXYZ::norm( ip - iplg_p[n_iplg] ) < eps_ );
+			if ( new_jj == -1 || ip_eq_P ) { // no intersection of plg with [P,np1] means np1 is inside plg
+#if DEBUG_OUTPUT
+				std::cout <<"   inside of plg: no intersection with polygon.\n";
+				std::cout.flush();
+#endif
+				iplg_p.emplace_back( np1 );
+				return nextIntersect( iplg_p, plg, nii, jj, 1 );
+			} else {
+#if DEBUG_OUTPUT
+				PointLonLat ip_ll;
+				eckit::geometry::Sphere::convertCartesianToSpherical( 1., ip, ip_ll );
+				PointLonLat ip_ll2;
+				eckit::geometry::Sphere::convertCartesianToSpherical( 1., iplg_p[n_iplg], ip_ll2 );
+				std::cout <<" inside of plg: intersection at " <<ip_ll <<", last point: " <<ip_ll2 <<"\n";
+				std::cout.flush();
+#endif
+				iplg_p.emplace_back( ip );
+				return nextIntersect( iplg_p, plg, ii, new_jj, 0 );
+			}
+		}
+		else {
+			new_ii = -1 + this->intersect( P, np2, ip, nii );
+			bool ip_eq_P = ( PointXYZ::norm( ip - iplg_p[n_iplg] ) < eps_ );
+			if ( new_ii == -1 || ip_eq_P ) { // no intersection of this with [P,np2] means np2 is inside this
+#if DEBUG_OUTPUT
+				std::cout <<"   inside of this: no intersection with polygon.\n";
+				std::cout.flush();
+#endif
+				iplg_p.emplace_back( np2 );
+				return nextIntersect( iplg_p, plg, ii, njj, 1 );
+			} else {
+#if DEBUG_OUTPUT
+				PointLonLat ip_ll;
+				eckit::geometry::Sphere::convertCartesianToSpherical( 1., ip, ip_ll );
+				PointLonLat ip_ll2;
+				eckit::geometry::Sphere::convertCartesianToSpherical( 1., iplg_p[n_iplg], ip_ll2 );
+				std::cout <<" inside of this: intersection at " <<ip_ll <<", last point: " <<ip_ll2 <<"\n";
+				std::cout.flush();
+#endif
+				iplg_p.emplace_back( ip );
+				return nextIntersect( iplg_p, plg, new_ii, jj, 0 );
+			}
+		}
+		ATLAS_ASSERT( false );
+	}
+
+	if ( P_eq_plgi || P_eq_plgj ) {
+#if DEBUG_OUTPUT
+		std::cout <<" edges could overlap\n";
+		std::cout <<"  " <<onSegment( np1, P, np2 ) <<", " <<onSegment( np2, P, np1 ) <<", " <<onSegment( P, np1, np2 ) <<"\n";
 		std::cout.flush();
 #endif
 		// polygon edges overlap
 		if ( onSegment( np1, P, np2 ) ) {
-			plg_points.emplace_back( np1 );
-			return nextIntersect( plg_points, plg1, nii, plg2, njj );
+			iplg_p.emplace_back( np1 );
+			return nextIntersect( iplg_p, plg, ii, jj, 0 );
 		}
 		else if ( onSegment( np2, P, np1 ) ) {
-			plg_points.emplace_back( np2 );
-			return nextIntersect( plg_points, plg1, nii, plg2, njj );
+			iplg_p.emplace_back( np2 );
+			return nextIntersect( iplg_p, plg, ii, jj, 0 );
 		}
 		else if ( onSegment( P, np1, np2 ) ) {
 			// polygons intersect only on segment --> no polygon intersection
@@ -215,35 +344,64 @@ int ConvexSphericalPolygon::nextIntersect( std::vector< PointXYZ >& plg_points,
 		}
 	}
 
-	return 0;
-
-	// no edges-overlap
-	PointXYZ ip; //next intersection-polygon vertex
-	int new_ii;
-	int new_jj;
+	// not an inside point & no edges-overlap
+#if DEBUG_OUTPUT
+	PointLonLat Pll, np1ll, np2ll;
+	eckit::geometry::Sphere::convertCartesianToSpherical( 1., P, Pll );
+	eckit::geometry::Sphere::convertCartesianToSpherical( 1., np1, np1ll );
+	eckit::geometry::Sphere::convertCartesianToSpherical( 1., np2, np2ll );
+	std::cout <<"   "<<np2ll <<" leftOf ["<<Pll <<"," <<np1ll <<" -> " <<leftOf( np2, P, np1 ) <<"\n";
+	std::cout <<"   "<<np1ll <<" leftOf ["<<Pll <<"," <<np2ll <<" -> " <<leftOf( np1, P, np2 ) <<"\n";
+	std::cout.flush();
+#endif
 	if ( leftOf( np2, P, np1 ) ) { // 2a) 3b)
-		new_jj = jj + 1;
-		new_ii = -1 + plg1.intersect( P, np2, ip, ii );
-		if ( ! new_ii ) { // no intersection of plg1 with [P,np2] means np2 is inside plg1
-			new_ii = ii + 1;
-			plg_points.emplace_back( np2 );
-			return nextIntersect( plg_points, plg1, new_ii, plg2, new_jj );
+		new_ii = -1 + this->intersect( P, np2, ip, nii );
+		//new_ii -= ( new_ii == nplg - 1 ? nplg - 1 : 0 );
+		//bool ip_eq_P = ( ip == iplg_p[n_iplg] ); // does not work
+		bool ip_eq_P = ( PointXYZ::norm( ip - iplg_p[n_iplg] ) < eps_ );
+		if ( new_ii == -1 || ip_eq_P ) { // no intersection of plg with [P,np2] means np2 is inside plg
+#if DEBUG_OUTPUT
+			std::cout <<"   no intersection with polygon.\n";
+			std::cout.flush();
+#endif
+			iplg_p.emplace_back( np2 );
+			return nextIntersect( iplg_p, plg, ii, njj, 1 );
 		} else {
-			plg_points.emplace_back( ip );
-			return nextIntersect( plg_points, plg1, new_ii, plg2, new_jj );
+#if DEBUG_OUTPUT
+			PointLonLat ip_ll;
+			eckit::geometry::Sphere::convertCartesianToSpherical( 1., ip, ip_ll );
+			PointLonLat ip_ll2;
+	        eckit::geometry::Sphere::convertCartesianToSpherical( 1., iplg_p[n_iplg], ip_ll2 );
+			std::cout <<" leftOf( np2, P, np1 ): intersection at " <<ip_ll <<", last point: " <<ip_ll2 <<"\n";
+			std::cout.flush();
+#endif
+			iplg_p.emplace_back( ip );
+			return nextIntersect( iplg_p, plg, new_ii, new_jj, 0 );
 		}
 	}
 	else { //if ( leftOf( np1, P, np2 ) ) { // 3a) 2b)
-		new_jj = jj + 1;
-		new_jj = -1 + plg2.intersect( P, np1, ip, jj );
-		if ( ! new_jj ) {
-			new_jj = jj + 1;
-			// no intersection of plg2 with [P,np1] means np1 is inside plg1
-			plg_points.emplace_back( np1 );
-			return nextIntersect( plg_points, plg1, new_ii, plg2, new_jj );
+		new_jj = -1 + plg.intersect( P, np1, ip, njj ); 
+		//bool ip_eq_P = ( ip == iplg_p[n_iplg] ); // does not work
+		bool ip_eq_P = ( PointXYZ::norm( ip - iplg_p[n_iplg] ) < eps_ );
+		if ( new_jj == -1 || ip_eq_P) {
+#if DEBUG_OUTPUT
+			std::cout <<"   no intersection with polygon.\n";
+			std::cout.flush();
+#endif
+			// no intersection of plg2 with [P,np1] means np1 is inside plg
+			iplg_p.emplace_back( np1 );
+			return nextIntersect( iplg_p, plg, nii, jj, 1 );
 		} else {
-			plg_points.emplace_back( ip );
-			return nextIntersect( plg_points, plg1, new_ii, plg2, new_jj );
+#if DEBUG_OUTPUT
+			PointLonLat ip_ll;
+			eckit::geometry::Sphere::convertCartesianToSpherical( 1., ip, ip_ll );
+			PointLonLat ip_ll2;
+	        eckit::geometry::Sphere::convertCartesianToSpherical( 1., iplg_p[n_iplg], ip_ll2 );
+			std::cout <<" leftOf( np1, P, np2 ): intersection at " <<ip_ll <<", last point: " <<ip_ll2 <<"\n";
+			std::cout.flush();
+#endif
+			iplg_p.emplace_back( ip );
+			return nextIntersect( iplg_p, plg, new_ii, new_jj, 0 );
 		}
 	}
 }

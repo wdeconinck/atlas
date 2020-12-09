@@ -31,11 +31,11 @@ void overlappingPolygons( ConvexSphericalPolygon* plg1, ConvexSphericalPolygon* 
 
 CASE( "test_spherical_segment_intersection" ) {
 	std::vector< PointLonLat > p1;
-	p1.emplace_back( PointLonLat( 0., 80. ) );
+	p1.emplace_back( PointLonLat( 0., 70. ) );
 	p1.emplace_back( PointLonLat( 0., 60. ) );
 	p1.emplace_back( PointLonLat( 40., 60. ) );
-	p1.emplace_back( PointLonLat( 40., 80. ) );
-	p1.emplace_back( PointLonLat( 0., 80. ) );
+	p1.emplace_back( PointLonLat( 40., 70. ) );
+	p1.emplace_back( PointLonLat( 0., 70. ) );
 	std::vector< PointLonLat > p2;
 	p2.emplace_back( PointLonLat( 20., 70. ) );
 	p2.emplace_back( PointLonLat( 0.1, 70. ) );
@@ -48,14 +48,13 @@ CASE( "test_spherical_segment_intersection" ) {
 	int j = 1;
 	PointXYZ ip;
 	bool inters = plg2.intersect( plg1[i], plg1[j], ip, 0 );
-	PointLonLat ip_ll;
-  	eckit::geometry::Sphere::convertCartesianToSpherical( 1., ip, ip_ll );
 	if ( inters ) {
+		PointLonLat ip_ll;
+		eckit::geometry::Sphere::convertCartesianToSpherical( 1., ip, ip_ll );
 		std::cout <<"Intersection at " <<ip_ll <<"\n";
 		std::cout <<"  with seg. [" <<plg1[i] <<", " <<plg1[j] <<"]\n";
 	} else {
-		std::cout <<"No intersection" <<"\n";
-		std::cout <<"  with seg. [" <<plg1[i] <<", " <<plg1[j] <<"]\n";
+		std::cout <<"No intersection with seg. [" <<plg1[i] <<", " <<plg1[j] <<"]\n";
 	}
 }
 
@@ -68,13 +67,14 @@ CASE( "test_spherical_polygon_intersection" ) {
 	p1.emplace_back( PointLonLat( 0., 80. ) );
 	std::vector< PointLonLat > p2;
 	p2.emplace_back( PointLonLat( 20., 70. ) );
-	p2.emplace_back( PointLonLat( 10., 70. ) );
 	p2.emplace_back( PointLonLat( 20., 50. ) );
-	p2.emplace_back( PointLonLat( 40., 50. ) );
+	p2.emplace_back( PointLonLat( 60., 50. ) );
+	p2.emplace_back( PointLonLat( 60., 70. ) );
 	p2.emplace_back( PointLonLat( 20., 70. ) );
 	ConvexSphericalPolygon plg1( p1 );
 	ConvexSphericalPolygon plg2( p2 );
-	ConvexSphericalPolygon* ipol = plg1.intersect( plg2 );
+	//ConvexSphericalPolygon* ipol = plg1.intersect( plg2 );
+	ConvexSphericalPolygon* ipol = plg2.intersect( plg1 );
 }
 
 //-----------------------------------------------------------------------------
