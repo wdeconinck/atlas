@@ -44,6 +44,11 @@ CASE( "test_spherical_polygon_intersection" ) {
 	p1.emplace_back( PointLonLat( 40., 60. ) );
 	p1.emplace_back( PointLonLat( 40., 70. ) );
 	p1.emplace_back( PointLonLat( 0., 70. ) );
+	std::vector< PointLonLat > p1a;
+	p1a.emplace_back( PointLonLat( 0., 90. ) );
+	p1a.emplace_back( PointLonLat( 0., 0. ) );
+	p1a.emplace_back( PointLonLat( 40., 0. ) );
+	p1a.emplace_back( PointLonLat( 0., 90. ) );
 	std::vector< PointLonLat > p2;
 #if 0
 	// see Test 1)
@@ -93,7 +98,7 @@ CASE( "test_spherical_polygon_intersection" ) {
 	p2.emplace_back( PointLonLat( 0., 60. ) );
 	p2.emplace_back( PointLonLat( 40., 60. ) );
 	p2.emplace_back( PointLonLat( 0., 90. ) );
-#elif 1
+#elif 0
 	// see Test 9)
 	p2.emplace_back( PointLonLat( -10., 80. ) );
 	p2.emplace_back( PointLonLat( -10., 50. ) );
@@ -107,24 +112,61 @@ CASE( "test_spherical_polygon_intersection" ) {
 	p2.emplace_back( PointLonLat( 40., 50. ) );
 	p2.emplace_back( PointLonLat( 40., 80. ) );
 	p2.emplace_back( PointLonLat( 0., 80. ) );
-#elif 0
-	// this polygon containing the first one
-	p2.emplace_back( PointLonLat( 0., 80. ) );
-	p2.emplace_back( PointLonLat( 0., 60. ) );
+#elif 1
+	// see Test 11)
+	p2.emplace_back( PointLonLat( 0., 65. ) );
+	p2.emplace_back( PointLonLat( 20., 55. ) );
 	p2.emplace_back( PointLonLat( 40., 60. ) );
-	p2.emplace_back( PointLonLat( 40., 80. ) );
+	p2.emplace_back( PointLonLat( 20., 65. ) );
+	p2.emplace_back( PointLonLat( 0., 65. ) );
+#elif 1
+	// see Test 12)
+	p2.emplace_back( PointLonLat( 20., 65. ) );
+	p2.emplace_back( PointLonLat( 0., 60. ) );
+	p2.emplace_back( PointLonLat( 20., 55. ) );
+	p2.emplace_back( PointLonLat( 40., 60. ) );
+	p2.emplace_back( PointLonLat( 20., 65. ) );
+#elif 1
+	// see Test 13)
+	p2.emplace_back( PointLonLat( 10., 63. ) );
+	p2.emplace_back( PointLonLat( 20., 55. ) );
+	p2.emplace_back( PointLonLat( 30., 63. ) );
+	p2.emplace_back( PointLonLat( 20., 65. ) );
+	p2.emplace_back( PointLonLat( 10., 63. ) );
+#elif 1
+	// see Test 14)
+	p2.emplace_back( PointLonLat( 20., 75. ) );
+	p2.emplace_back( PointLonLat( 0., 70. ) );
+	p2.emplace_back( PointLonLat( 5., 65. ) );
+	p2.emplace_back( PointLonLat( 10., 0. ) );
+	p2.emplace_back( PointLonLat( 20., 0. ) );
+	p2.emplace_back( PointLonLat( 40., 70. ) );
+	p2.emplace_back( PointLonLat( 20., 75. ) );
+#elif 1
+	// see Test 15)
+	p2.emplace_back( PointLonLat( 0., 50. ) );
+	p2.emplace_back( PointLonLat( 0., 40. ) );
+	p2.emplace_back( PointLonLat( 5., 45. ) );
+	p2.emplace_back( PointLonLat( 0., 50. ) );
+#elif 1
+	// see Test 16)
+	p2.emplace_back( PointLonLat( 0., 90. ) );
 	p2.emplace_back( PointLonLat( 0., 80. ) );
-#elif 0
-	p2.emplace_back( PointLonLat( 20., 70. ) );
-	p2.emplace_back( PointLonLat( 20., 50. ) );
-	p2.emplace_back( PointLonLat( 60., 50. ) );
-	p2.emplace_back( PointLonLat( 60., 70. ) );
-	p2.emplace_back( PointLonLat( 20., 70. ) );
+	p2.emplace_back( PointLonLat( 20., 0. ) );
+	p2.emplace_back( PointLonLat( 40., 80. ) );
+	p2.emplace_back( PointLonLat( 0., 90. ) );
 #endif
 	ConvexSphericalPolygon plg1( p1 );
+	ConvexSphericalPolygon plg1a( p1a );
 	ConvexSphericalPolygon plg2( p2 );
+	std::cout <<"\n ======== 0\n\n";
 	ConvexSphericalPolygon* ipol1 = plg1.intersect( plg2 );
+	std::cout <<"\n ======== 1\n\n";
 	ConvexSphericalPolygon* ipol2 = plg2.intersect( plg1 );
+	std::cout <<"\n ======== 2\n\n";
+	ConvexSphericalPolygon* ipol1a = plg1a.intersect( plg2 );
+	std::cout <<"\n ======== 3\n\n";
+	ConvexSphericalPolygon* ipol2a = plg2.intersect( plg1a );
 }
 
 //-----------------------------------------------------------------------------
