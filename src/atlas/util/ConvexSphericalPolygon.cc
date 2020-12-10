@@ -69,19 +69,19 @@ int ConvexSphericalPolygon::contains( const PointXYZ& P ) const {
 // note: [s1,s2] is always the smaller part of THE great circle through s1 and s2.
 bool ConvexSphericalPolygon::onSegment( const PointXYZ& P, const PointXYZ& s1, const PointXYZ& s2 ) const {
 	ATLAS_ASSERT( s1 != PointXYZ::mul(s2,-1.) );
-	ATLAS_ASSERT( fabs(PointXYZ::dot(P,P) - 1) < eps_ );
-	ATLAS_ASSERT( fabs(PointXYZ::dot(s1,s1) - 1) < eps_ );
-	ATLAS_ASSERT( fabs(PointXYZ::dot(s2,s2) - 1) < eps_ );
+	ATLAS_ASSERT( std::abs(PointXYZ::dot(P,P) - 1) < eps_ );
+	ATLAS_ASSERT( std::abs(PointXYZ::dot(s1,s1) - 1) < eps_ );
+	ATLAS_ASSERT( std::abs(PointXYZ::dot(s2,s2) - 1) < eps_ );
 	double s1p = PointXYZ::dot(s1,P);
 	double s1s2 = PointXYZ::dot(s1,s2);
 	double ps2 = PointXYZ::dot(P,s2);
-	s1p = ( s1p < 0. ? -1 : 1 ) * std::min( 1., std::fabs(s1p) );
-	s1s2 = ( s1s2 < 0. ? -1 : 1 ) * std::min( 1., std::fabs(s1s2) );
-	ps2 = ( ps2 < 0. ? -1 : 1 ) * std::min( 1., std::fabs(ps2) );
+	s1p = ( s1p < 0. ? -1 : 1 ) * std::min( 1., std::abs(s1p) );
+	s1s2 = ( s1s2 < 0. ? -1 : 1 ) * std::min( 1., std::abs(s1s2) );
+	ps2 = ( ps2 < 0. ? -1 : 1 ) * std::min( 1., std::abs(ps2) );
 	double angl12 = acos( s1p );
 	double angl13 = acos( s1s2 );
 	double angl23 = acos( ps2 );
-	return fabs(angl12 + angl23 - angl13) < eps_;
+	return std::abs(angl12 + angl23 - angl13) < eps_;
 }
 
 // intersect segment [s1,s2] with this polygon

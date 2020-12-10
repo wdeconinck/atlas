@@ -112,28 +112,28 @@ CASE( "test_spherical_polygon_intersection" ) {
 	p2.emplace_back( PointLonLat( 40., 50. ) );
 	p2.emplace_back( PointLonLat( 40., 80. ) );
 	p2.emplace_back( PointLonLat( 0., 80. ) );
-#elif 1
+#elif 0
 	// see Test 11)
 	p2.emplace_back( PointLonLat( 0., 65. ) );
 	p2.emplace_back( PointLonLat( 20., 55. ) );
 	p2.emplace_back( PointLonLat( 40., 60. ) );
 	p2.emplace_back( PointLonLat( 20., 65. ) );
 	p2.emplace_back( PointLonLat( 0., 65. ) );
-#elif 1
+#elif 0
 	// see Test 12)
 	p2.emplace_back( PointLonLat( 20., 65. ) );
 	p2.emplace_back( PointLonLat( 0., 60. ) );
 	p2.emplace_back( PointLonLat( 20., 55. ) );
 	p2.emplace_back( PointLonLat( 40., 60. ) );
 	p2.emplace_back( PointLonLat( 20., 65. ) );
-#elif 1
+#elif 0
 	// see Test 13)
 	p2.emplace_back( PointLonLat( 10., 63. ) );
 	p2.emplace_back( PointLonLat( 20., 55. ) );
 	p2.emplace_back( PointLonLat( 30., 63. ) );
 	p2.emplace_back( PointLonLat( 20., 65. ) );
 	p2.emplace_back( PointLonLat( 10., 63. ) );
-#elif 1
+#elif 0
 	// see Test 14)
 	p2.emplace_back( PointLonLat( 20., 75. ) );
 	p2.emplace_back( PointLonLat( 0., 70. ) );
@@ -142,19 +142,26 @@ CASE( "test_spherical_polygon_intersection" ) {
 	p2.emplace_back( PointLonLat( 20., 0. ) );
 	p2.emplace_back( PointLonLat( 40., 70. ) );
 	p2.emplace_back( PointLonLat( 20., 75. ) );
-#elif 1
+#elif 0
 	// see Test 15)
 	p2.emplace_back( PointLonLat( 0., 50. ) );
 	p2.emplace_back( PointLonLat( 0., 40. ) );
 	p2.emplace_back( PointLonLat( 5., 45. ) );
 	p2.emplace_back( PointLonLat( 0., 50. ) );
-#elif 1
+#elif 0
 	// see Test 16)
 	p2.emplace_back( PointLonLat( 0., 90. ) );
 	p2.emplace_back( PointLonLat( 0., 80. ) );
 	p2.emplace_back( PointLonLat( 20., 0. ) );
 	p2.emplace_back( PointLonLat( 40., 80. ) );
 	p2.emplace_back( PointLonLat( 0., 90. ) );
+#elif 1
+	// see Test 17)
+	p2.emplace_back( PointLonLat( 0., 65. ) );
+	p2.emplace_back( PointLonLat( 0., 55. ) );
+	p2.emplace_back( PointLonLat( 40., 65. ) );
+	p2.emplace_back( PointLonLat( 40., 75. ) );
+	p2.emplace_back( PointLonLat( 0., 65. ) );
 #endif
 	ConvexSphericalPolygon plg1( p1 );
 	ConvexSphericalPolygon plg1a( p1a );
