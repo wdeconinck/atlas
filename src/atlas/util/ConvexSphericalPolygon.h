@@ -39,7 +39,7 @@ public:
 		ATLAS_ASSERT( false );
 	}
 
-	static constexpr double eps_ = 1e-8; // 1e-16 does not work, take less
+	static constexpr double eps_ = 1e-7; // 1e-8 did not work for i=1,j=13 of test_spherical_geo.cc !!
 
     inline PointXYZ& operator[]( const int i ) {
 		return sph_coords_[i];

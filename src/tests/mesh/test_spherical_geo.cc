@@ -67,7 +67,7 @@ CASE( "test_spherical_polygon_intersection" ) {
 	};
 	for( int i = 0; i < nplg_f; i++ ) {
 		for( int j = 0; j < nplg_g; j++ ) {
-			std::cout <<"\n\nIntersecting polygon\n    ";
+			std::cout <<"\n\n("<<i*nplg_g+j <<") Intersecting polygon\n    ";
 			plg_f[i].print( std::cout );
 			std::cout <<"\nwith polygon\n    ";
 			plg_g[j].print( std::cout );
@@ -82,6 +82,7 @@ CASE( "test_spherical_polygon_intersection" ) {
 			}
 		}
 	}
+	std::cout <<"\n";
 }
 
 //-----------------------------------------------------------------------------
