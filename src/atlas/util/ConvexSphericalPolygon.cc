@@ -21,7 +21,7 @@
 #include "atlas/util/ConvexSphericalPolygon.h"
 #include "atlas/util/NormaliseLongitude.h"
 
-#define DEBUG_OUTPUT 1
+#define DEBUG_OUTPUT 0
 #define DEBUG_OUTPUT_DETAIL 0
 
 namespace atlas {
@@ -197,13 +197,13 @@ ConvexSphericalPolygon* ConvexSphericalPolygon::intersect( const ConvexSpherical
 	}
 	if ( jj != -1 ) {
 		iplg_p.emplace_back( ip );
-		nextIntersect( iplg_p, plg, ii, jj, 0 );
+		int intersect = nextIntersect( iplg_p, plg, ii, jj, 0 );
 		std::vector< PointLonLat > iplg_p_ll;
 		iplg_p_ll.resize( iplg_p.size() );
 		for( int i = 0; i < iplg_p.size(); i++ ) {
             eckit::geometry::Sphere::convertCartesianToSpherical( 1., iplg_p[i], iplg_p_ll[i] );
 		}
-		return new ConvexSphericalPolygon( iplg_p_ll );
+		return ( intersect ? new ConvexSphericalPolygon( iplg_p_ll ) : nullptr );
 	}
 	else {
 		std::cout <<" polygons edges do not intersect with edges of the other polygon.\n";
