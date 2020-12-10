@@ -47,13 +47,7 @@ inline int ConvexSphericalPolygon::leftOf( const PointXYZ& P, const PointXYZ& p1
 	const PointXYZ cp = PointXYZ( PointXYZ::cross( p1, p2 ) );
 	ATLAS_ASSERT( PointXYZ::norm(cp) > eps_ );
 	const double dp = PointXYZ::dot( cp, P );
-	if ( dp < -eps_ ) {
-		return 0;
-	}
-	else if ( fabs(dp) < eps_ ) {
-		return -1;
-	}
-	return 1;
+	return ( dp > eps_ ? 1 : ( dp < -eps_ ? 0 : -1 ) );
 }
 
 // return 0:outside, -1:on_edge, 1:strictly_inside
@@ -78,9 +72,15 @@ bool ConvexSphericalPolygon::onSegment( const PointXYZ& P, const PointXYZ& s1, c
 	ATLAS_ASSERT( fabs(PointXYZ::dot(P,P) - 1) < eps_ );
 	ATLAS_ASSERT( fabs(PointXYZ::dot(s1,s1) - 1) < eps_ );
 	ATLAS_ASSERT( fabs(PointXYZ::dot(s2,s2) - 1) < eps_ );
-	double angl12 = acos( std::min( 1., PointXYZ::dot(s1,P) ) );
-	double angl13 = acos( std::min( 1., PointXYZ::dot(s1,s2) ) );
-	double angl23 = acos( std::min( 1., PointXYZ::dot(P,s2) ) );
+	double s1p = PointXYZ::dot(s1,P);
+	double s1s2 = PointXYZ::dot(s1,s2);
+	double ps2 = PointXYZ::dot(P,s2);
+	s1p = ( s1p < 0. ? -1 : 1 ) * std::min( 1., std::fabs(s1p) );
+	s1s2 = ( s1s2 < 0. ? -1 : 1 ) * std::min( 1., std::fabs(s1s2) );
+	ps2 = ( ps2 < 0. ? -1 : 1 ) * std::min( 1., std::fabs(ps2) );
+	double angl12 = acos( s1p );
+	double angl13 = acos( s1s2 );
+	double angl23 = acos( ps2 );
 	return fabs(angl12 + angl23 - angl13) < eps_;
 }
 
@@ -121,7 +121,7 @@ int ConvexSphericalPolygon::intersect( const PointXYZ& s1, const PointXYZ& s2, P
 #endif
 			ip = PointXYZ::div( ip, PointXYZ::norm( ip ) );
 			if ( onSegment( ip, s1, s2 ) && onSegment( ip, sp1, sp2 ) ) {
-				return 1+i;
+				return 1+i%ncoord;
 			}
 			ip = PointXYZ::mul( ip, -1. );
 #if DEBUG_OUTPUT_DETAIL
@@ -130,7 +130,7 @@ int ConvexSphericalPolygon::intersect( const PointXYZ& s1, const PointXYZ& s2, P
 			std::cout.flush();
 #endif
 			if ( onSegment( ip, s1, s2 ) && onSegment( ip, sp1, sp2 ) ) {
-				return 1+i;
+				return 1+i%ncoord;
 			}
 		}
 		else {
@@ -159,8 +159,9 @@ int ConvexSphericalPolygon::intersect( const PointXYZ& s1, const PointXYZ& s2, P
 				std::cout <<"       		no intersection in overlap\n";
 				std::cout.flush();
 #endif
+				return 0;
 			}
-			return 1+i;
+			return 1+i%ncoord;
 		}
 	}
 	return 0;
@@ -207,13 +208,13 @@ ConvexSphericalPolygon* ConvexSphericalPolygon::intersect( const ConvexSpherical
 	else {
 		std::cout <<" polygons edges do not intersect with edges of the other polygon.\n";
 	    std::cout.flush();
-		if ( this->contains( plg.sph_coords_[0] ) ) {
-			std::cout <<" plg inside this.\n";
+		if ( this->contains( plg.sph_coords_[0] ) == 1 ) {
+			std::cout <<" this contains " <<plg.coordinates_[0] <<" -> plg inside this.\n";
 			std::cout.flush();
 			return new ConvexSphericalPolygon( plg );
 		}
-		else if ( plg.contains( sph_coords_[0] ) ) {
-			std::cout <<" this inside plg.\n";
+		else if ( plg.contains( sph_coords_[0] ) == 1 ) {
+			std::cout <<" plg contains " <<coordinates_[0] <<" -> this inside plg.\n";
 			std::cout.flush();
 			return new ConvexSphericalPolygon( *this );
 		}
@@ -295,13 +296,13 @@ int ConvexSphericalPolygon::nextIntersect( std::vector< PointXYZ >& iplg_p,
 				std::cout <<"   inside of plg: no intersection with polygon.\n";
 				std::cout.flush();
 #endif
-				if ( this->contains( np2 ) == 1 ) {
+				if ( plg.contains( np1 ) == 1 ) {
 					iplg_p.emplace_back( np1 );
 					return nextIntersect( iplg_p, plg, nii, jj, 1 );
 				}
 				else {
 #if DEBUG_OUTPUT
-					std::cout <<"   inside of plg: np2 is outside no intersection with polygon.\n";
+					std::cout <<"   inside of plg: np1 is outside no intersection with polygon.\n";
 					std::cout.flush();
 #endif
 					return 0;
