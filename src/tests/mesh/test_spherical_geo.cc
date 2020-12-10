@@ -13,6 +13,7 @@ namespace test {
 
 using ConvexSphericalPolygon = util::ConvexSphericalPolygon;
 
+
 ConvexSphericalPolygon& getCSPolygon( const int np, PointLonLat* p ) {
 	std::vector< PointLonLat > pts;
 	for( int i = 0; i < np; i++ ) {
@@ -66,9 +67,19 @@ CASE( "test_spherical_polygon_intersection" ) {
 	};
 	for( int i = 0; i < nplg_f; i++ ) {
 		for( int j = 0; j < nplg_g; j++ ) {
-			std::cout <<"\n ======== " <<i <<", " <<j <<"\n\n";
+			std::cout <<"\n\nIntersecting polygon\n    ";
+			plg_f[i].print( std::cout );
+			std::cout <<"\nwith polygon\n    ";
+			plg_g[j].print( std::cout );
 			ConvexSphericalPolygon* plg_fg = plg_f[i].intersect( plg_g[j] );
 			ConvexSphericalPolygon* plg_gf = plg_g[j].intersect( plg_f[i] );
+			std::cout <<"\ngot polygon\n    ";
+			if ( plg_fg ) {
+				plg_fg->print( std::cout );
+			}
+			else {
+				std::cout <<"	empty";
+			}
 		}
 	}
 }
