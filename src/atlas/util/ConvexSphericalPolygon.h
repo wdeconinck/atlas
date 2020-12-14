@@ -24,8 +24,9 @@ class PartitionPolygon;
 
 class ConvexSphericalPolygon : public PolygonCoordinates {
 public:
+    ConvexSphericalPolygon();
     ConvexSphericalPolygon( const std::vector<PointLonLat>& points );
-    ConvexSphericalPolygon( const std::vector<PointXYZ>& points );
+    //ConvexSphericalPolygon( const std::vector<PointXYZ>& points );
     //ConvexSphericalPolygon( const PartitionPolygon& );
 
     /*
@@ -41,13 +42,12 @@ public:
 
 	static constexpr double eps_ = 1e-7; // 1e-8 did not work for i=1,j=13 of test_spherical_geo.cc !!
 
-    inline PointXYZ& operator[]( const int i ) {
-		return sph_coords_[i];
-	}
-
-//protected:
-
-	inline int leftOf( const PointXYZ&, const PointXYZ&, const PointXYZ& ) const;
+    /*
+   * Point left of [p1,p2]
+   * @param[in] P, p1, p2 given point in xyz-coordinates
+   * @return 0:P_right_of_[p1,p2], -1:overlap_of_[P,p1]_and_[P,p2], 1:P_left_of_[p1,p2]
+   */
+	inline int leftOf( const PointXYZ& P, const PointXYZ& p1, const PointXYZ& p2 ) const;
 
     /*
    * Point-on-segment test on great circle segments
@@ -72,7 +72,13 @@ public:
    */
 	ConvexSphericalPolygon* intersect( const ConvexSphericalPolygon& pol ) const;
 
-private:
+    /*
+   * @param[in] P given point in (x,y,z) coordinates
+   * @return true if equal vertices
+   */
+    bool equals( const ConvexSphericalPolygon& plg, const double prec = eps_ ) const;
+
+protected:
 
 	/*
    * find next vertex of intersection polygon of plg1 and plg2 polygons
@@ -87,9 +93,15 @@ private:
 							 int inside = 0
 						   ) const;
 
+    /*
+   * @return true:polygon is convex
+   */
+	bool validate();
+
 
 private:
 	std::vector<PointXYZ> sph_coords_;
+	bool valid_;
 };
 
 //------------------------------------------------------------------------------------------------------

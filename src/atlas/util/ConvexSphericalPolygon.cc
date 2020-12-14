@@ -27,19 +27,85 @@
 namespace atlas {
 namespace util {
 
+bool approx_eq( const double& v1, const double& v2, const double& t ) {
+    return eckit::types::is_approximately_equal( v1, v2, t );
+}
+
+template< class PointType >
+bool approx_eq( const PointType& v1, const PointType& v2, const double& t ) {
+    return approx_eq( v1[0], v2[0], t ) && approx_eq( v1[1], v2[1], t );
+}
+
 //------------------------------------------------------------------------------------------------------
 
 //ConvexSphericalPolygon::ConvexSphericalPolygon( const PartitionPolygon& partition_polygon ) :
 //    PolygonCoordinates( partition_polygon.xy(), false ) {}
 
+//ConvexSphericalPolygon::ConvexSphericalPolygon() : 
+//	ConvexSphericalPolygon( std::vector<PointXYZ>{PointXYZ(0,0,0),PointXYZ(0,0,0),PointXYZ(0,0,0)} ) {
+//	valid_ = false;
+//}
+
 // TODO: earth radius set to 1 !!
 ConvexSphericalPolygon::ConvexSphericalPolygon( const std::vector<PointLonLat>& points ) : PolygonCoordinates( points ) {
-	eckit::geometry::Sphere sphere;
 	sph_coords_.clear();
 	sph_coords_.resize( points.size() );
 	for ( size_t i = 0; i < points.size(); ++i ) {
-		sphere.convertSphericalToCartesian( 1., points[i], sph_coords_[i] );
-	}	
+		eckit::geometry::Sphere::convertSphericalToCartesian( 1., points[i], sph_coords_[i] );
+	}
+	valid_ = true; // assume all are convex
+#ifndef NDEBUG
+	validate();
+#endif
+}
+
+// TODO: earth radius set to 1 !!
+/*
+ConvexSphericalPolygon::ConvexSphericalPolygon( const std::vector<PointXYZ>& points ) : PolygonCoordinates( points ){
+	sph_coords_.clear();
+	sph_coords_.resize( points.size() );
+	for ( size_t i = 0; i < points.size(); ++i ) {
+		sph_coords_[i] = points[i];
+		eckit::geometry::Sphere::convertCartesianToSpherical( 1., sph_coords_[i], coordinates_[i] );
+	}
+	valid_ = true; // assume all are convex
+#ifndef NDEBUG
+	validate();
+#endif
+}
+*/
+
+bool ConvexSphericalPolygon::validate() {
+	valid_ = true;
+	for( int i = 0; i < size()-1; i++ ) {
+		int ni = ( i != size()-1 ? i+1 : 0 );
+		int nni = ( ni != size()-1 ? ni+1 : 0 );
+		if ( ! leftOf( sph_coords_[nni], sph_coords_[i], sph_coords_[ni] ) ) {
+			valid_ = false;
+			return false;
+		}
+	}
+	return true;
+}
+
+bool ConvexSphericalPolygon::equals( const ConvexSphericalPolygon& plg, const double prec ) const {
+	const int sz = size();
+	if ( sz != plg.size() ) {
+		return false;
+	}
+	int i = 0;
+	for( ; i < sz; i++ ) {
+		if ( approx_eq( plg.coordinates_[i], this->coordinates_[i], prec ) ) {
+			break;
+		}
+	}
+	for( int j = 0; j < sz; j++ ) {
+		int idx = (i+j)%sz;
+		if ( ! approx_eq( plg.coordinates_[idx], this->coordinates_[idx], prec ) ) {
+			return false;
+		}
+	}
+	return true;
 }
 
 // return 0:P_right_of_[p1,p2], -1:overlap_of_[P,p1]_and_[P,p2], 1:P_left_of_[p1,p2]
