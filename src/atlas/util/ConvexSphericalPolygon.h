@@ -51,6 +51,8 @@ public:
 
 	double area() const;
 
+	const PointXYZ& sph_centroid() const;
+
 	// return tangential angle between [pl,p] and [p,pr]
 	inline double angle( const PointXYZ& pl, const PointXYZ& p, const PointXYZ& pr ) const;
 
@@ -106,6 +108,7 @@ protected:
 
 private:
 	std::vector<PointXYZ> sph_coords_;
+	PointXYZ sph_centroid_;
 	bool valid_;
 };
 
