@@ -69,10 +69,15 @@ ConvexSphericalPolygon::ConvexSphericalPolygon( const std::vector<PointLonLat>& 
 	for ( size_t i = 0; i < points.size(); ++i ) {
 		eckit::geometry::Sphere::convertSphericalToCartesian( 1., points[i], sph_coords_[i] );
 	}
+	eckit::geometry::Sphere::convertSphericalToCartesian( 1., centroid_, sph_centroid_ );
 	valid_ = true; // assume all are convex
 #ifndef NDEBUG
 	validate();
 #endif
+}
+
+const PointXYZ& ConvexSphericalPolygon::sph_centroid() const {
+	return sph_centroid_;
 }
 
 bool ConvexSphericalPolygon::validate() {
