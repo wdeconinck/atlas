@@ -41,26 +41,13 @@ bool approx_eq( const PointType& v1, const PointType& v2, const double& t ) {
 //ConvexSphericalPolygon::ConvexSphericalPolygon( const PartitionPolygon& partition_polygon ) :
 //    PolygonCoordinates( partition_polygon.xy(), false ) {}
 
-//ConvexSphericalPolygon::ConvexSphericalPolygon() : 
-//	ConvexSphericalPolygon( std::vector<PointXYZ>{PointXYZ(0,0,0),PointXYZ(0,0,0),PointXYZ(0,0,0)} ) {
-//	valid_ = false;
-//}
-
-// TODO: earth radius set to 1 !!
-ConvexSphericalPolygon::ConvexSphericalPolygon( const std::vector<PointLonLat>& points ) : PolygonCoordinates( points ) {
-	sph_coords_.clear();
-	sph_coords_.resize( points.size() );
-	for ( size_t i = 0; i < points.size(); ++i ) {
-		eckit::geometry::Sphere::convertSphericalToCartesian( 1., points[i], sph_coords_[i] );
-	}
-	valid_ = true; // assume all are convex
-#ifndef NDEBUG
-	validate();
-#endif
+/*
+ConvexSphericalPolygon::ConvexSphericalPolygon() : 
+	ConvexSphericalPolygon( std::vector<PointXYZ>{PointXYZ(0,0,0),PointXYZ(0,0,0),PointXYZ(0,0,0)} ) {
+	valid_ = false;
 }
 
 // TODO: earth radius set to 1 !!
-/*
 ConvexSphericalPolygon::ConvexSphericalPolygon( const std::vector<PointXYZ>& points ) : PolygonCoordinates( points ){
 	sph_coords_.clear();
 	sph_coords_.resize( points.size() );
@@ -74,6 +61,19 @@ ConvexSphericalPolygon::ConvexSphericalPolygon( const std::vector<PointXYZ>& poi
 #endif
 }
 */
+
+// TODO: earth radius set to 1 !!
+ConvexSphericalPolygon::ConvexSphericalPolygon( const std::vector<PointLonLat>& points ) : PolygonCoordinates( points ) {
+	sph_coords_.clear();
+	sph_coords_.resize( points.size() );
+	for ( size_t i = 0; i < points.size(); ++i ) {
+		eckit::geometry::Sphere::convertSphericalToCartesian( 1., points[i], sph_coords_[i] );
+	}
+	valid_ = true; // assume all are convex
+#ifndef NDEBUG
+	validate();
+#endif
+}
 
 bool ConvexSphericalPolygon::validate() {
 	valid_ = true;
@@ -108,9 +108,34 @@ bool ConvexSphericalPolygon::equals( const ConvexSphericalPolygon& plg, const do
 	return true;
 }
 
+// note: two diameterly opposite points forming segment are not allowed
+// return tangential angle between [pl,p] and [p,pr]
+inline double ConvexSphericalPolygon::angle( const PointXYZ& pl, const PointXYZ& p, const PointXYZ& pr ) const {
+	const PointXYZ& plp = PointXYZ( PointXYZ::cross( pl, p ) );
+	const PointXYZ& ppr = PointXYZ( PointXYZ::cross( p, pr ) );
+	double s1p = PointXYZ::dot( plp, ppr ) / ( PointXYZ::norm( plp ) * PointXYZ::norm( ppr ) );
+	s1p = std::acos( ( s1p < 0. ? -1 : 1 ) * std::min( 1., std::abs(s1p) ) );
+	return M_PI - s1p;
+}
+
+
+// note: unit sphere!
+// I. Todhunter (1886), Paragr. 99
+double ConvexSphericalPolygon::area() const {
+	const int sz = size()-1;
+	double a = M_PI*(2-sz);
+	for ( int i = 0; i < sz; i++ ) {
+		int im1 = (i != 0) ? i-1 : sz-1;
+		int ip1 = (i != sz-1) ? i+1 : 0;
+		a += angle( sph_coords_[im1], sph_coords_[i], sph_coords_[ip1] );
+	}
+	ATLAS_ASSERT( a > -eps_ );
+	return a;
+}
+
 // return 0:P_right_of_[p1,p2], -1:overlap_of_[P,p1]_and_[P,p2], 1:P_left_of_[p1,p2]
 inline int ConvexSphericalPolygon::leftOf( const PointXYZ& P, const PointXYZ& p1, const PointXYZ& p2 ) const {
-	const PointXYZ cp = PointXYZ( PointXYZ::cross( p1, p2 ) );
+	const PointXYZ& cp = PointXYZ( PointXYZ::cross( p1, p2 ) );
 	ATLAS_ASSERT( PointXYZ::norm(cp) > eps_ );
 	const double dp = PointXYZ::dot( cp, P );
 	return ( dp > eps_ ? 1 : ( dp < -eps_ ? 0 : -1 ) );
@@ -134,10 +159,10 @@ int ConvexSphericalPolygon::contains( const PointXYZ& P ) const {
 // note: two diameterly opposite points forming segment are not allowed
 // note: [s1,s2] is always the smaller part of THE great circle through s1 and s2.
 bool ConvexSphericalPolygon::onSegment( const PointXYZ& P, const PointXYZ& s1, const PointXYZ& s2 ) const {
-	ATLAS_ASSERT( s1 != PointXYZ::mul(s2,-1.) );
+	ATLAS_ASSERT( s1 != PointXYZ::mul(s2,-1.) ); // should be done in "validate" because s1,s2,p1,p2 are polydon vertices
 	ATLAS_ASSERT( std::abs(PointXYZ::dot(P,P) - 1) < eps_ );
-	ATLAS_ASSERT( std::abs(PointXYZ::dot(s1,s1) - 1) < eps_ );
-	ATLAS_ASSERT( std::abs(PointXYZ::dot(s2,s2) - 1) < eps_ );
+	ATLAS_ASSERT( std::abs(PointXYZ::dot(s1,s1) - 1) < eps_ ); // should be done in "validate" because s1,s2,p1,p2 are polydon vertices
+	ATLAS_ASSERT( std::abs(PointXYZ::dot(s2,s2) - 1) < eps_ ); // should be done in "validate" because s1,s2,p1,p2 are polydon vertices
 	double s1p = PointXYZ::dot(s1,P);
 	double s1s2 = PointXYZ::dot(s1,s2);
 	double ps2 = PointXYZ::dot(P,s2);
