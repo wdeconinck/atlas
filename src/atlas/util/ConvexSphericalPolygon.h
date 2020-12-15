@@ -24,9 +24,9 @@ class PartitionPolygon;
 
 class ConvexSphericalPolygon : public PolygonCoordinates {
 public:
-    ConvexSphericalPolygon();
-    ConvexSphericalPolygon( const std::vector<PointLonLat>& points );
+    //ConvexSphericalPolygon();
     //ConvexSphericalPolygon( const std::vector<PointXYZ>& points );
+    ConvexSphericalPolygon( const std::vector<PointLonLat>& points );
     //ConvexSphericalPolygon( const PartitionPolygon& );
 
     /*
@@ -48,6 +48,11 @@ public:
    * @return 0:P_right_of_[p1,p2], -1:overlap_of_[P,p1]_and_[P,p2], 1:P_left_of_[p1,p2]
    */
 	inline int leftOf( const PointXYZ& P, const PointXYZ& p1, const PointXYZ& p2 ) const;
+
+	double area() const;
+
+	// return tangential angle between [pl,p] and [p,pr]
+	inline double angle( const PointXYZ& pl, const PointXYZ& p, const PointXYZ& pr ) const;
 
     /*
    * Point-on-segment test on great circle segments
@@ -78,6 +83,11 @@ public:
    */
     bool equals( const ConvexSphericalPolygon& plg, const double prec = eps_ ) const;
 
+    /*
+   * @return true:polygon is convex
+   */
+	bool validate();
+
 protected:
 
 	/*
@@ -92,11 +102,6 @@ protected:
           					 int j,
 							 int inside = 0
 						   ) const;
-
-    /*
-   * @return true:polygon is convex
-   */
-	bool validate();
 
 
 private:

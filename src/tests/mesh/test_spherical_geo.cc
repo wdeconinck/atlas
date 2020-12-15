@@ -18,11 +18,26 @@ ConvexSphericalPolygon* getCSPolygon( const int np, PointLonLat* p ) {
 		return nullptr;
 	}
 	std::vector< PointLonLat > pts;
+	pts.reserve( np + 1 );
 	for( int i = 0; i < np; i++ ) {
 		pts.emplace_back( p[i] );
 	}
 	pts.emplace_back( p[0] );
 	return new ConvexSphericalPolygon( pts );
+}
+
+CASE( "test_spherical_polygon_area" ) {
+	ConvexSphericalPolygon* plg1 = getCSPolygon( 3, new PointLonLat[3]{{0, 90}, {0, 0}, {90, 0}});
+	ATLAS_ASSERT( plg1->area() == M_PI_2 );
+	std::cout <<"area: " <<plg1->area() <<"\n";
+	ConvexSphericalPolygon* plg2 = getCSPolygon( 4, new PointLonLat[4]{{0, 45}, {0, 0}, {90,0},{90, 45}});
+	std::cout <<"area: " <<plg2->area() <<"\n";
+
+	ConvexSphericalPolygon* plg3 = getCSPolygon( 3, new PointLonLat[3]{{0, 90}, {0, 45}, {90,45}} );
+	std::cout <<"area: " <<plg3->area() <<"\n";
+	std::cout <<"area diff: " <<plg1->area() - plg2->area() - plg3->area() <<"\n";
+	std::cout.flush();
+	ATLAS_ASSERT( std::abs( plg1->area() - plg2->area() - plg3->area() ) < 1e-15 );
 }
 
 CASE( "test_spherical_polygon_intersection" ) {
@@ -47,7 +62,7 @@ CASE( "test_spherical_polygon_intersection" ) {
 		getCSPolygon( 4, new PointLonLat[4]{{0, 65}, {20, 55}, {40, 60}, {20, 65}} ),//11
 		getCSPolygon( 4, new PointLonLat[4]{{20, 65}, {0, 60}, {20, 55}, {40, 60}} ),
 		getCSPolygon( 4, new PointLonLat[4]{{10, 63}, {20, 55}, {30, 63}, {20, 65}} ),//13
-		getCSPolygon( 6, new PointLonLat[6]{{20, 75}, {0, 70}, {5, 65}, {10, 0}, {20, 0}, {40, 70}} ),
+		getCSPolygon( 6, new PointLonLat[6]{{20, 75}, {0, 70}, {5, 5}, {10, 0}, {20, 0}, {40, 70}} ),
 		getCSPolygon( 3, new PointLonLat[3]{{0, 50}, {0, 40}, {5, 45}} ),//15
 		getCSPolygon( 4, new PointLonLat[4]{{0, 90}, {0, 80}, {20, 0}, {40, 80}} ),
 		getCSPolygon( 4, new PointLonLat[4]{{0, 65}, {0, 55}, {40, 65}, {40, 75}} ),//17
@@ -66,7 +81,7 @@ CASE( "test_spherical_polygon_intersection" ) {
 		getCSPolygon( 4, new PointLonLat[4]{{0, 65}, {10, 61}, {40, 60}, {20, 65}} ),//10
 		getCSPolygon( 3, new PointLonLat[3]{{0, 60}, {40, 60}, {20, 65}} ),
 		getCSPolygon( 5, new PointLonLat[5]{{12.6, 61}, {27.4, 61.3}, {30, 63}, {20, 65}, {10, 63}} ),//12
-		getCSPolygon( 5, new PointLonLat[5]{{0, 70}, {5, 65}, {5.8, 60.8}, {32.9, 60.9}, {40, 70}} ),
+		getCSPolygon( 4, new PointLonLat[4]{{0, 70}, {1.9, 60.3}, {32.9, 60.9}, {40, 70}} ),
 		getCSPolygon( 3, new PointLonLat[3]{{0, 50}, {0, 40}, {5, 45}} ),//14
 		getCSPolygon( 4, new PointLonLat[4]{{13.7, 61.4}, {26.3, 61.4}, {30, 70.8}, {10, 70.8}} ),
 		getCSPolygon( 6, new PointLonLat[6]{{0, 65}, {0, 60}, {16.8, 61.5}, {40, 65}, {40, 70}, {15, 71.1}} ),//16
@@ -83,7 +98,7 @@ CASE( "test_spherical_polygon_intersection" ) {
 		getCSPolygon( 4, new PointLonLat[4]{{0, 65}, {20, 55}, {40, 60}, {20, 65}} ),
 		getCSPolygon( 4, new PointLonLat[4]{{0, 60}, {20, 55}, {40, 60}, {20, 65}} ),//28
 		getCSPolygon( 4, new PointLonLat[4]{{10, 63}, {20, 55}, {30, 63}, {20, 65}} ),
-		getCSPolygon( 6, new PointLonLat[6]{{0, 70}, {5, 65}, {10, 0}, {20, 0}, {40, 70}, {20, 75}} ),//30
+		getCSPolygon( 6, new PointLonLat[6]{{0, 70}, {5, 5}, {10, 0}, {20, 0}, {40, 70}, {20,75}} ),//30
 		getCSPolygon( 3, new PointLonLat[3]{{0, 50}, {0, 40}, {5, 45}} ),
 		getCSPolygon( 4, new PointLonLat[4]{{0, 90}, {0, 80}, {20, 0}, {40, 80}} ),//32
 		getCSPolygon( 4, new PointLonLat[4]{{0, 65}, {0, 55}, {40, 65}, {40, 75}} )
@@ -92,13 +107,17 @@ CASE( "test_spherical_polygon_intersection" ) {
 		for( int j = 0; j < nplg_g; j++ ) {
 			std::cout <<"\n\n("<<i*nplg_g+j <<") Intersecting polygon\n    ";
 			plg_f[i]->print( std::cout );
+			std::cout <<"\nof area: " <<plg_f[i]->area() <<", convex: " <<plg_f[i]->validate();
 			std::cout <<"\nwith polygon\n    ";
 			plg_g[j]->print( std::cout );
+			std::cout <<"\nof area: " <<plg_g[j]->area() <<", convex: " <<plg_g[j]->validate();
 			ConvexSphericalPolygon* plg_fg = plg_f[i]->intersect( *(plg_g[j]) );
 			ConvexSphericalPolygon* plg_gf = plg_g[j]->intersect( *(plg_f[i]) );
 			std::cout <<"\ngot polygon\n    ";
 			if ( plg_fg ) {
 				plg_fg->print( std::cout );
+				std::cout <<"\nof area: " <<plg_fg->area() 
+					<<", convex: " <<plg_g[j]->validate();
 				ATLAS_ASSERT( plg_fg->equals( *plg_gf ) );
 				ATLAS_ASSERT( plg_fg->equals( *(plg_i[ i*nplg_g + j ]), 0.5 ) );
 			}
