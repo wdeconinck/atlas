@@ -214,7 +214,7 @@ int ConvexSphericalPolygon::intersect( const PointXYZ& s1, const PointXYZ& s2, P
         else {
             //overlap
             if ( onSegment( s1, sp1, sp2 ) && ( onSegment( s2, s1, sp2 ) || onSegment( sp2, s1, s2 ) ) ) {
-                ip = *( new PointXYZ( s1 ) );
+                ip = PointXYZ( s1 );
 #if DEBUG_OUTPUT_DETAIL
                 PointLonLat ipp;
                 eckit::geometry::Sphere::convertCartesianToSpherical( 1., ip, ipp );
@@ -223,7 +223,7 @@ int ConvexSphericalPolygon::intersect( const PointXYZ& s1, const PointXYZ& s2, P
 #endif
             }
             else if ( onSegment( sp1, s1, s2 ) && ( onSegment( sp2, sp1, s2 ) || onSegment( s2, sp1, sp2 ) ) ) {
-                ip = *( new PointXYZ( sp1 ) );
+                ip = PointXYZ( sp1 );
 #if DEBUG_OUTPUT_DETAIL
                 PointLonLat ipp;
                 eckit::geometry::Sphere::convertCartesianToSpherical( 1., ip, ipp );
@@ -232,7 +232,7 @@ int ConvexSphericalPolygon::intersect( const PointXYZ& s1, const PointXYZ& s2, P
 #endif
             }
             else {
-                ip = *( new PointXYZ( {0., 0., 0.} ) );
+                ip = PointXYZ( {0., 0., 0.} );
 #if DEBUG_OUTPUT_DETAIL
                 std::cout << "       		no intersection in overlap\n";
                 std::cout.flush();
