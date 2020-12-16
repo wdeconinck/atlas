@@ -128,6 +128,18 @@ CASE( "test_spherical_polygon_intersection" ) {
     }
 }
 
+CASE( "Size of ConvexSphericalPolygon" ) {
+    // This test illustrates that ConvexSphericalPolygon is allocated on the stack completely,
+    // as sizeof(ConvexSphericalPolygon) includes space for MAX_SIZE coordinates of type PointXYZ
+    EXPECT( sizeof( PointXYZ ) == sizeof( double ) * 3 );
+    size_t expected_size = 0;
+    expected_size += ConvexSphericalPolygon::MAX_SIZE * sizeof( PointXYZ );
+    expected_size += sizeof( size_t );
+    expected_size += sizeof( bool );
+    EXPECT( sizeof( ConvexSphericalPolygon ) >= expected_size );  // greater because compiler may add some padding
+}
+
+
 //-----------------------------------------------------------------------------
 
 }  // end namespace test
