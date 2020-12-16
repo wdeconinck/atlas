@@ -79,7 +79,7 @@ public:
    * @param[in] pol clipping polygon
    * @param[out] intersecting polygon
    */
-	ConvexSphericalPolygon* intersect( const ConvexSphericalPolygon& pol ) const;
+    ConvexSphericalPolygon intersect( const ConvexSphericalPolygon& pol ) const;
 
     /*
    * @param[in] P given point in (x,y,z) coordinates
