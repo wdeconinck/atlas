@@ -22,7 +22,6 @@ ConvexSphericalPolygon getCSPolygon( std::initializer_list<PointLonLat> list ) {
     for ( auto& p : list ) {
         pts.emplace_back( p );
     }
-    pts.emplace_back( *list.begin() );
     return ConvexSphericalPolygon( pts );
 }
 

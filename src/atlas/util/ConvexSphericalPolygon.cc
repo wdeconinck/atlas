@@ -52,7 +52,7 @@ ConvexSphericalPolygon::ConvexSphericalPolygon( const std::vector<PointXYZ>& poi
 	sph_coords_.resize( points.size() );
 	for ( size_t i = 0; i < points.size(); ++i ) {
 		sph_coords_[i] = points[i];
-		eckit::geometry::Sphere::convertCartesianToSpherical( 1., sph_coords_[i], coordinates_[i] );
+		eckit::geometry::Sphere::convertCartesianToSpherical( 1., sph_coords_[i], sph_coords_[i] );
 	}
 	valid_ = true; // assume all are convex
 #ifndef NDEBUG
@@ -131,7 +131,7 @@ inline double ConvexSphericalPolygon::angle( const PointXYZ& pl, const PointXYZ&
 // note: unit sphere!
 // I. Todhunter (1886), Paragr. 99
 double ConvexSphericalPolygon::area() const {
-    const int sz = size() - 1;
+    const int sz = size();
     double a     = M_PI * ( 2 - sz );
     for ( int i = 0; i < sz; i++ ) {
         int im1 = ( i != 0 ) ? i - 1 : sz - 1;
@@ -153,7 +153,7 @@ inline int ConvexSphericalPolygon::leftOf( const PointXYZ& P, const PointXYZ& p1
 // return 0:outside, -1:on_edge, 1:strictly_inside
 int ConvexSphericalPolygon::contains( const PointXYZ& P ) const {
     ATLAS_ASSERT( sph_coords_.size() >= 2 );
-    const size_t ncoord = sph_coords_.size() - 1;
+    const size_t ncoord = sph_coords_.size();
     for ( size_t i = 0; i < ncoord; ++i ) {
         const PointXYZ sp1 = sph_coords_[i];
         const PointXYZ sp2 = sph_coords_[i != ncoord - 1 ? i + 1 : 0];
@@ -194,7 +194,7 @@ bool ConvexSphericalPolygon::onSegment( const PointXYZ& P, const PointXYZ& s1, c
 int ConvexSphericalPolygon::intersect( const PointXYZ& s1, const PointXYZ& s2, PointXYZ& ip, int start ) const {
     const PointXYZ& cp1 = static_cast<PointXYZ>( PointXYZ::cross( s1, s2 ) );
     ATLAS_ASSERT( PointXYZ::norm( cp1 ) > eps_ );
-    int ncoord = sph_coords_.size() - 1;
+    int ncoord = size();
 
 #if DEBUG_OUTPUT_DETAIL
     PointLonLat s1ll, s2ll;
@@ -208,8 +208,8 @@ int ConvexSphericalPolygon::intersect( const PointXYZ& s1, const PointXYZ& s2, P
         const PointXYZ& sp1 = sph_coords_[i % ncoord];
         const PointXYZ& sp2 = sph_coords_[( i + 1 ) % ncoord];
 #if DEBUG_OUTPUT_DETAIL
-        std::cout << "     check edge " << i % ncoord << " :" << coordinates_[i % ncoord] << ", "
-                  << coordinates_[( i + 1 ) % ncoord] << "]\n";
+        std::cout << "     check edge " << i % ncoord << " :" << sph_coords_[i % ncoord] << ", "
+                  << sph_coords_[( i + 1 ) % ncoord] << "]\n";
         std::cout.flush();
 #endif
         const PointXYZ& cp2 = static_cast<PointXYZ>( PointXYZ::cross( sp1, sp2 ) );
@@ -279,22 +279,22 @@ ConvexSphericalPolygon ConvexSphericalPolygon::intersect( const ConvexSphericalP
     int ii = 0;  // "this" vertex counter
     int jj = 0;  // "plg" vertex counter
     PointXYZ ip;
-    const int n_plg = this->size() - 1;
+    const int n_plg = this->size();
     for ( ; ii < n_plg; ii++ ) {
         jj = -1 + plg.intersect( sph_coords_[ii], sph_coords_[( ii + 1 ) % n_plg], ip );
         if ( jj != -1 ) {
 #if DEBUG_OUTPUT_DETAIL
             PointLonLat ipp;
             eckit::geometry::Sphere::convertCartesianToSpherical( 1., ip, ipp );
-            std::cout << "  " << jj << "th edge intersects with [" << coordinates_[ii] << " "
-                      << coordinates_[( ii + 1 ) % n_plg] << "] at " << ipp << "\n";
+            std::cout << "  " << jj << "th edge intersects with [" << sph_coords_[ii] << " "
+                      << sph_coords_[( ii + 1 ) % n_plg] << "] at " << ipp << "\n";
             std::cout.flush();
 #endif
             break;
         }
 #if DEBUG_OUTPUT_DETAIL
-        std::cout << "  polygon does not intersects with [" << coordinates_[ii] << " "
-                  << coordinates_[( ii + 1 ) % n_plg] << "]\n";
+        std::cout << "  polygon does not intersects with [" << sph_coords_[ii] << " "
+                  << sph_coords_[( ii + 1 ) % n_plg] << "]\n";
         std::cout.flush();
 #endif
     }
@@ -302,8 +302,8 @@ ConvexSphericalPolygon ConvexSphericalPolygon::intersect( const ConvexSphericalP
         iplg_p.emplace_back( ip );
         int intersect = nextIntersect( iplg_p, plg, ii, jj, 0 );
         std::vector<PointLonLat> iplg_p_ll;
-        iplg_p_ll.resize( iplg_p.size() );
-        for ( int i = 0; i < iplg_p.size(); i++ ) {
+        iplg_p_ll.resize( iplg_p.size() - 1 );
+        for ( int i = 0; i < iplg_p_ll.size(); i++ ) {
             eckit::geometry::Sphere::convertCartesianToSpherical( 1., iplg_p[i], iplg_p_ll[i] );
         }
         return ( intersect ? ConvexSphericalPolygon( iplg_p_ll ) : ConvexSphericalPolygon() );
@@ -315,21 +315,21 @@ ConvexSphericalPolygon ConvexSphericalPolygon::intersect( const ConvexSphericalP
 #endif
         if ( this->contains( plg.sph_coords_[0] ) == 1 ) {
 #if DEBUG_OUTPUT_DETAIL
-            std::cout << " this contains " << plg.coordinates_[0] << " -> plg inside this.\n";
+            std::cout << " this contains " << plg.sph_coords_[0] << " -> plg inside this.\n";
             std::cout.flush();
 #endif
             return ConvexSphericalPolygon( plg );
         }
         else if ( plg.contains( sph_coords_[0] ) == 1 ) {
 #if DEBUG_OUTPUT_DETAIL
-            std::cout << " plg contains " << coordinates_[0] << " -> this inside plg.\n";
+            std::cout << " plg contains " << sph_coords_[0] << " -> this inside plg.\n";
             std::cout.flush();
 #endif
             return ConvexSphericalPolygon( *this );
         }
         else {
 #if DEBUG_OUTPUT_DETAIL
-            std::cout << " this contains " << plg.coordinates_[0] << " -> plg inside this.\n";
+            std::cout << " this contains " << plg.sph_coords_[0] << " -> plg inside this.\n";
             std::cout << " plg NOT inside this && this NOT inside plg\n";
             std::cout.flush();
 #endif
@@ -341,8 +341,8 @@ ConvexSphericalPolygon ConvexSphericalPolygon::intersect( const ConvexSphericalP
 int ConvexSphericalPolygon::nextIntersect( std::vector<PointXYZ>& iplg_p, const ConvexSphericalPolygon& plg,
                                            const int ii0, const int jj0, const int inside ) const {
     const int n_iplg = iplg_p.size() - 1;
-    const int n_plg1 = size() - 1;
-    const int n_plg2 = plg.size() - 1;
+    const int n_plg1 = size();
+    const int n_plg2 = plg.size();
     const PointXYZ P = iplg_p[n_iplg];
     int ii           = ii0;
     int jj           = jj0;
