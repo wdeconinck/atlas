@@ -96,6 +96,11 @@ public:
 
     void print( std::ostream& ) const;
 
+    friend std::ostream& operator<<( std::ostream& out, const ConvexSphericalPolygon& p ){
+        p.print(out);
+        return out;
+    }
+
 protected:
 
 	/*
