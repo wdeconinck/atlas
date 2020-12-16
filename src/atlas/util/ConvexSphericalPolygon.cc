@@ -72,7 +72,7 @@ ConvexSphericalPolygon::ConvexSphericalPolygon( const std::vector<PointLonLat>& 
 	for ( size_t i = 0; i < points.size(); ++i ) {
 		eckit::geometry::Sphere::convertSphericalToCartesian( 1., points[i], sph_coords_[i] );
 	}
-	valid_ = true; // assume all are convex
+    valid_ = size_ > 2; // assume all are convex
 #ifndef NDEBUG
 	validate();
 #endif

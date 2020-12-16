@@ -13,18 +13,19 @@ namespace test {
 
 using ConvexSphericalPolygon = util::ConvexSphericalPolygon;
 
-ConvexSphericalPolygon getCSPolygon( const int np, PointLonLat* p ) {
-	if ( !p ) {
+ConvexSphericalPolygon getCSPolygon( std::initializer_list<PointLonLat> list ) {
+    if ( list.size() == 0 ) {
         return ConvexSphericalPolygon();
-	}
-	std::vector< PointLonLat > pts;
-	pts.reserve( np + 1 );
-	for( int i = 0; i < np; i++ ) {
-		pts.emplace_back( p[i] );
-	}
-	pts.emplace_back( p[0] );
+    }
+    std::vector< PointLonLat > pts;
+    pts.reserve( list.size() + 1 );
+    for( auto& p: list ) {
+        pts.emplace_back(p);
+    }
+    pts.emplace_back( *list.begin() );
     return ConvexSphericalPolygon( pts );
 }
+
 
 CASE( "test default constructor" ) {
     ConvexSphericalPolygon p;
@@ -33,17 +34,16 @@ CASE( "test default constructor" ) {
 }
 
 CASE( "test_spherical_polygon_area" ) {
-    auto plg1 = getCSPolygon( 3, new PointLonLat[3]{{0, 90}, {0, 0}, {90, 0}});
-    ATLAS_ASSERT( plg1.area() == M_PI_2 );
-    std::cout <<"area: " <<plg1.area() <<"\n";
-    auto plg2 = getCSPolygon( 4, new PointLonLat[4]{{0, 45}, {0, 0}, {90,0},{90, 45}});
-    std::cout <<"area: " <<plg2.area() <<"\n";
+    auto plg1 = getCSPolygon( {{0, 90}, {0, 0}, {90, 0}});
+    EXPECT_APPROX_EQ(plg1.area(), M_PI_2 );
+    Log::info() <<"area: " <<plg1.area() <<"\n";
+    auto plg2 = getCSPolygon( {{0, 45}, {0, 0}, {90,0},{90, 45}});
+    Log::info() <<"area: " <<plg2.area() <<"\n";
 
-    auto plg3 = getCSPolygon( 3, new PointLonLat[3]{{0, 90}, {0, 45}, {90,45}} );
-    std::cout <<"area: " <<plg3.area() <<"\n";
-    std::cout <<"area diff: " <<plg1.area() - plg2.area() - plg3.area() <<"\n";
-	std::cout.flush();
-    ATLAS_ASSERT( std::abs( plg1.area() - plg2.area() - plg3.area() ) < 1e-15 );
+    auto plg3 = getCSPolygon( {{0, 90}, {0, 45}, {90,45}} );
+    Log::info() <<"area: " <<plg3.area() <<"\n";
+    Log::info() <<"area diff: " <<plg1.area() - plg2.area() - plg3.area() << std::endl;
+    EXPECT_APPROX_EQ( std::abs( plg1.area() - plg2.area() - plg3.area() ), 0, 1e-15 );
 }
 
 CASE( "test_spherical_polygon_intersection" ) {
@@ -51,86 +51,84 @@ CASE( "test_spherical_polygon_intersection" ) {
     constexpr int nplg_g = 17;
     constexpr int nplg_i = nplg_f * nplg_g;
     std::array<ConvexSphericalPolygon,nplg_f> plg_f = {
-		getCSPolygon( 4, new PointLonLat[4]{{0, 70}, {0, 60}, {40, 60}, {40,70}} ),
-		getCSPolygon( 3, new PointLonLat[3]{{0, 90}, {0, 0}, {40, 0}} )
-	};
+        getCSPolygon( {{0, 70}, {0, 60}, {40, 60}, {40,70}} ),
+        getCSPolygon( {{0, 90}, {0, 0}, {40, 0}} )
+    };
     std::array<ConvexSphericalPolygon,nplg_g> plg_g = {
-		getCSPolygon( 3, new PointLonLat[3]{{0, 60}, {0, 50}, {40, 60}} ),//0
-		getCSPolygon( 3, new PointLonLat[3]{{0, 60}, {0, 50}, {20, 60}} ),
-		getCSPolygon( 3, new PointLonLat[3]{{10, 60}, {10, 50}, {30, 60}} ),//3
-		getCSPolygon( 3, new PointLonLat[3]{{40, 80}, {0, 60}, {40, 60}} ),
-		getCSPolygon( 3, new PointLonLat[3]{{0, 80}, {0, 60}, {40, 60}} ),//5
-		getCSPolygon( 3, new PointLonLat[3]{{20, 80}, {0, 60}, {40, 60}} ),
-		getCSPolygon( 3, new PointLonLat[3]{{20, 70}, {0, 50}, {40, 50}} ),//7
-		getCSPolygon( 3, new PointLonLat[3]{{0, 90}, {0, 60}, {40, 60}} ),
-		getCSPolygon( 3, new PointLonLat[3]{{-10, 80}, {-10, 50}, {50, 80}} ),//9
-		getCSPolygon( 4, new PointLonLat[4]{{0, 80}, {0, 50}, {40, 50}, {40, 80}} ),
-		getCSPolygon( 4, new PointLonLat[4]{{0, 65}, {20, 55}, {40, 60}, {20, 65}} ),//11
-		getCSPolygon( 4, new PointLonLat[4]{{20, 65}, {0, 60}, {20, 55}, {40, 60}} ),
-		getCSPolygon( 4, new PointLonLat[4]{{10, 63}, {20, 55}, {30, 63}, {20, 65}} ),//13
-		getCSPolygon( 6, new PointLonLat[6]{{20, 75}, {0, 70}, {5, 5}, {10, 0}, {20, 0}, {40, 70}} ),
-		getCSPolygon( 3, new PointLonLat[3]{{0, 50}, {0, 40}, {5, 45}} ),//15
-		getCSPolygon( 4, new PointLonLat[4]{{0, 90}, {0, 80}, {20, 0}, {40, 80}} ),
-		getCSPolygon( 4, new PointLonLat[4]{{0, 65}, {0, 55}, {40, 65}, {40, 75}} ),//17
+        getCSPolygon( {{0, 60}, {0, 50}, {40, 60}} ),//0
+        getCSPolygon( {{0, 60}, {0, 50}, {20, 60}} ),
+        getCSPolygon( {{10, 60}, {10, 50}, {30, 60}} ),//3
+        getCSPolygon( {{40, 80}, {0, 60}, {40, 60}} ),
+        getCSPolygon( {{0, 80}, {0, 60}, {40, 60}} ),//5
+        getCSPolygon( {{20, 80}, {0, 60}, {40, 60}} ),
+        getCSPolygon( {{20, 70}, {0, 50}, {40, 50}} ),//7
+        getCSPolygon( {{0, 90}, {0, 60}, {40, 60}} ),
+        getCSPolygon( {{-10, 80}, {-10, 50}, {50, 80}} ),//9
+        getCSPolygon( {{0, 80}, {0, 50}, {40, 50}, {40, 80}} ),
+        getCSPolygon( {{0, 65}, {20, 55}, {40, 60}, {20, 65}} ),//11
+        getCSPolygon( {{20, 65}, {0, 60}, {20, 55}, {40, 60}} ),
+        getCSPolygon( {{10, 63}, {20, 55}, {30, 63}, {20, 65}} ),//13
+        getCSPolygon( {{20, 75}, {0, 70}, {5, 5}, {10, 0}, {20, 0}, {40, 70}} ),
+        getCSPolygon( {{0, 50}, {0, 40}, {5, 45}} ),//15
+        getCSPolygon( {{0, 90}, {0, 80}, {20, 0}, {40, 80}} ),
+        getCSPolygon( {{0, 65}, {0, 55}, {40, 65}, {40, 75}} ),//17
 	};
     std::array<ConvexSphericalPolygon,nplg_i> plg_i = {
-		getCSPolygon( 2, new PointLonLat[2]{{0, 60}, {40, 60}} ),//0
-		getCSPolygon( 0, nullptr ),
-		getCSPolygon( 0, nullptr ),//2
-		getCSPolygon( 4, new PointLonLat[4]{{0, 60}, {40, 60}, {40, 70}, {10, 70.8}} ),
-		getCSPolygon( 4, new PointLonLat[4]{{0, 70}, {0, 60}, {40, 60}, {30, 70.8}} ),//4
-		getCSPolygon( 4, new PointLonLat[4]{{0, 60}, {40, 60}, {34.6, 70.5}, {5.3, 70.5}} ),
-		getCSPolygon( 3, new PointLonLat[3]{{7.5, 60.9}, {32.5, 60.9}, {20, 70}} ),//6
-		getCSPolygon( 4, new PointLonLat[4]{{0, 70}, {0, 60}, {40, 60}, {40, 70}} ),
-		getCSPolygon( 3, new PointLonLat[3]{{0, 65.5}, {6.9, 70.6}, {0, 70}} ),//8
-		getCSPolygon( 4, new PointLonLat[4]{{0, 70}, {0, 60}, {40, 60}, {40, 70}} ),
-		getCSPolygon( 4, new PointLonLat[4]{{0, 65}, {10, 61}, {40, 60}, {20, 65}} ),//10
-		getCSPolygon( 3, new PointLonLat[3]{{0, 60}, {40, 60}, {20, 65}} ),
-		getCSPolygon( 5, new PointLonLat[5]{{12.6, 61}, {27.4, 61.3}, {30, 63}, {20, 65}, {10, 63}} ),//12
-		getCSPolygon( 4, new PointLonLat[4]{{0, 70}, {1.9, 60.3}, {32.9, 60.9}, {40, 70}} ),
-		getCSPolygon( 3, new PointLonLat[3]{{0, 50}, {0, 40}, {5, 45}} ),//14
-		getCSPolygon( 4, new PointLonLat[4]{{13.7, 61.4}, {26.3, 61.4}, {30, 70.8}, {10, 70.8}} ),
-		getCSPolygon( 6, new PointLonLat[6]{{0, 65}, {0, 60}, {16.8, 61.5}, {40, 65}, {40, 70}, {15, 71.1}} ),//16
-		getCSPolygon( 3, new PointLonLat[3]{{0, 60}, {0, 50}, {40, 60}} ),
-		getCSPolygon( 3, new PointLonLat[3]{{0, 60}, {0, 50}, {20, 60}} ),//18
-		getCSPolygon( 3, new PointLonLat[3]{{10, 60}, {10, 50}, {30, 60}} ),
-		getCSPolygon( 3, new PointLonLat[3]{{0, 60}, {40, 60}, {40, 80}} ),//20
-		getCSPolygon( 3, new PointLonLat[3]{{0, 80}, {0, 60}, {40, 60}} ),
-		getCSPolygon( 3, new PointLonLat[3]{{0, 60}, {40, 60}, {20, 80}} ),//22
-		getCSPolygon( 3, new PointLonLat[3]{{0, 50}, {40, 50}, {20, 70}} ),
-		getCSPolygon( 3, new PointLonLat[3]{{0, 90}, {0, 60}, {40, 60}} ),//24
-		getCSPolygon( 4, new PointLonLat[4]{{0, 65.5}, {40, 79.2}, {40, 80.8}, {0, 80.8}} ),
-		getCSPolygon( 4, new PointLonLat[4]{{0, 80}, {0, 50}, {40, 50}, {40, 80}} ),//26
-		getCSPolygon( 4, new PointLonLat[4]{{0, 65}, {20, 55}, {40, 60}, {20, 65}} ),
-		getCSPolygon( 4, new PointLonLat[4]{{0, 60}, {20, 55}, {40, 60}, {20, 65}} ),//28
-		getCSPolygon( 4, new PointLonLat[4]{{10, 63}, {20, 55}, {30, 63}, {20, 65}} ),
-		getCSPolygon( 6, new PointLonLat[6]{{0, 70}, {5, 5}, {10, 0}, {20, 0}, {40, 70}, {20,75}} ),//30
-		getCSPolygon( 3, new PointLonLat[3]{{0, 50}, {0, 40}, {5, 45}} ),
-		getCSPolygon( 4, new PointLonLat[4]{{0, 90}, {0, 80}, {20, 0}, {40, 80}} ),//32
-		getCSPolygon( 4, new PointLonLat[4]{{0, 65}, {0, 55}, {40, 65}, {40, 75}} )
+        getCSPolygon( {{0, 60}, {40, 60}} ),//0
+        getCSPolygon( {} ),
+        getCSPolygon( {} ),//2
+        getCSPolygon( {{0, 60}, {40, 60}, {40, 70}, {10, 70.8}} ),
+        getCSPolygon( {{0, 70}, {0, 60}, {40, 60}, {30, 70.8}} ),//4
+        getCSPolygon( {{0, 60}, {40, 60}, {34.6, 70.5}, {5.3, 70.5}} ),
+        getCSPolygon( {{7.5, 60.9}, {32.5, 60.9}, {20, 70}} ),//6
+        getCSPolygon( {{0, 70}, {0, 60}, {40, 60}, {40, 70}} ),
+        getCSPolygon( {{0, 65.5}, {6.9, 70.6}, {0, 70}} ),//8
+        getCSPolygon( {{0, 70}, {0, 60}, {40, 60}, {40, 70}} ),
+        getCSPolygon( {{0, 65}, {10, 61}, {40, 60}, {20, 65}} ),//10
+        getCSPolygon( {{0, 60}, {40, 60}, {20, 65}} ),
+        getCSPolygon( {{12.6, 61}, {27.4, 61.3}, {30, 63}, {20, 65}, {10, 63}} ),//12
+        getCSPolygon( {{0, 70}, {1.9, 60.3}, {32.9, 60.9}, {40, 70}} ),
+        getCSPolygon( {{0, 50}, {0, 40}, {5, 45}} ),//14
+        getCSPolygon( {{13.7, 61.4}, {26.3, 61.4}, {30, 70.8}, {10, 70.8}} ),
+        getCSPolygon( {{0, 65}, {0, 60}, {16.8, 61.5}, {40, 65}, {40, 70}, {15, 71.1}} ),//16
+        getCSPolygon( {{0, 60}, {0, 50}, {40, 60}} ),
+        getCSPolygon( {{0, 60}, {0, 50}, {20, 60}} ),//18
+        getCSPolygon( {{10, 60}, {10, 50}, {30, 60}} ),
+        getCSPolygon( {{0, 60}, {40, 60}, {40, 80}} ),//20
+        getCSPolygon( {{0, 80}, {0, 60}, {40, 60}} ),
+        getCSPolygon( {{0, 60}, {40, 60}, {20, 80}} ),//22
+        getCSPolygon( {{0, 50}, {40, 50}, {20, 70}} ),
+        getCSPolygon( {{0, 90}, {0, 60}, {40, 60}} ),//24
+        getCSPolygon( {{0, 65.5}, {40, 79.2}, {40, 80.8}, {0, 80.8}} ),
+        getCSPolygon( {{0, 80}, {0, 50}, {40, 50}, {40, 80}} ),//26
+        getCSPolygon( {{0, 65}, {20, 55}, {40, 60}, {20, 65}} ),
+        getCSPolygon( {{0, 60}, {20, 55}, {40, 60}, {20, 65}} ),//28
+        getCSPolygon( {{10, 63}, {20, 55}, {30, 63}, {20, 65}} ),
+        getCSPolygon( {{0, 70}, {5, 5}, {10, 0}, {20, 0}, {40, 70}, {20,75}} ),//30
+        getCSPolygon( {{0, 50}, {0, 40}, {5, 45}} ),
+        getCSPolygon( {{0, 90}, {0, 80}, {20, 0}, {40, 80}} ),//32
+        getCSPolygon( {{0, 65}, {0, 55}, {40, 65}, {40, 75}} )
 	};
 	for( int i = 0; i < nplg_f; i++ ) {
 		for( int j = 0; j < nplg_g; j++ ) {
-            std::cout <<"\n\n("<<i*nplg_g+j <<") Intersecting polygon\n    " << plg_f[i];
-            std::cout <<"\nof area: " <<plg_f[i].area() <<", convex: " <<plg_f[i].validate();
-            std::cout <<"\nwith polygon\n    " << plg_g[j];
-            std::cout <<"\nof area: " <<plg_g[j].area() <<", convex: " <<plg_g[j].validate();
+            Log::info() <<"\n("<<i*nplg_g+j <<") Intersecting polygon\n    " << plg_f[i] << std::endl;
+            Log::info() <<"of area: " <<plg_f[i].area() <<", convex: " <<plg_f[i].validate() << std::endl;
+            Log::info() <<"with polygon\n    " << plg_g[j] << std::endl;
+            Log::info() <<"of area: " <<plg_g[j].area() <<", convex: " <<plg_g[j].validate() << std::endl;
             auto plg_fg = plg_f[i].intersect( plg_g[j] );
             auto plg_gf = plg_g[j].intersect( plg_f[i] );
-			std::cout <<"\ngot polygon\n    ";
+            Log::info() <<"got polygon\n    ";
 			if ( plg_fg ) {
-                std::cout << plg_fg;
-                std::cout <<"\nof area: " <<plg_fg.area()
-                    <<", convex: " <<plg_g[j].validate();
-                ATLAS_ASSERT( plg_fg.equals( plg_gf ) );
-                ATLAS_ASSERT( plg_fg.equals( plg_i[ i*nplg_g + j ], 0.5 ) );
-			}
+                Log::info() << plg_fg << std::endl;
+                Log::info() <<"of area: " <<plg_fg.area() <<", convex: " <<plg_g[j].validate() << std::endl;
+                EXPECT( plg_fg.equals( plg_gf ) );
+                EXPECT( plg_fg.equals( plg_i[ i*nplg_g + j ], 0.5 ) );
+            }
 			else {
-				std::cout <<"	empty";
+                Log::info() <<"	empty" << std::endl;
 			}
 		}
 	}
-	std::cout <<"\n";
 }
 
 //-----------------------------------------------------------------------------
