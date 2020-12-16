@@ -12,9 +12,9 @@
 
 #include <vector>
 
-#include "atlas/util/detail/Debug.h"
 #include "atlas/util/Point.h"
 #include "atlas/util/Polygon.h"
+#include "atlas/util/detail/Debug.h"
 
 namespace atlas {
 namespace util {
@@ -36,29 +36,23 @@ public:
    */
     int contains( const PointXYZ& P ) const;
 
-    bool contains( const Point2& P ) const {
-        ATLAS_NOTIMPLEMENTED;
-	}
+    bool contains( const Point2& P ) const { ATLAS_NOTIMPLEMENTED; }
 
-    operator bool() const {
-        return valid_;
-    }
+    operator bool() const { return valid_; }
 
-	static constexpr double eps_ = 1e-7; // 1e-8 did not work for i=1,j=13 of test_spherical_geo.cc !!
+    static constexpr double eps_ = 1e-7;  // 1e-8 did not work for i=1,j=13 of test_spherical_geo.cc !!
 
     /*
    * Point left of [p1,p2]
    * @param[in] P, p1, p2 given point in xyz-coordinates
    * @return 0:P_right_of_[p1,p2], -1:overlap_of_[P,p1]_and_[P,p2], 1:P_left_of_[p1,p2]
    */
-	inline int leftOf( const PointXYZ& P, const PointXYZ& p1, const PointXYZ& p2 ) const;
+    inline int leftOf( const PointXYZ& P, const PointXYZ& p1, const PointXYZ& p2 ) const;
 
-	double area() const;
+    double area() const;
 
-	const PointXYZ& sph_centroid() const;
-
-	// return tangential angle between [pl,p] and [p,pr]
-	inline double angle( const PointXYZ& pl, const PointXYZ& p, const PointXYZ& pr ) const;
+    // return tangential angle between [pl,p] and [p,pr]
+    inline double angle( const PointXYZ& pl, const PointXYZ& p, const PointXYZ& pr ) const;
 
     /*
    * Point-on-segment test on great circle segments
@@ -76,7 +70,7 @@ public:
    */
     int intersect( const PointXYZ& s1, const PointXYZ& s2, PointXYZ& ip, int start = 0 ) const;
 
-	/*
+    /*
    * intersect a polygon with this polygon
    * @param[in] pol clipping polygon
    * @param[out] intersecting polygon
@@ -92,37 +86,31 @@ public:
     /*
    * @return true:polygon is convex
    */
-	bool validate();
+    bool validate();
 
     size_t size() const { return size_; }
 
     void print( std::ostream& ) const;
 
-    friend std::ostream& operator<<( std::ostream& out, const ConvexSphericalPolygon& p ){
-        p.print(out);
+    friend std::ostream& operator<<( std::ostream& out, const ConvexSphericalPolygon& p ) {
+        p.print( out );
         return out;
     }
 
 protected:
-
-	/*
+    /*
    * find next vertex of intersection polygon of plg1 and plg2 polygons
    * @param[out] plg_points collected vertices of intersection polygon
    * @param[in] i starting edge of plg1
    * @param[in] j starting edge of plg2
    */
-	int nextIntersect( std::vector< PointXYZ >& plg_points,
-							 const ConvexSphericalPolygon& plg1,
-							 int i,
-          					 int j,
-							 int inside = 0
-						   ) const;
+    int nextIntersect( std::vector<PointXYZ>& plg_points, const ConvexSphericalPolygon& plg1, int i, int j,
+                       int inside = 0 ) const;
 
 
 private:
-	std::vector<PointXYZ> sph_coords_;
-	PointXYZ sph_centroid_;
-	bool valid_;
+    std::vector<PointXYZ> sph_coords_;
+    bool valid_;
     size_t size_;
 };
 
