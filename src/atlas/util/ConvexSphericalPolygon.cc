@@ -62,6 +62,9 @@ ConvexSphericalPolygon::ConvexSphericalPolygon( const std::vector<PointXYZ>& poi
 */
 
 // TODO: earth radius set to 1 !!
+
+ConvexSphericalPolygon::ConvexSphericalPolygon() : valid_(false), size_(0) {}
+
 ConvexSphericalPolygon::ConvexSphericalPolygon( const std::vector<PointLonLat>& points ) :
     size_(points.size()) {
 	sph_coords_.clear();
@@ -76,16 +79,17 @@ ConvexSphericalPolygon::ConvexSphericalPolygon( const std::vector<PointLonLat>& 
 }
 
 bool ConvexSphericalPolygon::validate() {
-	valid_ = true;
-	for( int i = 0; i < size()-1; i++ ) {
-		int ni = ( i != size()-1 ? i+1 : 0 );
-		int nni = ( ni != size()-1 ? ni+1 : 0 );
-		if ( ! leftOf( sph_coords_[nni], sph_coords_[i], sph_coords_[ni] ) ) {
-			valid_ = false;
-			return false;
-		}
-	}
-	return true;
+    if( valid_ ) {
+        for( int i = 0; i < size()-1; i++ ) {
+            int ni = ( i != size()-1 ? i+1 : 0 );
+            int nni = ( ni != size()-1 ? ni+1 : 0 );
+            if ( ! leftOf( sph_coords_[nni], sph_coords_[i], sph_coords_[ni] ) ) {
+                valid_ = false;
+                return valid_;
+            }
+        }
+    }
+    return valid_;
 }
 
 bool ConvexSphericalPolygon::equals( const ConvexSphericalPolygon& plg, const double prec ) const {
