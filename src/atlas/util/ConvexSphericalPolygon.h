@@ -24,6 +24,8 @@ class PartitionPolygon;
 
 class ConvexSphericalPolygon {
 public:
+    static constexpr int MAX_SIZE = 8;
+
     ConvexSphericalPolygon();
     //ConvexSphericalPolygon( const std::vector<PointXYZ>& points );
     ConvexSphericalPolygon( const std::vector<PointLonLat>& points );
@@ -36,11 +38,8 @@ public:
    */
     int contains( const PointXYZ& P ) const;
 
-    bool contains( const Point2& P ) const { ATLAS_NOTIMPLEMENTED; }
-
     operator bool() const { return valid_; }
 
-    static constexpr double eps_ = 1e-7;  // 1e-8 did not work for i=1,j=13 of test_spherical_geo.cc !!
 
     /*
    * Point left of [p1,p2]
@@ -97,7 +96,7 @@ public:
         return out;
     }
 
-protected:
+private:
     /*
    * find next vertex of intersection polygon of plg1 and plg2 polygons
    * @param[out] plg_points collected vertices of intersection polygon
@@ -109,9 +108,11 @@ protected:
 
 
 private:
-    std::vector<PointXYZ> sph_coords_;
-    bool valid_;
+    std::array<PointXYZ, MAX_SIZE> sph_coords_;
     size_t size_;
+    bool valid_;
+
+    static constexpr double eps_ = 1e-7;  // 1e-8 did not work for i=1,j=13 of test_spherical_geo.cc !!
 };
 
 //------------------------------------------------------------------------------------------------------

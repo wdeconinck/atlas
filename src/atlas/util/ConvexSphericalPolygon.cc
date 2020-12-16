@@ -37,37 +37,10 @@ bool approx_eq( const PointXYZ& v1, const PointXYZ& v2, const double& t ) {
 
 //------------------------------------------------------------------------------------------------------
 
-//ConvexSphericalPolygon::ConvexSphericalPolygon( const PartitionPolygon& partition_polygon ) :
-//    PolygonCoordinates( partition_polygon.xy(), false ) {}
-
-/*
-ConvexSphericalPolygon::ConvexSphericalPolygon() : 
-	ConvexSphericalPolygon( std::vector<PointXYZ>{PointXYZ(0,0,0),PointXYZ(0,0,0),PointXYZ(0,0,0)} ) {
-	valid_ = false;
-}
-
-// TODO: earth radius set to 1 !!
-ConvexSphericalPolygon::ConvexSphericalPolygon( const std::vector<PointXYZ>& points ) : PolygonCoordinates( points ){
-	sph_coords_.clear();
-	sph_coords_.resize( points.size() );
-	for ( size_t i = 0; i < points.size(); ++i ) {
-		sph_coords_[i] = points[i];
-		eckit::geometry::Sphere::convertCartesianToSpherical( 1., sph_coords_[i], coordinates_[i] );
-	}
-	valid_ = true; // assume all are convex
-#ifndef NDEBUG
-	validate();
-#endif
-}
-*/
-
-// TODO: earth radius set to 1 !!
-
 ConvexSphericalPolygon::ConvexSphericalPolygon() : valid_( false ), size_( 0 ) {}
 
 ConvexSphericalPolygon::ConvexSphericalPolygon( const std::vector<PointLonLat>& points ) : size_( points.size() ) {
-    sph_coords_.clear();
-    sph_coords_.resize( points.size() );
+    ATLAS_ASSERT( size_ < MAX_SIZE );
     for ( size_t i = 0; i < points.size(); ++i ) {
         eckit::geometry::Sphere::convertSphericalToCartesian( 1., points[i], sph_coords_[i] );
     }
@@ -146,8 +119,8 @@ inline int ConvexSphericalPolygon::leftOf( const PointXYZ& P, const PointXYZ& p1
 
 // return 0:outside, -1:on_edge, 1:strictly_inside
 int ConvexSphericalPolygon::contains( const PointXYZ& P ) const {
-    ATLAS_ASSERT( sph_coords_.size() >= 2 );
-    const size_t ncoord = sph_coords_.size() - 1;
+    ATLAS_ASSERT( size() >= 2 );
+    const size_t ncoord = size() - 1;
     for ( size_t i = 0; i < ncoord; ++i ) {
         const PointXYZ sp1 = sph_coords_[i];
         const PointXYZ sp2 = sph_coords_[i != ncoord - 1 ? i + 1 : 0];
@@ -188,7 +161,7 @@ bool ConvexSphericalPolygon::onSegment( const PointXYZ& P, const PointXYZ& s1, c
 int ConvexSphericalPolygon::intersect( const PointXYZ& s1, const PointXYZ& s2, PointXYZ& ip, int start ) const {
     const PointXYZ& cp1 = static_cast<PointXYZ>( PointXYZ::cross( s1, s2 ) );
     ATLAS_ASSERT( PointXYZ::norm( cp1 ) > eps_ );
-    int ncoord = sph_coords_.size() - 1;
+    int ncoord = size() - 1;
 
 #if DEBUG_OUTPUT_DETAIL
     PointLonLat s1ll, s2ll;
