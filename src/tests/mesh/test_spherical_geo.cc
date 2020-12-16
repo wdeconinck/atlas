@@ -111,17 +111,15 @@ CASE( "test_spherical_polygon_intersection" ) {
 	};
 	for( int i = 0; i < nplg_f; i++ ) {
 		for( int j = 0; j < nplg_g; j++ ) {
-			std::cout <<"\n\n("<<i*nplg_g+j <<") Intersecting polygon\n    ";
-            plg_f[i].print( std::cout );
+            std::cout <<"\n\n("<<i*nplg_g+j <<") Intersecting polygon\n    " << plg_f[i];
             std::cout <<"\nof area: " <<plg_f[i].area() <<", convex: " <<plg_f[i].validate();
-			std::cout <<"\nwith polygon\n    ";
-            plg_g[j].print( std::cout );
+            std::cout <<"\nwith polygon\n    " << plg_g[j];
             std::cout <<"\nof area: " <<plg_g[j].area() <<", convex: " <<plg_g[j].validate();
             auto plg_fg = plg_f[i].intersect( plg_g[j] );
             auto plg_gf = plg_g[j].intersect( plg_f[i] );
 			std::cout <<"\ngot polygon\n    ";
 			if ( plg_fg ) {
-                plg_fg.print( std::cout );
+                std::cout << plg_fg;
                 std::cout <<"\nof area: " <<plg_fg.area()
                     <<", convex: " <<plg_g[j].validate();
                 ATLAS_ASSERT( plg_fg.equals( plg_gf ) );
