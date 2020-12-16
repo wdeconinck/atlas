@@ -270,7 +270,7 @@ int ConvexSphericalPolygon::intersect( const PointXYZ& s1, const PointXYZ& s2, P
 // intersect a polygon with this polygon
 // @param[in] pol clipping polygon
 // @param[out] intersecting polygon
-ConvexSphericalPolygon* ConvexSphericalPolygon::intersect( const ConvexSphericalPolygon& plg ) const {
+ConvexSphericalPolygon ConvexSphericalPolygon::intersect( const ConvexSphericalPolygon& plg ) const {
 	std::vector< PointXYZ > iplg_p;
 	int ii = 0; // "this" vertex counter
 	int jj = 0; // "plg" vertex counter
@@ -301,7 +301,7 @@ ConvexSphericalPolygon* ConvexSphericalPolygon::intersect( const ConvexSpherical
 		for( int i = 0; i < iplg_p.size(); i++ ) {
             eckit::geometry::Sphere::convertCartesianToSpherical( 1., iplg_p[i], iplg_p_ll[i] );
 		}
-		return ( intersect ? new ConvexSphericalPolygon( iplg_p_ll ) : nullptr );
+        return ( intersect ? ConvexSphericalPolygon( iplg_p_ll ) : ConvexSphericalPolygon() );
 	}
 	else {
 #if DEBUG_OUTPUT_DETAIL
@@ -313,14 +313,14 @@ ConvexSphericalPolygon* ConvexSphericalPolygon::intersect( const ConvexSpherical
 			std::cout <<" this contains " <<plg.coordinates_[0] <<" -> plg inside this.\n";
 			std::cout.flush();
 #endif
-			return new ConvexSphericalPolygon( plg );
+            return ConvexSphericalPolygon( plg );
 		}
 		else if ( plg.contains( sph_coords_[0] ) == 1 ) {
 #if DEBUG_OUTPUT_DETAIL
 			std::cout <<" plg contains " <<coordinates_[0] <<" -> this inside plg.\n";
 			std::cout.flush();
 #endif
-			return new ConvexSphericalPolygon( *this );
+            return ConvexSphericalPolygon( *this );
 		}
 		else {
 #if DEBUG_OUTPUT_DETAIL
@@ -328,7 +328,7 @@ ConvexSphericalPolygon* ConvexSphericalPolygon::intersect( const ConvexSpherical
 			std::cout <<" plg NOT inside this && this NOT inside plg\n";
 			std::cout.flush();
 #endif
-			return nullptr;
+            return ConvexSphericalPolygon();
 		}
 	}
 }

@@ -13,9 +13,9 @@ namespace test {
 
 using ConvexSphericalPolygon = util::ConvexSphericalPolygon;
 
-ConvexSphericalPolygon* getCSPolygon( const int np, PointLonLat* p ) {
+ConvexSphericalPolygon getCSPolygon( const int np, PointLonLat* p ) {
 	if ( !p ) {
-		return nullptr;
+        return ConvexSphericalPolygon();
 	}
 	std::vector< PointLonLat > pts;
 	pts.reserve( np + 1 );
@@ -23,7 +23,7 @@ ConvexSphericalPolygon* getCSPolygon( const int np, PointLonLat* p ) {
 		pts.emplace_back( p[i] );
 	}
 	pts.emplace_back( p[0] );
-	return new ConvexSphericalPolygon( pts );
+    return ConvexSphericalPolygon( pts );
 }
 
 CASE( "test default constructor" ) {
@@ -33,28 +33,28 @@ CASE( "test default constructor" ) {
 }
 
 CASE( "test_spherical_polygon_area" ) {
-	ConvexSphericalPolygon* plg1 = getCSPolygon( 3, new PointLonLat[3]{{0, 90}, {0, 0}, {90, 0}});
-	ATLAS_ASSERT( plg1->area() == M_PI_2 );
-	std::cout <<"area: " <<plg1->area() <<"\n";
-	ConvexSphericalPolygon* plg2 = getCSPolygon( 4, new PointLonLat[4]{{0, 45}, {0, 0}, {90,0},{90, 45}});
-	std::cout <<"area: " <<plg2->area() <<"\n";
+    auto plg1 = getCSPolygon( 3, new PointLonLat[3]{{0, 90}, {0, 0}, {90, 0}});
+    ATLAS_ASSERT( plg1.area() == M_PI_2 );
+    std::cout <<"area: " <<plg1.area() <<"\n";
+    auto plg2 = getCSPolygon( 4, new PointLonLat[4]{{0, 45}, {0, 0}, {90,0},{90, 45}});
+    std::cout <<"area: " <<plg2.area() <<"\n";
 
-	ConvexSphericalPolygon* plg3 = getCSPolygon( 3, new PointLonLat[3]{{0, 90}, {0, 45}, {90,45}} );
-	std::cout <<"area: " <<plg3->area() <<"\n";
-	std::cout <<"area diff: " <<plg1->area() - plg2->area() - plg3->area() <<"\n";
+    auto plg3 = getCSPolygon( 3, new PointLonLat[3]{{0, 90}, {0, 45}, {90,45}} );
+    std::cout <<"area: " <<plg3.area() <<"\n";
+    std::cout <<"area diff: " <<plg1.area() - plg2.area() - plg3.area() <<"\n";
 	std::cout.flush();
-	ATLAS_ASSERT( std::abs( plg1->area() - plg2->area() - plg3->area() ) < 1e-15 );
+    ATLAS_ASSERT( std::abs( plg1.area() - plg2.area() - plg3.area() ) < 1e-15 );
 }
 
 CASE( "test_spherical_polygon_intersection" ) {
-	const int nplg_f = 2;
-	const int nplg_g = 17;
-	const int nplg_i = nplg_f * nplg_g;
-	ConvexSphericalPolygon* plg_f[ nplg_f ] = { 
+    constexpr int nplg_f = 2;
+    constexpr int nplg_g = 17;
+    constexpr int nplg_i = nplg_f * nplg_g;
+    std::array<ConvexSphericalPolygon,nplg_f> plg_f = {
 		getCSPolygon( 4, new PointLonLat[4]{{0, 70}, {0, 60}, {40, 60}, {40,70}} ),
 		getCSPolygon( 3, new PointLonLat[3]{{0, 90}, {0, 0}, {40, 0}} )
 	};
-	ConvexSphericalPolygon* plg_g[ nplg_g ] = {
+    std::array<ConvexSphericalPolygon,nplg_g> plg_g = {
 		getCSPolygon( 3, new PointLonLat[3]{{0, 60}, {0, 50}, {40, 60}} ),//0
 		getCSPolygon( 3, new PointLonLat[3]{{0, 60}, {0, 50}, {20, 60}} ),
 		getCSPolygon( 3, new PointLonLat[3]{{10, 60}, {10, 50}, {30, 60}} ),//3
@@ -73,7 +73,7 @@ CASE( "test_spherical_polygon_intersection" ) {
 		getCSPolygon( 4, new PointLonLat[4]{{0, 90}, {0, 80}, {20, 0}, {40, 80}} ),
 		getCSPolygon( 4, new PointLonLat[4]{{0, 65}, {0, 55}, {40, 65}, {40, 75}} ),//17
 	};
-	ConvexSphericalPolygon* plg_i[ nplg_i ] = {
+    std::array<ConvexSphericalPolygon,nplg_i> plg_i = {
 		getCSPolygon( 2, new PointLonLat[2]{{0, 60}, {40, 60}} ),//0
 		getCSPolygon( 0, nullptr ),
 		getCSPolygon( 0, nullptr ),//2
@@ -112,20 +112,20 @@ CASE( "test_spherical_polygon_intersection" ) {
 	for( int i = 0; i < nplg_f; i++ ) {
 		for( int j = 0; j < nplg_g; j++ ) {
 			std::cout <<"\n\n("<<i*nplg_g+j <<") Intersecting polygon\n    ";
-			plg_f[i]->print( std::cout );
-			std::cout <<"\nof area: " <<plg_f[i]->area() <<", convex: " <<plg_f[i]->validate();
+            plg_f[i].print( std::cout );
+            std::cout <<"\nof area: " <<plg_f[i].area() <<", convex: " <<plg_f[i].validate();
 			std::cout <<"\nwith polygon\n    ";
-			plg_g[j]->print( std::cout );
-			std::cout <<"\nof area: " <<plg_g[j]->area() <<", convex: " <<plg_g[j]->validate();
-			ConvexSphericalPolygon* plg_fg = plg_f[i]->intersect( *(plg_g[j]) );
-			ConvexSphericalPolygon* plg_gf = plg_g[j]->intersect( *(plg_f[i]) );
+            plg_g[j].print( std::cout );
+            std::cout <<"\nof area: " <<plg_g[j].area() <<", convex: " <<plg_g[j].validate();
+            auto plg_fg = plg_f[i].intersect( plg_g[j] );
+            auto plg_gf = plg_g[j].intersect( plg_f[i] );
 			std::cout <<"\ngot polygon\n    ";
 			if ( plg_fg ) {
-				plg_fg->print( std::cout );
-				std::cout <<"\nof area: " <<plg_fg->area() 
-					<<", convex: " <<plg_g[j]->validate();
-				ATLAS_ASSERT( plg_fg->equals( *plg_gf ) );
-				ATLAS_ASSERT( plg_fg->equals( *(plg_i[ i*nplg_g + j ]), 0.5 ) );
+                plg_fg.print( std::cout );
+                std::cout <<"\nof area: " <<plg_fg.area()
+                    <<", convex: " <<plg_g[j].validate();
+                ATLAS_ASSERT( plg_fg.equals( plg_gf ) );
+                ATLAS_ASSERT( plg_fg.equals( plg_i[ i*nplg_g + j ], 0.5 ) );
 			}
 			else {
 				std::cout <<"	empty";
