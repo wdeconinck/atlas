@@ -26,6 +26,12 @@ ConvexSphericalPolygon* getCSPolygon( const int np, PointLonLat* p ) {
 	return new ConvexSphericalPolygon( pts );
 }
 
+CASE( "test default constructor" ) {
+    ConvexSphericalPolygon p;
+    EXPECT( bool(p) == false );
+    EXPECT( p.validate() == false );
+}
+
 CASE( "test_spherical_polygon_area" ) {
 	ConvexSphericalPolygon* plg1 = getCSPolygon( 3, new PointLonLat[3]{{0, 90}, {0, 0}, {90, 0}});
 	ATLAS_ASSERT( plg1->area() == M_PI_2 );

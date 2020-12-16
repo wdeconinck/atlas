@@ -24,7 +24,7 @@ class PartitionPolygon;
 
 class ConvexSphericalPolygon {
 public:
-    //ConvexSphericalPolygon();
+    ConvexSphericalPolygon();
     //ConvexSphericalPolygon( const std::vector<PointXYZ>& points );
     ConvexSphericalPolygon( const std::vector<PointLonLat>& points );
     //ConvexSphericalPolygon( const PartitionPolygon& );
@@ -39,6 +39,10 @@ public:
     bool contains( const Point2& P ) const {
         ATLAS_NOTIMPLEMENTED;
 	}
+
+    operator bool() const {
+        return valid_;
+    }
 
 	static constexpr double eps_ = 1e-7; // 1e-8 did not work for i=1,j=13 of test_spherical_geo.cc !!
 
