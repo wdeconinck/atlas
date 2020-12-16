@@ -31,9 +31,8 @@ bool approx_eq( const double& v1, const double& v2, const double& t ) {
     return eckit::types::is_approximately_equal( v1, v2, t );
 }
 
-template< class PointType >
-bool approx_eq( const PointType& v1, const PointType& v2, const double& t ) {
-    return approx_eq( v1[0], v2[0], t ) && approx_eq( v1[1], v2[1], t );
+bool approx_eq( const PointXYZ& v1, const PointXYZ& v2, const double& t ) {
+    return approx_eq( v1[0], v2[0], t ) && approx_eq( v1[1], v2[1], t ) && approx_eq( v1[2], v2[2], t );
 }
 
 //------------------------------------------------------------------------------------------------------
@@ -63,7 +62,8 @@ ConvexSphericalPolygon::ConvexSphericalPolygon( const std::vector<PointXYZ>& poi
 */
 
 // TODO: earth radius set to 1 !!
-ConvexSphericalPolygon::ConvexSphericalPolygon( const std::vector<PointLonLat>& points ) : PolygonCoordinates( points ) {
+ConvexSphericalPolygon::ConvexSphericalPolygon( const std::vector<PointLonLat>& points ) :
+    size_(points.size()) {
 	sph_coords_.clear();
 	sph_coords_.resize( points.size() );
 	for ( size_t i = 0; i < points.size(); ++i ) {
@@ -100,13 +100,13 @@ bool ConvexSphericalPolygon::equals( const ConvexSphericalPolygon& plg, const do
 	}
 	int i = 0;
 	for( ; i < sz; i++ ) {
-		if ( approx_eq( plg.coordinates_[i], this->coordinates_[i], prec ) ) {
+        if ( approx_eq( plg.sph_coords_[i], this->sph_coords_[i], prec ) ) {
 			break;
 		}
 	}
 	for( int j = 0; j < sz; j++ ) {
 		int idx = (i+j)%sz;
-		if ( ! approx_eq( plg.coordinates_[idx], this->coordinates_[idx], prec ) ) {
+        if ( ! approx_eq( plg.sph_coords_[idx], this->sph_coords_[idx], prec ) ) {
 			return false;
 		}
 	}
@@ -148,7 +148,7 @@ inline int ConvexSphericalPolygon::leftOf( const PointXYZ& P, const PointXYZ& p1
 
 // return 0:outside, -1:on_edge, 1:strictly_inside
 int ConvexSphericalPolygon::contains( const PointXYZ& P ) const {
-    ATLAS_ASSERT( coordinates_.size() >= 2 );
+    ATLAS_ASSERT( sph_coords_.size() >= 2 );
 	const size_t ncoord = sph_coords_.size()-1;
 	for ( size_t i = 0; i < ncoord; ++i ) {
 		const PointXYZ sp1 = sph_coords_[i];
@@ -536,6 +536,18 @@ int ConvexSphericalPolygon::nextIntersect( std::vector< PointXYZ >& iplg_p,
 		}
 	}
 }
+
+void ConvexSphericalPolygon::print( std::ostream& out ) const {
+    out << "[";
+    for ( size_t i = 0; i < size(); ++i ) {
+        if ( i > 0 ) {
+            out << " ";
+        }
+        out << sph_coords_[i];
+    }
+    out << "]";
+}
+
 
 //------------------------------------------------------------------------------------------------------
 

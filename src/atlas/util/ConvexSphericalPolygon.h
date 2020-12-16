@@ -22,7 +22,7 @@ namespace util {
 class PartitionPolygon;
 //------------------------------------------------------------------------------------------------------
 
-class ConvexSphericalPolygon : public PolygonCoordinates {
+class ConvexSphericalPolygon {
 public:
     //ConvexSphericalPolygon();
     //ConvexSphericalPolygon( const std::vector<PointXYZ>& points );
@@ -36,8 +36,8 @@ public:
    */
     int contains( const PointXYZ& P ) const;
 
-    bool contains( const Point2& P ) const override {
-		ATLAS_ASSERT( false );
+    bool contains( const Point2& P ) const {
+        ATLAS_NOTIMPLEMENTED;
 	}
 
 	static constexpr double eps_ = 1e-7; // 1e-8 did not work for i=1,j=13 of test_spherical_geo.cc !!
@@ -90,6 +90,10 @@ public:
    */
 	bool validate();
 
+    size_t size() const { return size_; }
+
+    void print( std::ostream& ) const;
+
 protected:
 
 	/*
@@ -110,6 +114,7 @@ private:
 	std::vector<PointXYZ> sph_coords_;
 	PointXYZ sph_centroid_;
 	bool valid_;
+    size_t size_;
 };
 
 //------------------------------------------------------------------------------------------------------
