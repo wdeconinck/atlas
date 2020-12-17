@@ -52,7 +52,7 @@ Grid localgrid( int nx, int ny ) {
 
 CASE( "test_interpolation_conservative" ) {
     Grid gridA = localgrid( 3, 3 );
-    Grid gridB = localgrid( 4, 4 );
+    Grid gridB = localgrid( 2, 2 );
 	std::cout <<"grid A:";
 	for ( auto& p : gridA.lonlat() ) {
 		std::cout <<p <<" ";
@@ -109,6 +109,8 @@ CASE( "test_interpolation_conservative" ) {
 			std::cout <<" polygon\n" <<ctpB[ bcell ] <<"\n";
 			ctpAB[ acell * nb_cells_b + bcell ] = ctpA[ acell ].intersect( ctpB[ bcell ] );
 			std::cout <<" and got polygon\n" <<ctpAB[ acell * nb_cells_b + bcell ] <<"\n";
+			std::cout <<" 	of area " <<ctpAB[ acell * nb_cells_b + bcell ].area();
+			std::cout <<" and centroid " <<ctpAB[ acell * nb_cells_b + bcell ].centroid() <<"\n\n";
 		}
 	}
 
