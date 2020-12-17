@@ -552,7 +552,9 @@ void ConvexSphericalPolygon::print( std::ostream& out ) const {
         if ( i > 0 ) {
             out << " ";
         }
-        out << sph_coords_[i];
+		PointLonLat ip_ll;
+		eckit::geometry::Sphere::convertCartesianToSpherical( 1., sph_coords_[i], ip_ll );
+        out <<ip_ll;
     }
     out << "]";
 }
