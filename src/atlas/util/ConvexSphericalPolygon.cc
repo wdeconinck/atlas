@@ -106,7 +106,7 @@ inline double ConvexSphericalPolygon::angle( const PointXYZ& pl, const PointXYZ&
 // I. Todhunter (1886), Paragr. 99
 double ConvexSphericalPolygon::area() const {
     const int sz = size();
-    double a     = M_PI * ( 2 - sz );
+    double a     = ( sz == 0 ? 0. : M_PI * ( 2 - sz ) );
     for ( int i = 0; i < sz; i++ ) {
         int im1 = ( i != 0 ) ? i - 1 : sz - 1;
         int ip1 = ( i != sz - 1 ) ? i + 1 : 0;
