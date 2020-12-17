@@ -52,7 +52,7 @@ Grid localgrid( int nx, int ny ) {
 
 CASE( "test_interpolation_conservative" ) {
     Grid gridA = localgrid( 3, 3 );
-    Grid gridB = localgrid( 2, 2 );
+    Grid gridB = localgrid( 4, 4 );
 	std::cout <<"grid A:";
 	for ( auto& p : gridA.lonlat() ) {
 		std::cout <<p <<" ";
@@ -62,7 +62,7 @@ CASE( "test_interpolation_conservative" ) {
 		std::cout <<p <<" ";
 	}
 	std::cout <<"\n";
-	MeshGenerator meshgen( "structured" );
+	MeshGenerator meshgen( "regular" );
 	Mesh mA = meshgen.generate( gridA );
 	Mesh mB = meshgen.generate( gridB );
 	auto node_glb_idx = array::make_view<gidx_t, 1>( mA.nodes().global_index() );
@@ -98,6 +98,7 @@ CASE( "test_interpolation_conservative" ) {
 			idx_t inode = node_connectivity_b( jcell, jnode );
 			pts_ll.emplace_back( PointLonLat{ lonlat_b(inode,0), lonlat_b(inode,1) } );
 		}
+		std::cout <<" Forming CSPolygon from: " <<pts_ll <<"\n";
 		ctpB[ jcell ] =  CSPolygon( pts_ll );
 	}
 
@@ -106,8 +107,8 @@ CASE( "test_interpolation_conservative" ) {
 		for( idx_t bcell=0; bcell < nb_cells_b; ++bcell ) {
 			std::cout <<" Intersecting polygon\n" <<ctpA[ acell ] <<"\nand\n";
 			std::cout <<" polygon\n" <<ctpB[ bcell ] <<"\n";
-			std::cout.flush();
 			ctpAB[ acell * nb_cells_b + bcell ] = ctpA[ acell ].intersect( ctpB[ bcell ] );
+			std::cout <<" and got polygon\n" <<ctpAB[ acell * nb_cells_b + bcell ] <<"\n";
 		}
 	}
 
