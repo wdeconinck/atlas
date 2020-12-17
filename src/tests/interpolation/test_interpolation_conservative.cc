@@ -81,32 +81,33 @@ CASE( "test_interpolation_conservative" ) {
 		pts_ll.reserve( nb_nodes );
 		for( idx_t jnode=0; jnode < nb_nodes; ++jnode ) {
 			idx_t inode = node_connectivity_a( jcell, jnode );
-			pts_ll.emplace_back( PointLonLat{ lonlat_a(inode,0), lonlat_a(inode,1) } );
+			pts_ll.insert( pts_ll.begin(), PointLonLat{ lonlat_a(inode,0), lonlat_a(inode,1) } );
 		}
+		std::cout <<" Forming A-CSPolygon from: " <<pts_ll <<"\n";
 		ctpA[ jcell ] =  CSPolygon( pts_ll );
 	}
 
 	const idx_t nb_cells_b = mB.cells().size();
 	const auto& node_connectivity_b = mB.cells().node_connectivity();
 	CSPolygon* ctpB = new CSPolygon[ nb_cells_b ];
-	const auto lonlat_b = array::make_view<double,2>( mA.nodes().lonlat() );
+	const auto lonlat_b = array::make_view<double,2>( mB.nodes().lonlat() );
 	for( idx_t jcell=0; jcell < nb_cells_b; ++jcell ) {
 		const idx_t nb_nodes = node_connectivity_b.cols( jcell );
 		pts_ll.clear();
 		pts_ll.reserve( nb_nodes );
 		for( idx_t jnode=0; jnode < nb_nodes; ++jnode ) {
 			idx_t inode = node_connectivity_b( jcell, jnode );
-			pts_ll.emplace_back( PointLonLat{ lonlat_b(inode,0), lonlat_b(inode,1) } );
+			pts_ll.insert( pts_ll.begin(), PointLonLat{ lonlat_b(inode,0), lonlat_b(inode,1) } );
 		}
-		std::cout <<" Forming CSPolygon from: " <<pts_ll <<"\n";
+		std::cout <<" Forming B-CSPolygon from: " <<pts_ll <<"\n";
 		ctpB[ jcell ] =  CSPolygon( pts_ll );
 	}
 
 	CSPolygon* ctpAB = new CSPolygon[ nb_cells_a * nb_cells_b ];
-	for( idx_t acell=0; acell < nb_cells_a; ++acell ) {
-		for( idx_t bcell=0; bcell < nb_cells_b; ++bcell ) {
-			std::cout <<" Intersecting polygon\n" <<ctpA[ acell ] <<"\nand\n";
-			std::cout <<" polygon\n" <<ctpB[ bcell ] <<"\n";
+	for( idx_t bcell=0; bcell < nb_cells_b; ++bcell ) {
+		for( idx_t acell=0; acell < nb_cells_a; ++acell ) {
+			std::cout <<" Intersecting polygon\n" <<ctpB[ bcell ] <<"\nand\n";
+			std::cout <<" polygon\n" <<ctpA[ acell ] <<"\n";
 			ctpAB[ acell * nb_cells_b + bcell ] = ctpA[ acell ].intersect( ctpB[ bcell ] );
 			std::cout <<" and got polygon\n" <<ctpAB[ acell * nb_cells_b + bcell ] <<"\n";
 			std::cout <<" 	of area " <<ctpAB[ acell * nb_cells_b + bcell ].area();
