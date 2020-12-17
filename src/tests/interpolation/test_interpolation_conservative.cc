@@ -11,6 +11,7 @@
 
 #include <cmath>
 
+#include "eckit/geometry/Sphere.h"
 #include "eckit/types/FloatCompare.h"
 
 #include "atlas/array.h"
@@ -18,11 +19,6 @@
 #include "atlas/grid.h"
 #include "atlas/mesh/HybridElements.h"
 #include "atlas/mesh/Mesh.h"
-#include "atlas/mesh/actions/BuildHalo.h"
-#include "atlas/mesh/actions/BuildNode2CellConnectivity.h"
-#include "atlas/mesh/actions/BuildParallelFields.h"
-#include "atlas/mesh/actions/BuildPeriodicBoundaries.h"
-#include "atlas/mesh/detail/AccumulateFacets.h"
 #include "atlas/mesh.h"
 #include "atlas/meshgenerator.h"
 #include "atlas/option.h"
@@ -49,74 +45,75 @@ Grid localgrid( int nx, int ny ) {
 	return Grid{gridspec};
 }
 
+struct InterpolationParameters {
+	std::vector< int > cell_id;
+	std::vector< PointXYZ > centroids;
+	std::vector< double > weights;
+	std::ostream& print( std::ostream& os) {
+		os <<"centroids : " <<centroids <<"\n"
+		   <<"weights   : " <<weights <<"\n";
+	}
+};
+
 
 CASE( "test_interpolation_conservative" ) {
     Grid gridA = localgrid( 3, 3 );
-    Grid gridB = localgrid( 2, 2 );
-	std::cout <<"grid A:";
-	for ( auto& p : gridA.lonlat() ) {
-		std::cout <<p <<" ";
-	}
-	std::cout <<"\ngrid B:";
-	for ( auto& p : gridB.lonlat() ) {
-		std::cout <<p <<" ";
-	}
-	std::cout <<"\n";
+    Grid gridB = localgrid( 4, 3 );
 	MeshGenerator meshgen( "regular" );
 	Mesh mA = meshgen.generate( gridA );
 	Mesh mB = meshgen.generate( gridB );
-	auto node_glb_idx = array::make_view<gidx_t, 1>( mA.nodes().global_index() );
-	auto cell_glb_idx = array::make_view<gidx_t, 1>( mA.cells().global_index() );
-	std::cout <<" mA: " <<mA.nodes().size() <<" " <<mA.cells().size() <<" " <<mA.edges().size() <<"\n";
-	std::cout <<" mB: " <<mB.nodes().size() <<"\n";
 	
 	std::vector< PointLonLat > pts_ll;
 	const idx_t nb_cells_a = mA.cells().size();
 	const auto& node_connectivity_a = mA.cells().node_connectivity();
-	CSPolygon* ctpA = new CSPolygon[ nb_cells_a ];
+	std::vector< CSPolygon > cspA( nb_cells_a );
 	const auto lonlat_a = array::make_view<double,2>( mA.nodes().lonlat() );
 	for( idx_t jcell=0; jcell < nb_cells_a; ++jcell ) {
 		const idx_t nb_nodes = node_connectivity_a.cols( jcell );
 		pts_ll.clear();
-		pts_ll.reserve( nb_nodes );
-		for( idx_t jnode=0; jnode < nb_nodes; ++jnode ) {
+		pts_ll.resize( nb_nodes );
+		for( idx_t jnode = 0; jnode < nb_nodes; ++jnode ) {
 			idx_t inode = node_connectivity_a( jcell, jnode );
-			pts_ll.insert( pts_ll.begin(), PointLonLat{ lonlat_a(inode,0), lonlat_a(inode,1) } );
+			pts_ll[ nb_nodes - 1 - jnode ] = PointLonLat{ lonlat_a(inode,0), lonlat_a(inode,1) };
 		}
-		std::cout <<" Forming A-CSPolygon from: " <<pts_ll <<"\n";
-		ctpA[ jcell ] =  CSPolygon( pts_ll );
+		cspA[ jcell ] =  CSPolygon( pts_ll );
 	}
 
 	const idx_t nb_cells_b = mB.cells().size();
 	const auto& node_connectivity_b = mB.cells().node_connectivity();
-	CSPolygon* ctpB = new CSPolygon[ nb_cells_b ];
+	std::vector< CSPolygon > cspB( nb_cells_b );
 	const auto lonlat_b = array::make_view<double,2>( mB.nodes().lonlat() );
-	for( idx_t jcell=0; jcell < nb_cells_b; ++jcell ) {
+	for( idx_t jcell = 0; jcell < nb_cells_b; ++jcell ) {
 		const idx_t nb_nodes = node_connectivity_b.cols( jcell );
 		pts_ll.clear();
-		pts_ll.reserve( nb_nodes );
+		pts_ll.resize( nb_nodes );
 		for( idx_t jnode=0; jnode < nb_nodes; ++jnode ) {
 			idx_t inode = node_connectivity_b( jcell, jnode );
-			pts_ll.insert( pts_ll.begin(), PointLonLat{ lonlat_b(inode,0), lonlat_b(inode,1) } );
+			pts_ll[ nb_nodes - 1 - jnode ] = PointLonLat{ lonlat_b(inode,0), lonlat_b(inode,1) };
 		}
-		std::cout <<" Forming B-CSPolygon from: " <<pts_ll <<"\n";
-		ctpB[ jcell ] =  CSPolygon( pts_ll );
+		cspB[ jcell ] =  CSPolygon( pts_ll );
 	}
 
-	CSPolygon* ctpAB = new CSPolygon[ nb_cells_a * nb_cells_b ];
-	for( idx_t bcell=0; bcell < nb_cells_b; ++bcell ) {
+	std::vector< InterpolationParameters > ip( nb_cells_b );
+	// brute force (!) needs to be changed
+	for( idx_t bcell = 0; bcell < nb_cells_b; ++bcell ) {
 		for( idx_t acell=0; acell < nb_cells_a; ++acell ) {
-			std::cout <<" Intersecting polygon\n" <<ctpB[ bcell ] <<"\nand\n";
-			std::cout <<" polygon\n" <<ctpA[ acell ] <<"\n";
-			ctpAB[ acell * nb_cells_b + bcell ] = ctpA[ acell ].intersect( ctpB[ bcell ] );
-			std::cout <<" and got polygon\n" <<ctpAB[ acell * nb_cells_b + bcell ] <<"\n";
-			std::cout <<" 	of area " <<ctpAB[ acell * nb_cells_b + bcell ].area();
-			std::cout <<" and centroid " <<ctpAB[ acell * nb_cells_b + bcell ].centroid() <<"\n\n";
+			CSPolygon cspAB = cspA[ acell ].intersect( cspB[ bcell ] );
+			if ( cspAB.area() > 0 ) {
+				ip[ bcell ].cell_id.emplace_back( acell );
+				ip[ bcell ].weights.emplace_back( cspAB.area() );
+				ip[ bcell ].centroids.emplace_back( cspAB.centroid() );
+			}
 		}
 	}
 
-	delete [] ctpA;
-	delete [] ctpB;
+	for( idx_t bcell = 0; bcell < nb_cells_b; ++bcell ) {
+		Log::info() <<"Grid A Polygon " <<cspB[ bcell ] <<" intersects Grid B polygons:\n";
+		for( idx_t acell = 0; acell < ip[ bcell ].cell_id.size(); ++acell ) {
+			Log::info() <<"   " <<cspA[ acell ] <<"\n";
+		}
+		ip[ bcell ].print( Log::info() );
+	}
 }
 
 
