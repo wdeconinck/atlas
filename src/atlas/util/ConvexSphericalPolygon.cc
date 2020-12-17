@@ -37,8 +37,6 @@ bool approx_eq( const PointXYZ& v1, const PointXYZ& v2, const double& t ) {
 
 //------------------------------------------------------------------------------------------------------
 
-<<<<<<< HEAD
-=======
 //ConvexSphericalPolygon::ConvexSphericalPolygon( const PartitionPolygon& partition_polygon ) :
 //    PolygonCoordinates( partition_polygon.xy(), false ) {}
 
@@ -72,6 +70,9 @@ ConvexSphericalPolygon::ConvexSphericalPolygon( const std::vector<PointLonLat>& 
         eckit::geometry::Sphere::convertSphericalToCartesian( 1., points[i], sph_coords_[i] );
     }
     valid_ = size_ > 2;  // assume all are convex
+	if ( valid_ ) {
+		centroid_ = PointXYZ::div( centroid_, (double)size_ );
+	}
 #ifndef NDEBUG
     validate();
 #endif
