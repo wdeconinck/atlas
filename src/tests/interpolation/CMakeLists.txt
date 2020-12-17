@@ -13,6 +13,12 @@ ecbuild_add_test( TARGET atlas_test_Quad3D
   ENVIRONMENT ${ATLAS_TEST_ENVIRONMENT}
 )
 
+ecbuild_add_test( TARGET atlas_test_interpolation_conservative
+  SOURCES   test_interpolation_conservative.cc
+  LIBS      atlas
+  ENVIRONMENT ${ATLAS_TEST_ENVIRONMENT}
+)
+
 ecbuild_add_test( TARGET atlas_test_interpolation_finite_element
   SOURCES   test_interpolation_finite_element.cc
   LIBS      atlas
