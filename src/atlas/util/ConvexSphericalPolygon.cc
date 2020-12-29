@@ -71,7 +71,8 @@ ConvexSphericalPolygon::ConvexSphericalPolygon( const std::vector<PointLonLat>& 
     }
     valid_ = size_ > 2;  // assume all are convex
 	if ( valid_ ) {
-		centroid_ = PointXYZ::div( centroid_, (double)size_ );
+		ASSERT( PointXYZ::norm( centroid_ ) > eps_ );
+		centroid_ = PointXYZ::div( centroid_, PointXYZ::norm( centroid_ ) );
 	}
 #ifndef NDEBUG
     validate();
