@@ -50,70 +50,91 @@ struct InterpolationParameters {
 	std::vector< PointXYZ > centroids;
 	std::vector< double > weights;
 	std::ostream& print( std::ostream& os) {
-		os <<"centroids : " <<centroids <<"\n"
-		   <<"weights   : " <<weights <<"\n";
+		os <<"centroids         : " <<centroids <<"\n"
+		   <<"fractional area   : " <<weights <<"\n";
 	}
 };
 
+double func( const double& lon, const double& lat ) {
+	return 1.; //lon + lat;
+}
+
 
 CASE( "test_interpolation_conservative" ) {
-    Grid gridA = localgrid( 3, 3 );
-    Grid gridB = localgrid( 4, 3 );
+    Grid src_grid = localgrid( 2, 2 );
+    Grid tgt_grid = localgrid( 2, 3 );
 	MeshGenerator meshgen( "regular" );
-	Mesh mA = meshgen.generate( gridA );
-	Mesh mB = meshgen.generate( gridB );
+	Mesh src_mesh = meshgen.generate( src_grid );
+	Mesh tgt_mesh = meshgen.generate( tgt_grid );
 	
 	std::vector< PointLonLat > pts_ll;
-	const idx_t nb_cells_a = mA.cells().size();
-	const auto& node_connectivity_a = mA.cells().node_connectivity();
-	std::vector< CSPolygon > cspA( nb_cells_a );
-	const auto lonlat_a = array::make_view<double,2>( mA.nodes().lonlat() );
-	for( idx_t jcell=0; jcell < nb_cells_a; ++jcell ) {
-		const idx_t nb_nodes = node_connectivity_a.cols( jcell );
+	const idx_t src_nb_cells = src_mesh.cells().size();
+	const auto& src_node_connectivity = src_mesh.cells().node_connectivity();
+	std::vector< CSPolygon > src_csp( src_nb_cells );
+	const auto src_lonlat = array::make_view<double,2>( src_mesh.nodes().lonlat() );
+	for( idx_t jcell=0; jcell < src_nb_cells; ++jcell ) {
+		const idx_t nb_nodes = src_node_connectivity.cols( jcell );
 		pts_ll.clear();
 		pts_ll.resize( nb_nodes );
 		for( idx_t jnode = 0; jnode < nb_nodes; ++jnode ) {
-			idx_t inode = node_connectivity_a( jcell, jnode );
-			pts_ll[ nb_nodes - 1 - jnode ] = PointLonLat{ lonlat_a(inode,0), lonlat_a(inode,1) };
+			idx_t inode = src_node_connectivity( jcell, jnode );
+			pts_ll[ nb_nodes - 1 - jnode ] = PointLonLat{ src_lonlat(inode,0), src_lonlat(inode,1) };
 		}
-		cspA[ jcell ] =  CSPolygon( pts_ll );
+		src_csp[ jcell ] =  CSPolygon( pts_ll );
 	}
 
-	const idx_t nb_cells_b = mB.cells().size();
-	const auto& node_connectivity_b = mB.cells().node_connectivity();
-	std::vector< CSPolygon > cspB( nb_cells_b );
-	const auto lonlat_b = array::make_view<double,2>( mB.nodes().lonlat() );
-	for( idx_t jcell = 0; jcell < nb_cells_b; ++jcell ) {
-		const idx_t nb_nodes = node_connectivity_b.cols( jcell );
+	const idx_t tgt_nb_cells = tgt_mesh.cells().size();
+	const auto& tgt_node_connectivity = tgt_mesh.cells().node_connectivity();
+	std::vector< CSPolygon > tgt_csp( tgt_nb_cells );
+	const auto tgt_lonlat = array::make_view<double,2>( tgt_mesh.nodes().lonlat() );
+	for( idx_t jcell = 0; jcell < tgt_nb_cells; ++jcell ) {
+		const idx_t nb_nodes = tgt_node_connectivity.cols( jcell );
 		pts_ll.clear();
 		pts_ll.resize( nb_nodes );
 		for( idx_t jnode=0; jnode < nb_nodes; ++jnode ) {
-			idx_t inode = node_connectivity_b( jcell, jnode );
-			pts_ll[ nb_nodes - 1 - jnode ] = PointLonLat{ lonlat_b(inode,0), lonlat_b(inode,1) };
+			idx_t inode = tgt_node_connectivity( jcell, jnode );
+			pts_ll[ nb_nodes - 1 - jnode ] = PointLonLat{ tgt_lonlat(inode,0), tgt_lonlat(inode,1) };
 		}
-		cspB[ jcell ] =  CSPolygon( pts_ll );
+		tgt_csp[ jcell ] =  CSPolygon( pts_ll );
 	}
 
-	std::vector< InterpolationParameters > ip( nb_cells_b );
+	std::vector< InterpolationParameters > ip( src_nb_cells );
 	// brute force (!) needs to be changed
-	for( idx_t bcell = 0; bcell < nb_cells_b; ++bcell ) {
-		for( idx_t acell=0; acell < nb_cells_a; ++acell ) {
-			CSPolygon cspAB = cspA[ acell ].intersect( cspB[ bcell ] );
-			if ( cspAB.area() > 0 ) {
-				ip[ bcell ].cell_id.emplace_back( acell );
-				ip[ bcell ].weights.emplace_back( cspAB.area() );
-				ip[ bcell ].centroids.emplace_back( cspAB.centroid() );
+	for( idx_t scell = 0; scell < src_nb_cells; ++scell ) {
+		for( idx_t tcell=0; tcell < tgt_nb_cells; ++tcell ) {
+			CSPolygon csp_i = src_csp[ scell ].intersect( tgt_csp[ tcell ] );
+			if ( csp_i.area() > 0 ) {
+				ip[ scell ].cell_id.emplace_back( tcell );
+				ip[ scell ].weights.emplace_back( csp_i.area()/src_csp[ scell ].area() );
+				ip[ scell ].centroids.emplace_back( csp_i.centroid() );
 			}
 		}
 	}
 
-	for( idx_t bcell = 0; bcell < nb_cells_b; ++bcell ) {
-		Log::info() <<"Grid A Polygon " <<cspB[ bcell ] <<" intersects Grid B polygons:\n";
-		for( idx_t acell = 0; acell < ip[ bcell ].cell_id.size(); ++acell ) {
-			Log::info() <<"   " <<cspA[ acell ] <<"\n";
+	for( idx_t scell = 0; scell < src_nb_cells; ++scell ) {
+		Log::info() <<"Source-Polygon " <<src_csp[ scell ] <<" intersects Target-Polygons:\n";
+		for( idx_t tcell = 0; tcell < ip[ scell ].cell_id.size(); ++tcell ) {
+			Log::info() <<"   " <<tgt_csp[ tcell ] <<"\n";
 		}
-		ip[ bcell ].print( Log::info() );
+		ip[ scell ].print( Log::info() );
 	}
+
+	functionspace::CellColumns src_fs( src_mesh );
+	functionspace::CellColumns tgt_fs( tgt_mesh );
+	auto src_field = src_fs.createField< double >();
+	auto tgt_field = tgt_fs.createField< double >();
+	auto src_vals = array::make_view< double, 1 >( src_field );
+
+	Log::info() <<"   src_fs.size: " <<src_fs.size() <<"\n";
+	Log::info() <<"   tgt_fs.size: " <<tgt_fs.size() <<"\n";
+	Log::info() <<"   src_vals.size: " <<src_vals.size() <<"\n";
+
+	for ( idx_t jnode = 0; jnode < src_vals.size(); ++jnode ) {
+		src_vals( jnode ) = func( src_lonlat(jnode,0), src_lonlat(jnode,1) );
+	}
+}
+
+CASE( "test_interpolation_conservative" ) {
 }
 
 
