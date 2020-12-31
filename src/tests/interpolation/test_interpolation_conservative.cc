@@ -63,7 +63,7 @@ double func( const double& lon, const double& lat ) {
 
 CASE( "test_interpolation_conservative" ) {
     Grid src_grid = localgrid( 2, 2 );
-    Grid tgt_grid = localgrid( 2, 3 );
+    Grid tgt_grid = localgrid( 4, 3 );
 	MeshGenerator meshgen( "regular" );
 	Mesh src_mesh = meshgen.generate( src_grid );
 	Mesh tgt_mesh = meshgen.generate( tgt_grid );
@@ -145,7 +145,9 @@ CASE( "test_interpolation_conservative" ) {
 		src_vals( scell ) = func( p[0], p[1] );
 	}
 
-	// calculate gradient
+	for ( idx_t tcell = 0; tcell < tgt_vals.size(); ++tcell ) {
+		tgt_vals( tcell ) = 0.;
+	}
 	for ( idx_t scell = 0; scell < src_vals.size(); ++scell ) {
 		auto p = src_csp[ scell ].centroid();
 		// get cell neighbours
@@ -169,22 +171,20 @@ CASE( "test_interpolation_conservative" ) {
 			idx_t nncell = src_neighbour_cells[ nid != src_neighbour_cells.size()-1 ? nid+1 : 0 ];
 			if ( src_vals( ncell ) != scell && src_vals( nncell ) != scell ) {
 				double coeff = src_vals( ncell ) / src_csp[ ncell ].area();
-				continue;
 				coeff += src_vals( nncell ) / src_csp[ nncell ].area();
 				coeff = coeff/2 - src_vals( scell ) / src_csp[ scell ].area();
 				grad = PointXYZ::add( grad, PointXYZ::mul( PointXYZ::cross( src_csp[ ncell ].centroid(), src_csp[ nncell ].centroid() ), coeff ) );
 			}
 		}
 		grad = PointXYZ::mul( grad, src_csp[ scell ].area() ); // this is WRONG we need area of Fig 2. in Kritsikis et al. (2017) -> overestimation of gradient but still conservative
-		for ( idx_t tcell = 0; tcell < tgt_vals.size(); ++tcell ) {
-			tgt_vals( tcell ) = 0.;
-			InterpolationParameters& iparam = interpolationParameters[ tcell ];
-		continue;
-			for( idx_t icell = 0; icell < iparam.centroids.size(); ++icell ) {
-				// NOTE: check if this is correct barycenter of the source cell!!
-				tgt_vals( tcell ) += iparam.weights[ icell ] * ( src_vals( scell ) + PointXYZ::dot( grad, iparam.centroids[ icell ] - src_csp[ scell ].centroid() ) );
-			}
+		InterpolationParameters& iparam = interpolationParameters[ scell ];
+		for( idx_t icell = 0; icell < iparam.centroids.size(); ++icell ) {
+			// NOTE: check if this is correct barycenter of the source cell!!
+			tgt_vals( iparam.cell_id[ icell ] ) += iparam.weights[ icell ] * ( src_vals( scell ) + PointXYZ::dot( grad, iparam.centroids[ icell ] - src_csp[ scell ].centroid() ) );
 		}
+	}
+	for ( idx_t tcell = 0; tcell < tgt_vals.size(); ++tcell ) {
+		tgt_vals( tcell ) /= tgt_csp[ tcell ].area();
 	}
 
 	Log::info() <<"\nsource field: ";
