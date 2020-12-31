@@ -57,13 +57,17 @@ struct InterpolationParameters {
 };
 
 double func( const double& lon, const double& lat ) {
-	return 1.; //lon + lat;
+	return lon+lat;
+}
+
+double func( const double& x, const double& y, const double& z ) {
+	return (x*x*y*z);
 }
 
 
 CASE( "test_interpolation_conservative" ) {
-    Grid src_grid = localgrid( 2, 2 );
-    Grid tgt_grid = localgrid( 4, 3 );
+    Grid src_grid = localgrid( 3, 2 );
+    Grid tgt_grid = localgrid( 5, 2 );
 	MeshGenerator meshgen( "regular" );
 	Mesh src_mesh = meshgen.generate( src_grid );
 	Mesh tgt_mesh = meshgen.generate( tgt_grid );
@@ -130,10 +134,6 @@ CASE( "test_interpolation_conservative" ) {
 	auto src_vals = array::make_view< double, 1 >( src_field );
 	auto tgt_vals = array::make_view< double, 1 >( tgt_field );
 
-	for ( idx_t scell = 0; scell < src_vals.size(); ++scell ) {
-		auto p = src_csp[ scell ].centroid();
-		src_vals( scell ) = func( p[0], p[1] );
-	}
 
 	mesh::actions::build_edges( src_mesh );
 	const auto& src_cell2edge = src_mesh.cells().edge_connectivity();
@@ -142,7 +142,7 @@ CASE( "test_interpolation_conservative" ) {
 	// assign field values on source mesh
 	for ( idx_t scell = 0; scell < src_vals.size(); ++scell ) {
 		auto p = src_csp[ scell ].centroid();
-		src_vals( scell ) = func( p[0], p[1] );
+		src_vals( scell ) = func( p[0], p[1], p[2] );
 	}
 
 	for ( idx_t tcell = 0; tcell < tgt_vals.size(); ++tcell ) {
