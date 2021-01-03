@@ -37,7 +37,7 @@ bool approx_eq( const PointXYZ& v1, const PointXYZ& v2, const double& t ) {
 
 //------------------------------------------------------------------------------------------------------
 
-ConvexSphericalPolygon::ConvexSphericalPolygon() : valid_( false ), size_( 0 ) {}
+ConvexSphericalPolygon::ConvexSphericalPolygon() : valid_( false ), size_( 0 ), area_( 0 ) {}
 
 ConvexSphericalPolygon::ConvexSphericalPolygon( const std::vector<PointLonLat>& points ) : size_( points.size() ) {
     ATLAS_ASSERT( size_ < MAX_SIZE );
@@ -51,6 +51,7 @@ ConvexSphericalPolygon::ConvexSphericalPolygon( const std::vector<PointLonLat>& 
 		ASSERT( PointXYZ::norm( centroid_ ) > eps_ );
 		centroid_ = PointXYZ::div( centroid_, PointXYZ::norm( centroid_ ) );
 	}
+	compute_area();
 #ifndef NDEBUG
     validate();
 #endif
@@ -68,13 +69,10 @@ ConvexSphericalPolygon::ConvexSphericalPolygon( const std::vector<PointXYZ>& poi
 		ASSERT( PointXYZ::norm( centroid_ ) > eps_ );
 		centroid_ = PointXYZ::div( centroid_, PointXYZ::norm( centroid_ ) );
 	}
+	compute_area();
 #ifndef NDEBUG
     validate();
 #endif
-}
-
-const PointXYZ& ConvexSphericalPolygon::centroid() const {
-	return centroid_;
 }
 
 bool ConvexSphericalPolygon::validate() {
@@ -124,16 +122,15 @@ inline double ConvexSphericalPolygon::angle( const PointXYZ& pl, const PointXYZ&
 
 // note: unit sphere!
 // I. Todhunter (1886), Paragr. 99
-double ConvexSphericalPolygon::area() const {
+void ConvexSphericalPolygon::compute_area() {
     const int sz = size();
-    double a     = ( sz == 0 ? 0. : M_PI * ( 2 - sz ) );
+    area_     = ( sz == 0 ? 0. : M_PI * ( 2 - sz ) );
     for ( int i = 0; i < sz; i++ ) {
         int im1 = ( i != 0 ) ? i - 1 : sz - 1;
         int ip1 = ( i != sz - 1 ) ? i + 1 : 0;
-        a += angle( sph_coords_[im1], sph_coords_[i], sph_coords_[ip1] );
+        area_ += angle( sph_coords_[im1], sph_coords_[i], sph_coords_[ip1] );
     }
-    ATLAS_ASSERT( a > -eps_ );
-    return a;
+    ATLAS_ASSERT( area_ > -eps_ );
 }
 
 // return 0:P_right_of_[p1,p2], -1:overlap_of_[P,p1]_and_[P,p2], 1:P_left_of_[p1,p2]
@@ -295,12 +292,8 @@ ConvexSphericalPolygon ConvexSphericalPolygon::intersect( const ConvexSphericalP
     if ( jj != -1 ) {
         iplg_p.emplace_back( ip );
         int intersect = nextIntersect( iplg_p, plg, ii, jj, 0 );
-        std::vector<PointLonLat> iplg_p_ll;
-        iplg_p_ll.resize( iplg_p.size() - 1 );
-        for ( int i = 0; i < iplg_p_ll.size(); i++ ) {
-            eckit::geometry::Sphere::convertCartesianToSpherical( 1., iplg_p[i], iplg_p_ll[i] );
-        }
-        return ( intersect ? ConvexSphericalPolygon( iplg_p_ll ) : ConvexSphericalPolygon() );
+		iplg_p.pop_back();
+        return ( intersect ? ConvexSphericalPolygon( iplg_p ) : ConvexSphericalPolygon() );
     }
     else {
 #if DEBUG_OUTPUT_DETAIL
