@@ -27,7 +27,7 @@ public:
     static constexpr int MAX_SIZE = 8;
 
     ConvexSphericalPolygon();
-    //ConvexSphericalPolygon( const std::vector<PointXYZ>& points );
+    ConvexSphericalPolygon( const std::vector<PointXYZ>& points );
     ConvexSphericalPolygon( const std::vector<PointLonLat>& points );
     //ConvexSphericalPolygon( const PartitionPolygon& );
 
