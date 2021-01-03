@@ -32,7 +32,7 @@ public:
     //ConvexSphericalPolygon( const PartitionPolygon& );
 
     /*
-   * Point-in-polygon test on sphere with spherical polygons
+   * @brief Point-in-polygon test on sphere with spherical polygons
    * @param[in] P given point in (x,y,z) coordinates
    * @return 0:outside, -1:on_edge, 1:strictly_inside
    */
@@ -40,28 +40,19 @@ public:
 
     operator bool() const { return valid_; }
 
+    double area() const { return area_; }
+
+	const PointXYZ& centroid() const { return centroid_; }
 
     /*
-   * Point left of [p1,p2]
-   * @param[in] P, p1, p2 given point in xyz-coordinates
-   * @return 0:P_right_of_[p1,p2], -1:overlap_of_[P,p1]_and_[P,p2], 1:P_left_of_[p1,p2]
-   */
-    inline int leftOf( const PointXYZ& P, const PointXYZ& p1, const PointXYZ& p2 ) const;
-
-    double area() const;
-
-    // return tangential angle between [pl,p] and [p,pr]
-    inline double angle( const PointXYZ& pl, const PointXYZ& p, const PointXYZ& pr ) const;
-
-    /*
-   * Point-on-segment test on great circle segments
+   * @brief Point-on-segment test on great circle segments
    * @param[in] P given point in (x,y,z) coordinates
    * @return 
    */
     bool onSegment( const PointXYZ& P, const PointXYZ& s1, const PointXYZ& p2 ) const;
 
     /*
-   * Segment-sph_polygon intersection
+   * @brief Segment-sph_polygon intersection
    * @param[in] s1, s2 segment endpoints in (x,y,z) coordinates
    * @param[in] start start with polygon segments [pol[start],pol[start+1]],...
    * @param[out] ip intersection point or nullptr
@@ -70,13 +61,14 @@ public:
     int intersect( const PointXYZ& s1, const PointXYZ& s2, PointXYZ& ip, int start = 0 ) const;
 
     /*
-   * intersect a polygon with this polygon
+   * @brief intersect a polygon with this polygon
    * @param[in] pol clipping polygon
    * @param[out] intersecting polygon
    */
     ConvexSphericalPolygon intersect( const ConvexSphericalPolygon& pol ) const;
 
     /*
+   * @brief check if two spherical polygons area equal
    * @param[in] P given point in (x,y,z) coordinates
    * @return true if equal vertices
    */
@@ -106,11 +98,23 @@ private:
     int nextIntersect( std::vector<PointXYZ>& plg_points, const ConvexSphericalPolygon& plg1, int i, int j,
                        int inside = 0 ) const;
 
+	void compute_area();
+
+	// return tangential angle between [pl,p] and [p,pr]
+	inline double angle( const PointXYZ& pl, const PointXYZ& p, const PointXYZ& pr ) const;
+
+    /*
+   * Point left of [p1,p2]
+   * @param[in] P, p1, p2 given point in xyz-coordinates
+   * @return 0:P_right_of_[p1,p2], -1:overlap_of_[P,p1]_and_[P,p2], 1:P_left_of_[p1,p2]
+   */
+    inline int leftOf( const PointXYZ& P, const PointXYZ& p1, const PointXYZ& p2 ) const;
 
 private:
     std::array<PointXYZ, MAX_SIZE> sph_coords_;
     size_t size_;
     bool valid_;
+	double area_;
 
     static constexpr double eps_ = 1e-7;  // 1e-8 did not work for i=1,j=13 of test_spherical_geo.cc !!
 };
