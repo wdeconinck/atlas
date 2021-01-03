@@ -162,17 +162,18 @@ CASE( "test_interpolation_conservative" ) {
 		}
 		// calculate gradient
 		PointXYZ grad = { 0., 0., 0. };
+		double dual_area = 0.;
 		for ( idx_t nid = 0; nid < src_neighbour_cells.size(); ++nid ) {
 			idx_t ncell = src_neighbour_cells[ nid ];
 			idx_t nncell = src_neighbour_cells[ nid != src_neighbour_cells.size()-1 ? nid+1 : 0 ];
-			if ( src_vals( ncell ) != scell && src_vals( nncell ) != scell ) {
-				double coeff = src_vals( ncell );
-				coeff += src_vals( nncell );
-				coeff = 0.5*coeff - src_vals( scell );
+			if ( ncell != scell && nncell != scell ) {
+				double coeff = 0.5*( src_vals( ncell ) + src_vals( nncell ) ) - src_vals( scell );
+				dual_area += CSPolygon( { src_csp[ ncell ].centroid(), src_csp[ nncell
+].centroid(), src_csp[ scell ].centroid() } ).area();
 				grad = PointXYZ::add( grad, PointXYZ::mul( PointXYZ::cross( src_csp[ ncell ].centroid(), src_csp[ nncell ].centroid() ), coeff ) );
 			}
 		}
-		grad = PointXYZ::mul( grad, src_csp[ scell ].area() ); // this is WRONG we need area of Fig 2. in Kritsikis et al. (2017) -> overestimation of gradient but still conservative
+		grad = PointXYZ::mul( grad, ( dual_area > 0. ? 1./dual_area : 1. ) );
 		InterpolationParameters& iparam = interpolationParameters[ scell ];
 		for( idx_t icell = 0; icell < iparam.centroids.size(); ++icell ) {
 			// NOTE: check if this is correct barycenter of the source cell!!

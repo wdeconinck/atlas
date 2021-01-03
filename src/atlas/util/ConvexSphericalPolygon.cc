@@ -79,8 +79,25 @@ ConvexSphericalPolygon::ConvexSphericalPolygon( const std::vector<PointLonLat>& 
 #endif
 }
 
-const PointXYZ& ConvexSphericalPolygon::sph_centroid() const {
-	return sph_centroid_;
+ConvexSphericalPolygon::ConvexSphericalPolygon( const std::vector<PointXYZ>& points ) : size_( points.size() ) {
+    ATLAS_ASSERT( size_ < MAX_SIZE );
+	centroid_ = PointXYZ( 0, 0, 0 );
+    for ( size_t i = 0; i < points.size(); ++i ) {
+        sph_coords_[i] = points[i];
+		centroid_ = centroid_ + sph_coords_[i];
+    }
+    valid_ = size_ > 2;  // assume all are convex
+	if ( valid_ ) {
+		ASSERT( PointXYZ::norm( centroid_ ) > eps_ );
+		centroid_ = PointXYZ::div( centroid_, PointXYZ::norm( centroid_ ) );
+	}
+#ifndef NDEBUG
+    validate();
+#endif
+}
+
+const PointXYZ& ConvexSphericalPolygon::centroid() const {
+	return centroid_;
 }
 
 bool ConvexSphericalPolygon::validate() {
@@ -169,12 +186,12 @@ int ConvexSphericalPolygon::contains( const PointXYZ& P ) const {
 // note: [s1,s2] is always the smaller part of THE great circle through s1 and s2.
 bool ConvexSphericalPolygon::onSegment( const PointXYZ& P, const PointXYZ& s1, const PointXYZ& s2 ) const {
     ATLAS_ASSERT( s1 !=
-                  PointXYZ::mul( s2, -1. ) );  // should be done in "validate" because s1,s2,p1,p2 are polydon vertices
+                  PointXYZ::mul( s2, -1. ) );  // should be done in "validate" because s1,s2,p1,p2 are polygon vertices
     ATLAS_ASSERT( std::abs( PointXYZ::dot( P, P ) - 1 ) < eps_ );
     ATLAS_ASSERT( std::abs( PointXYZ::dot( s1, s1 ) - 1 ) <
-                  eps_ );  // should be done in "validate" because s1,s2,p1,p2 are polydon vertices
+                  eps_ );  // should be done in "validate" because s1,s2,p1,p2 are polygon vertices
     ATLAS_ASSERT( std::abs( PointXYZ::dot( s2, s2 ) - 1 ) <
-                  eps_ );  // should be done in "validate" because s1,s2,p1,p2 are polydon vertices
+                  eps_ );  // should be done in "validate" because s1,s2,p1,p2 are polygon vertices
     double s1p    = PointXYZ::dot( s1, P );
     double s1s2   = PointXYZ::dot( s1, s2 );
     double ps2    = PointXYZ::dot( P, s2 );
