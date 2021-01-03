@@ -61,13 +61,13 @@ double func( const double& lon, const double& lat ) {
 }
 
 double func( const double& x, const double& y, const double& z ) {
-	return (x*x*y*z);
+	return 100*x + 10*y + z;
 }
 
 
 CASE( "test_interpolation_conservative" ) {
-    Grid src_grid = localgrid( 3, 2 );
-    Grid tgt_grid = localgrid( 5, 2 );
+    Grid src_grid = localgrid( 9, 9 );
+    Grid tgt_grid = localgrid( 33, 33 );
 	MeshGenerator meshgen( "regular" );
 	Mesh src_mesh = meshgen.generate( src_grid );
 	Mesh tgt_mesh = meshgen.generate( tgt_grid );
@@ -98,7 +98,7 @@ CASE( "test_interpolation_conservative" ) {
 		const idx_t nb_nodes = tgt_node_connectivity.cols( jcell );
 		pts_ll.clear();
 		pts_ll.resize( nb_nodes );
-		for( idx_t jnode=0; jnode < nb_nodes; ++jnode ) {
+		for( idx_t jnode = 0; jnode < nb_nodes; ++jnode ) {
 			idx_t inode = tgt_node_connectivity( jcell, jnode );
 			pts_ll[ nb_nodes - 1 - jnode ] = PointLonLat{ tgt_lonlat(inode,0), tgt_lonlat(inode,1) };
 		}
@@ -117,14 +117,6 @@ CASE( "test_interpolation_conservative" ) {
 				interpolationParameters[ scell ].centroids.emplace_back( csp_i.centroid() );
 			}
 		}
-	}
-
-	for( idx_t scell = 0; scell < src_nb_cells; ++scell ) {
-		Log::info() <<"Source-Polygon " <<src_csp[ scell ] <<" intersects Target-Polygons:\n";
-		for( idx_t tcell = 0; tcell < interpolationParameters[ scell ].cell_id.size(); ++tcell ) {
-			Log::info() <<"   " <<tgt_csp[ tcell ] <<"\n";
-		}
-		interpolationParameters[ scell ].print( Log::info() );
 	}
 
 	functionspace::CellColumns src_fs( src_mesh );
@@ -156,9 +148,13 @@ CASE( "test_interpolation_conservative" ) {
 		src_neighbour_cells.reserve( src_nb_edges );
 		for( idx_t sedge = 0; sedge < src_nb_edges; ++sedge ) {
 			idx_t iedge = src_cell2edge( scell, sedge );
-			idx_t sedge2cell = src_edge2cell( iedge, 0 );
-			if ( sedge2cell != src_cell2edge.missing_value() ) {
-				src_neighbour_cells.emplace_back( sedge2cell != scell ? src_edge2cell( iedge, 1 ) : sedge2cell );
+			idx_t cell0 = src_edge2cell( iedge, 0 );
+			idx_t cell1 = src_edge2cell( iedge, 1 );
+			if ( cell0 != src_cell2edge.missing_value() && cell0 != scell ) {
+				src_neighbour_cells.emplace_back( cell0 );
+			}
+			else if ( cell1 != src_cell2edge.missing_value() ) {
+				src_neighbour_cells.emplace_back( cell1 );
 			}
 			else {
 				src_neighbour_cells.emplace_back( scell );
@@ -170,9 +166,9 @@ CASE( "test_interpolation_conservative" ) {
 			idx_t ncell = src_neighbour_cells[ nid ];
 			idx_t nncell = src_neighbour_cells[ nid != src_neighbour_cells.size()-1 ? nid+1 : 0 ];
 			if ( src_vals( ncell ) != scell && src_vals( nncell ) != scell ) {
-				double coeff = src_vals( ncell ) / src_csp[ ncell ].area();
-				coeff += src_vals( nncell ) / src_csp[ nncell ].area();
-				coeff = coeff/2 - src_vals( scell ) / src_csp[ scell ].area();
+				double coeff = src_vals( ncell );
+				coeff += src_vals( nncell );
+				coeff = 0.5*coeff - src_vals( scell );
 				grad = PointXYZ::add( grad, PointXYZ::mul( PointXYZ::cross( src_csp[ ncell ].centroid(), src_csp[ nncell ].centroid() ), coeff ) );
 			}
 		}
@@ -187,16 +183,14 @@ CASE( "test_interpolation_conservative" ) {
 		tgt_vals( tcell ) /= tgt_csp[ tcell ].area();
 	}
 
-	Log::info() <<"\nsource field: ";
-	for ( idx_t scell = 0; scell < src_vals.size(); ++scell ) {
-		Log::info() <<src_vals( scell ) <<" ";
-	}
-	Log::info() <<"\n";
-	Log::info() <<"target field: ";
+	// validate
+	double err = 0;
 	for ( idx_t tcell = 0; tcell < tgt_vals.size(); ++tcell ) {
-		Log::info() <<tgt_vals( tcell ) <<" ";
+		auto p = tgt_csp[ tcell ].centroid();
+		err += std::abs( tgt_vals( tcell ) - func( p[0],p[1], p[2] ) );
 	}
-	Log::info() <<"\n";
+	err /= tgt_vals.size();
+	Log::info() <<"target field err: " <<err <<"\n";
 }
 
 }  // namespace test
