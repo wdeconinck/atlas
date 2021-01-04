@@ -28,9 +28,11 @@ public:
     static constexpr double eps_  = 1e-7;  // 1e-8 did not work for i=1,j=13 of test_spherical_geo.cc !!
 
     ConvexSphericalPolygon();
-    ConvexSphericalPolygon( const std::vector<PointXYZ>& points );
     ConvexSphericalPolygon( const std::vector<PointLonLat>& points );
     //ConvexSphericalPolygon( const PartitionPolygon& );
+
+    // @brief This constructor does not need vertex orientation
+    ConvexSphericalPolygon( const std::vector<PointXYZ>& points );
 
     /*
    * @brief Point-in-polygon test on sphere with spherical polygons

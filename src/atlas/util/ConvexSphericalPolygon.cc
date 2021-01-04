@@ -59,15 +59,13 @@ ConvexSphericalPolygon::ConvexSphericalPolygon( const std::vector<PointLonLat>& 
         eckit::geometry::Sphere::convertSphericalToCartesian( 1., points[i], sph_coords_[i] );
         centroid_ = centroid_ + sph_coords_[i];
     }
-    valid_ = size_ > 2;  // assume all are convex
+    valid_ = size_ > 2;
     if ( valid_ ) {
-        ASSERT( not approx_eq_null( centroid_ ) );
+        ATLAS_ASSERT( validate() );
+        ATLAS_ASSERT( not approx_eq_null( centroid_ ) );
         centroid_ = PointXYZ::div( centroid_, PointXYZ::norm( centroid_ ) );
         compute_area();
     }
-#ifndef NDEBUG
-    validate();
-#endif
 }
 
 ConvexSphericalPolygon::ConvexSphericalPolygon( const std::vector<PointXYZ>& points ) :
@@ -78,22 +76,20 @@ ConvexSphericalPolygon::ConvexSphericalPolygon( const std::vector<PointXYZ>& poi
         sph_coords_[i] = points[i];
         centroid_      = centroid_ + sph_coords_[i];
     }
-    valid_ = size_ > 2;  // assume all are convex
+    valid_ = size_ > 2;
     if ( valid_ ) {
-        ASSERT( not approx_eq_null( centroid_ ) );
+        ATLAS_ASSERT( not approx_eq_null( centroid_ ) );
         centroid_ = PointXYZ::div( centroid_, PointXYZ::norm( centroid_ ) );
         compute_area();
     }
-#ifndef NDEBUG
-    validate();
-#endif
 }
 
 bool ConvexSphericalPolygon::validate() {
     if ( valid_ ) {
-        for ( int i = 0; i < size() - 1; i++ ) {
+        for ( int i = 0; i < size(); i++ ) {
             int ni  = ( i != size() - 1 ? i + 1 : 0 );
             int nni = ( ni != size() - 1 ? ni + 1 : 0 );
+            ATLAS_ASSERT( leftOf( sph_coords_[nni], sph_coords_[i], sph_coords_[ni] ) );
             if ( !leftOf( sph_coords_[nni], sph_coords_[i], sph_coords_[ni] ) ) {
                 valid_ = false;
                 return valid_;
