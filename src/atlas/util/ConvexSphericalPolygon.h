@@ -25,6 +25,7 @@ class PartitionPolygon;
 class ConvexSphericalPolygon {
 public:
     static constexpr int MAX_SIZE = 8;
+    static constexpr double eps_ = 1e-7;  // 1e-8 did not work for i=1,j=13 of test_spherical_geo.cc !!
 
     ConvexSphericalPolygon();
     ConvexSphericalPolygon( const std::vector<PointXYZ>& points );
@@ -116,8 +117,6 @@ private:
     size_t size_;
     bool valid_;
     double area_;
-
-    static constexpr double eps_ = 1e-7;  // 1e-8 did not work for i=1,j=13 of test_spherical_geo.cc !!
 };
 
 //------------------------------------------------------------------------------------------------------
