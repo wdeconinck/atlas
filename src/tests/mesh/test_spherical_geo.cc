@@ -132,7 +132,7 @@ CASE( "Size of ConvexSphericalPolygon" ) {
     // as sizeof(ConvexSphericalPolygon) includes space for MAX_SIZE coordinates of type PointXYZ
     EXPECT( sizeof( PointXYZ ) == sizeof( double ) * 3 );
     size_t expected_size = 0;
-    expected_size += (1 + ConvexSphericalPolygon::MAX_SIZE) * sizeof( PointXYZ );
+    expected_size += ( 1 + ConvexSphericalPolygon::MAX_SIZE ) * sizeof( PointXYZ );
     expected_size += sizeof( size_t );
     expected_size += sizeof( bool );
     expected_size += sizeof( double );
