@@ -35,23 +35,31 @@ bool approx_eq( const PointXYZ& v1, const PointXYZ& v2, const double& t ) {
     return approx_eq( v1[0], v2[0], t ) && approx_eq( v1[1], v2[1], t ) && approx_eq( v1[2], v2[2], t );
 }
 
+#if DEBUG_OUTPUT or DEBUG_OUTPUT_DETAIL
+PointLonLat sph_to_lonlat( const PointXYZ& p ) {
+    PointLonLat pp;
+    eckit::geometry::Sphere::convertCartesianToSpherical( 1., p, pp );
+    return pp;
+}
+#endif
+
 //------------------------------------------------------------------------------------------------------
 
 ConvexSphericalPolygon::ConvexSphericalPolygon() : valid_( false ), size_( 0 ), area_( 0 ) {}
 
 ConvexSphericalPolygon::ConvexSphericalPolygon( const std::vector<PointLonLat>& points ) : size_( points.size() ) {
     ATLAS_ASSERT( size_ < MAX_SIZE );
-	centroid_ = PointXYZ( 0, 0, 0 );
+    centroid_ = PointXYZ( 0, 0, 0 );
     for ( size_t i = 0; i < points.size(); ++i ) {
         eckit::geometry::Sphere::convertSphericalToCartesian( 1., points[i], sph_coords_[i] );
-		centroid_ = centroid_ + sph_coords_[i];
+        centroid_ = centroid_ + sph_coords_[i];
     }
     valid_ = size_ > 2;  // assume all are convex
-	if ( valid_ ) {
-		ASSERT( PointXYZ::norm( centroid_ ) > eps_ );
-		centroid_ = PointXYZ::div( centroid_, PointXYZ::norm( centroid_ ) );
-	}
-	compute_area();
+    if ( valid_ ) {
+        ASSERT( PointXYZ::norm( centroid_ ) > eps_ );
+        centroid_ = PointXYZ::div( centroid_, PointXYZ::norm( centroid_ ) );
+    }
+    compute_area();
 #ifndef NDEBUG
     validate();
 #endif
@@ -59,17 +67,17 @@ ConvexSphericalPolygon::ConvexSphericalPolygon( const std::vector<PointLonLat>& 
 
 ConvexSphericalPolygon::ConvexSphericalPolygon( const std::vector<PointXYZ>& points ) : size_( points.size() ) {
     ATLAS_ASSERT( size_ < MAX_SIZE );
-	centroid_ = PointXYZ( 0, 0, 0 );
+    centroid_ = PointXYZ( 0, 0, 0 );
     for ( size_t i = 0; i < points.size(); ++i ) {
         sph_coords_[i] = points[i];
-		centroid_ = centroid_ + sph_coords_[i];
+        centroid_      = centroid_ + sph_coords_[i];
     }
     valid_ = size_ > 2;  // assume all are convex
-	if ( valid_ ) {
-		ASSERT( PointXYZ::norm( centroid_ ) > eps_ );
-		centroid_ = PointXYZ::div( centroid_, PointXYZ::norm( centroid_ ) );
-	}
-	compute_area();
+    if ( valid_ ) {
+        ASSERT( PointXYZ::norm( centroid_ ) > eps_ );
+        centroid_ = PointXYZ::div( centroid_, PointXYZ::norm( centroid_ ) );
+    }
+    compute_area();
 #ifndef NDEBUG
     validate();
 #endif
@@ -124,7 +132,7 @@ inline double ConvexSphericalPolygon::angle( const PointXYZ& pl, const PointXYZ&
 // I. Todhunter (1886), Paragr. 99
 void ConvexSphericalPolygon::compute_area() {
     const int sz = size();
-    area_     = ( sz == 0 ? 0. : M_PI * ( 2 - sz ) );
+    area_        = ( sz == 0 ? 0. : M_PI * ( 2 - sz ) );
     for ( int i = 0; i < sz; i++ ) {
         int im1 = ( i != 0 ) ? i - 1 : sz - 1;
         int ip1 = ( i != sz - 1 ) ? i + 1 : 0;
@@ -188,10 +196,7 @@ int ConvexSphericalPolygon::intersect( const PointXYZ& s1, const PointXYZ& s2, P
     int ncoord = size();
 
 #if DEBUG_OUTPUT_DETAIL
-    PointLonLat s1ll, s2ll;
-    eckit::geometry::Sphere::convertCartesianToSpherical( 1., s1, s1ll );
-    eckit::geometry::Sphere::convertCartesianToSpherical( 1., s2, s2ll );
-    std::cout << "   doing intersection with [" << s1ll << ", " << s2ll << "]\n";
+    std::cout << "   doing intersection with [" << sph_to_lonlat( s1 ) << ", " << sph_to_lonlat( s2 ) << "]\n";
     std::cout << "   	ncoord: " << ncoord << "\n";
     std::cout.flush();
 #endif
@@ -199,8 +204,8 @@ int ConvexSphericalPolygon::intersect( const PointXYZ& s1, const PointXYZ& s2, P
         const PointXYZ& sp1 = sph_coords_[i % ncoord];
         const PointXYZ& sp2 = sph_coords_[( i + 1 ) % ncoord];
 #if DEBUG_OUTPUT_DETAIL
-        std::cout << "     check edge " << i % ncoord << " :" << sph_coords_[i % ncoord] << ", "
-                  << sph_coords_[( i + 1 ) % ncoord] << "]\n";
+        std::cout << "     check edge " << i % ncoord << " : [" << sph_to_lonlat( sph_coords_[i % ncoord] ) << ", "
+                  << sph_to_lonlat( sph_coords_[( i + 1 ) % ncoord] ) << "]\n";
         std::cout.flush();
 #endif
         const PointXYZ& cp2 = static_cast<PointXYZ>( PointXYZ::cross( sp1, sp2 ) );
@@ -209,9 +214,7 @@ int ConvexSphericalPolygon::intersect( const PointXYZ& s1, const PointXYZ& s2, P
 
         if ( PointXYZ::norm( ip ) > eps_ ) {
 #if DEBUG_OUTPUT_DETAIL
-            PointLonLat ipp;
-            eckit::geometry::Sphere::convertCartesianToSpherical( 1., ip, ipp );
-            std::cout << "       try intersect " << ipp << "\n";
+            std::cout << "       try intersect " << sph_to_lonlat( ip ) << "\n";
             std::cout.flush();
 #endif
             ip = PointXYZ::div( ip, PointXYZ::norm( ip ) );
@@ -220,8 +223,7 @@ int ConvexSphericalPolygon::intersect( const PointXYZ& s1, const PointXYZ& s2, P
             }
             ip = PointXYZ::mul( ip, -1. );
 #if DEBUG_OUTPUT_DETAIL
-            eckit::geometry::Sphere::convertCartesianToSpherical( 1., ip, ipp );
-            std::cout << "       try intersect " << ipp << "\n";
+            std::cout << "       try intersect " << sph_to_lonlat( ip ) << "\n";
             std::cout.flush();
 #endif
             if ( onSegment( ip, s1, s2 ) && onSegment( ip, sp1, sp2 ) ) {
@@ -233,18 +235,14 @@ int ConvexSphericalPolygon::intersect( const PointXYZ& s1, const PointXYZ& s2, P
             if ( onSegment( s1, sp1, sp2 ) && ( onSegment( s2, s1, sp2 ) || onSegment( sp2, s1, s2 ) ) ) {
                 ip = PointXYZ( s1 );
 #if DEBUG_OUTPUT_DETAIL
-                PointLonLat ipp;
-                eckit::geometry::Sphere::convertCartesianToSpherical( 1., ip, ipp );
-                std::cout << "       		got first point " << ipp << "\n";
+                std::cout << "       		got first point " << sph_to_lonlat( ip ) << "\n";
                 std::cout.flush();
 #endif
             }
             else if ( onSegment( sp1, s1, s2 ) && ( onSegment( sp2, sp1, s2 ) || onSegment( s2, sp1, sp2 ) ) ) {
                 ip = PointXYZ( sp1 );
 #if DEBUG_OUTPUT_DETAIL
-                PointLonLat ipp;
-                eckit::geometry::Sphere::convertCartesianToSpherical( 1., ip, ipp );
-                std::cout << "       		got first point " << ipp << "\n";
+                std::cout << "       		got first point " << sph_to_lonlat( ip ) << "\n";
                 std::cout.flush();
 #endif
             }
@@ -275,24 +273,22 @@ ConvexSphericalPolygon ConvexSphericalPolygon::intersect( const ConvexSphericalP
         jj = -1 + plg.intersect( sph_coords_[ii], sph_coords_[( ii + 1 ) % n_plg], ip );
         if ( jj != -1 ) {
 #if DEBUG_OUTPUT_DETAIL
-            PointLonLat ipp;
-            eckit::geometry::Sphere::convertCartesianToSpherical( 1., ip, ipp );
-            std::cout << "  " << jj << "th edge intersects with [" << sph_coords_[ii] << " "
-                      << sph_coords_[( ii + 1 ) % n_plg] << "] at " << ipp << "\n";
+            std::cout << "  " << jj << "th edge intersects with [" << sph_to_lonlat( sph_coords_[ii] ) << " "
+                      << sph_to_lonlat( sph_coords_[( ii + 1 ) % n_plg] ) << "] at " << sph_to_lonlat( ip ) << "\n";
             std::cout.flush();
 #endif
             break;
         }
 #if DEBUG_OUTPUT_DETAIL
-        std::cout << "  polygon does not intersects with [" << sph_coords_[ii] << " "
-                  << sph_coords_[( ii + 1 ) % n_plg] << "]\n";
+        std::cout << "  polygon does not intersects with [" << sph_to_lonlat( sph_coords_[ii] ) << " "
+                  << sph_to_lonlat( sph_coords_[( ii + 1 ) % n_plg] ) << "]\n";
         std::cout.flush();
 #endif
     }
     if ( jj != -1 ) {
         iplg_p.emplace_back( ip );
         int intersect = nextIntersect( iplg_p, plg, ii, jj, 0 );
-		iplg_p.pop_back();
+        iplg_p.pop_back();
         return ( intersect ? ConvexSphericalPolygon( iplg_p ) : ConvexSphericalPolygon() );
     }
     else {
@@ -302,21 +298,21 @@ ConvexSphericalPolygon ConvexSphericalPolygon::intersect( const ConvexSphericalP
 #endif
         if ( this->contains( plg.sph_coords_[0] ) == 1 ) {
 #if DEBUG_OUTPUT_DETAIL
-            std::cout << " this contains " << plg.sph_coords_[0] << " -> plg inside this.\n";
+            std::cout << " this contains " << sph_to_lonlat( plg.sph_coords_[0] ) << " -> plg inside this.\n";
             std::cout.flush();
 #endif
             return ConvexSphericalPolygon( plg );
         }
         else if ( plg.contains( sph_coords_[0] ) == 1 ) {
 #if DEBUG_OUTPUT_DETAIL
-            std::cout << " plg contains " << sph_coords_[0] << " -> this inside plg.\n";
+            std::cout << " plg contains " << sph_to_lonlat( sph_coords_[0] ) << " -> this inside plg.\n";
             std::cout.flush();
 #endif
             return ConvexSphericalPolygon( *this );
         }
         else {
 #if DEBUG_OUTPUT_DETAIL
-            std::cout << " this contains " << plg.sph_coords_[0] << " -> plg inside this.\n";
+            std::cout << " this contains " << sph_to_lonlat( plg.sph_coords_[0] ) << " -> plg inside this.\n";
             std::cout << " plg NOT inside this && this NOT inside plg\n";
             std::cout.flush();
 #endif
@@ -358,14 +354,10 @@ int ConvexSphericalPolygon::nextIntersect( std::vector<PointXYZ>& iplg_p, const 
               << jj0 << ", " << jj << ", " << njj << ", " << inside << "\n";
     std::cout << " iplg_p: ";
     for ( int i = 0; i <= n_iplg; i++ ) {
-        PointLonLat ip_ll;
-        eckit::geometry::Sphere::convertCartesianToSpherical( 1., iplg_p[i], ip_ll );
-        std::cout << ", " << ip_ll;
+        std::cout << ", " << sph_to_lonlat( iplg_p[i] );
     }
     std::cout << "\n";
-    PointLonLat ip_ll;
-    eckit::geometry::Sphere::convertCartesianToSpherical( 1., P, ip_ll );
-    std::cout << "P = " << ip_ll;
+    std::cout << "P = " << sph_to_lonlat( P );
     std::cout.flush();
 #endif
     if ( n_iplg > 1 && PointXYZ::norm( iplg_p[0] - iplg_p[n_iplg] ) < eps_ ) {
@@ -405,11 +397,8 @@ int ConvexSphericalPolygon::nextIntersect( std::vector<PointXYZ>& iplg_p, const 
             }
             else {
 #if DEBUG_OUTPUT_DETAIL
-                PointLonLat ip_ll;
-                eckit::geometry::Sphere::convertCartesianToSpherical( 1., ip, ip_ll );
-                PointLonLat ip_ll2;
-                eckit::geometry::Sphere::convertCartesianToSpherical( 1., iplg_p[n_iplg], ip_ll2 );
-                std::cout << " inside of plg: intersection at " << ip_ll << ", last point: " << ip_ll2 << "\n";
+                std::cout << " inside of plg: intersection at " << sph_to_lonlat( ip )
+                          << ", last point: " << sph_to_lonlat( iplg_p[n_iplg] ) << "\n";
                 std::cout.flush();
 #endif
                 iplg_p.emplace_back( ip );
@@ -438,11 +427,8 @@ int ConvexSphericalPolygon::nextIntersect( std::vector<PointXYZ>& iplg_p, const 
             }
             else {
 #if DEBUG_OUTPUT_DETAIL
-                PointLonLat ip_ll;
-                eckit::geometry::Sphere::convertCartesianToSpherical( 1., ip, ip_ll );
-                PointLonLat ip_ll2;
-                eckit::geometry::Sphere::convertCartesianToSpherical( 1., iplg_p[n_iplg], ip_ll2 );
-                std::cout << " inside of this: intersection at " << ip_ll << ", last point: " << ip_ll2 << "\n";
+                std::cout << " inside of this: intersection at " << sph_to_lonlat( ip )
+                          << ", last point: " << sph_to_lonlat( iplg_p[n_iplg] ) << "\n";
                 std::cout.flush();
 #endif
                 iplg_p.emplace_back( ip );
@@ -476,12 +462,10 @@ int ConvexSphericalPolygon::nextIntersect( std::vector<PointXYZ>& iplg_p, const 
 
     // not an inside point & no edges-overlap
 #if DEBUG_OUTPUT_DETAIL
-    PointLonLat Pll, np1ll, np2ll;
-    eckit::geometry::Sphere::convertCartesianToSpherical( 1., P, Pll );
-    eckit::geometry::Sphere::convertCartesianToSpherical( 1., np1, np1ll );
-    eckit::geometry::Sphere::convertCartesianToSpherical( 1., np2, np2ll );
-    std::cout << "   " << np2ll << " leftOf [" << Pll << "," << np1ll << " -> " << leftOf( np2, P, np1 ) << "\n";
-    std::cout << "   " << np1ll << " leftOf [" << Pll << "," << np2ll << " -> " << leftOf( np1, P, np2 ) << "\n";
+    std::cout << "   " << sph_to_lonlat( np2 ) << " leftOf [" << sph_to_lonlat( P ) << "," << sph_to_lonlat( np1 )
+              << " -> " << leftOf( np2, P, np1 ) << "\n";
+    std::cout << "   " << sph_to_lonlat( np1 ) << " leftOf [" << sph_to_lonlat( P ) << "," << sph_to_lonlat( np2 )
+              << " -> " << leftOf( np1, P, np2 ) << "\n";
     std::cout.flush();
 #endif
     if ( leftOf( np2, P, np1 ) ) {  // 2a) 3b)
@@ -497,11 +481,8 @@ int ConvexSphericalPolygon::nextIntersect( std::vector<PointXYZ>& iplg_p, const 
         }
         else {
 #if DEBUG_OUTPUT_DETAIL
-            PointLonLat ip_ll;
-            eckit::geometry::Sphere::convertCartesianToSpherical( 1., ip, ip_ll );
-            PointLonLat ip_ll2;
-            eckit::geometry::Sphere::convertCartesianToSpherical( 1., iplg_p[n_iplg], ip_ll2 );
-            std::cout << " leftOf( np2, P, np1 ): intersection at " << ip_ll << ", last point: " << ip_ll2 << "\n";
+            std::cout << " leftOf( np2, P, np1 ): intersection at " << sph_to_lonlat( ip )
+                      << ", last point: " << sph_to_lonlat( iplg_p[n_iplg] ) << "\n";
             std::cout.flush();
 #endif
             iplg_p.emplace_back( ip );
@@ -522,11 +503,8 @@ int ConvexSphericalPolygon::nextIntersect( std::vector<PointXYZ>& iplg_p, const 
         }
         else {
 #if DEBUG_OUTPUT_DETAIL
-            PointLonLat ip_ll;
-            eckit::geometry::Sphere::convertCartesianToSpherical( 1., ip, ip_ll );
-            PointLonLat ip_ll2;
-            eckit::geometry::Sphere::convertCartesianToSpherical( 1., iplg_p[n_iplg], ip_ll2 );
-            std::cout << " leftOf( np1, P, np2 ): intersection at " << ip_ll << ", last point: " << ip_ll2 << "\n";
+            std::cout << " leftOf( np1, P, np2 ): intersection at " << sph_to_lonlat( ip )
+                      << ", last point: " << sph_to_lonlat( iplg_p[n_iplg] ) << "\n";
             std::cout.flush();
 #endif
             iplg_p.emplace_back( ip );
@@ -541,9 +519,9 @@ void ConvexSphericalPolygon::print( std::ostream& out ) const {
         if ( i > 0 ) {
             out << " ";
         }
-		PointLonLat ip_ll;
-		eckit::geometry::Sphere::convertCartesianToSpherical( 1., sph_coords_[i], ip_ll );
-        out <<ip_ll;
+        PointLonLat ip_ll;
+        eckit::geometry::Sphere::convertCartesianToSpherical( 1., sph_coords_[i], ip_ll );
+        out << ip_ll;
     }
     out << "]";
 }

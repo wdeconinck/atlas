@@ -42,7 +42,7 @@ public:
 
     double area() const { return area_; }
 
-	const PointXYZ& centroid() const { return centroid_; }
+    const PointXYZ& centroid() const { return centroid_; }
 
     /*
    * @brief Point-on-segment test on great circle segments
@@ -98,10 +98,10 @@ private:
     int nextIntersect( std::vector<PointXYZ>& plg_points, const ConvexSphericalPolygon& plg1, int i, int j,
                        int inside = 0 ) const;
 
-	void compute_area();
+    void compute_area();
 
-	// return tangential angle between [pl,p] and [p,pr]
-	inline double angle( const PointXYZ& pl, const PointXYZ& p, const PointXYZ& pr ) const;
+    // return tangential angle between [pl,p] and [p,pr]
+    inline double angle( const PointXYZ& pl, const PointXYZ& p, const PointXYZ& pr ) const;
 
     /*
    * Point left of [p1,p2]
@@ -112,10 +112,10 @@ private:
 
 private:
     std::array<PointXYZ, MAX_SIZE> sph_coords_;
-	PointXYZ centroid_;
+    PointXYZ centroid_;
     size_t size_;
     bool valid_;
-	double area_;
+    double area_;
 
     static constexpr double eps_ = 1e-7;  // 1e-8 did not work for i=1,j=13 of test_spherical_geo.cc !!
 };
