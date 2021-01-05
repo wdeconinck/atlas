@@ -55,14 +55,14 @@ double func( const double& x, const double& y, const double& z ) {
 
 
 CASE( "test_interpolation_conservative" ) {
-    Grid src_grid = localgrid( 3, 33 );
-    Grid tgt_grid = localgrid( 33, 3 );
-    MeshGenerator meshgen( "regular" );
+    Grid src_grid = Grid( "O8" );
+    Grid tgt_grid = Grid( "O8" );
+    MeshGenerator meshgen( "structured" );
     Mesh src_mesh = meshgen.generate( src_grid );
     Mesh tgt_mesh = meshgen.generate( tgt_grid );
 
     util::Config config;
-    config.set( "order", 2 );
+    config.set( "order", 1 );
     ConservativeMethod conservativeMethod( config );
 
     functionspace::CellColumns src_fs( src_mesh );
