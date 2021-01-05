@@ -25,6 +25,7 @@
 #include "atlas/runtime/Log.h"
 #include "atlas/runtime/Trace.h"
 
+#include "eckit/log/ProgressTimer.h"
 
 namespace atlas {
 namespace interpolation {
@@ -93,9 +94,12 @@ void ConservativeMethod::do_setup( Mesh& src_mesh, const Mesh& tgt_mesh ) {
         tgt_csp[jcell] = CSPolygon( pts_ll );
     }
 
-    iparam_.resize( src_nb_cells );
     // brute force (!) needs to be changed
-    for ( idx_t scell = 0; scell < src_nb_cells; ++scell ) {
+    iparam_.resize( src_nb_cells );
+	eckit::Channel blackhole;
+	eckit::ProgressTimer progress( "Intersecting polygons ", src_nb_cells, " cell",
+		double( 10 ), src_nb_cells > 50 ? Log::info() : blackhole );
+    for ( idx_t scell = 0; scell < src_nb_cells; ++scell, ++progress) {
         src_centroids_[scell] = src_csp[scell].centroid();
         src_areas_[scell]     = src_csp[scell].area();
         for ( idx_t tcell = 0; tcell < tgt_nb_cells; ++tcell ) {
@@ -119,23 +123,18 @@ void ConservativeMethod::do_setup( Mesh& src_mesh, const Mesh& tgt_mesh ) {
 }
 
 void ConservativeMethod::do_execute( const Field& src_field, Field& tgt_field ) const {
+    ATLAS_TRACE( "ConservativeMethod::do_execute()" );
+
     auto src_vals = array::make_view<double, 1>( src_field );
     auto tgt_vals = array::make_view<double, 1>( tgt_field );
 
     const auto& src_cell2edge = *( src_cell2edge_ );
     const auto& src_edge2cell = *( src_edge2cell_ );
 
-    // assign field values on source mesh
-    //for ( idx_t scell = 0; scell < src_vals.size(); ++scell ) {
-    //    auto p            = src_csp[scell].centroid();
-    //    src_vals( scell ) = func( p[0], p[1], p[2] );
-    //}
-
     for ( idx_t tcell = 0; tcell < tgt_vals.size(); ++tcell ) {
         tgt_vals( tcell ) = 0.;
     }
     for ( idx_t scell = 0; scell < src_vals.size(); ++scell ) {
-        //auto p = src_csp[scell].centroid();
         PointXYZ grad = {0., 0., 0.};
         if ( order_ > 1 ) {
             // get cell neighbours

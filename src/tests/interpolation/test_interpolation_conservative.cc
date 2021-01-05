@@ -89,8 +89,6 @@ CASE( "test_interpolation_conservative" ) {
         for ( idx_t icell = 0; icell < iparam[scell].weights.size(); ++icell ) {
             scell_area += iparam[scell].weights[icell];
         }
-        Log::info() << " scell, scell_area, diff: " << conservativeMethod.src_area( scell ) << " " << scell_area << " "
-                    << conservativeMethod.src_area( scell ) - scell_area << "\n";
         err += std::abs( conservativeMethod.src_area( scell ) - scell_area );
     }
 	Log::info() <<" Total conservation error: " <<err <<"\n";
