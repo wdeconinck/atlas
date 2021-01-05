@@ -17,12 +17,12 @@
 #include "atlas/array.h"
 #include "atlas/field.h"
 #include "atlas/grid.h"
+#include "atlas/interpolation/method/knn/ConservativeMethod.h"
 #include "atlas/mesh.h"
 #include "atlas/mesh/Mesh.h"
 #include "atlas/meshgenerator.h"
 #include "atlas/option.h"
 #include "atlas/util/Config.h"
-#include "atlas/interpolation/method/knn/ConservativeMethod.h"
 
 #include "tests/AtlasTestEnvironment.h"
 
@@ -30,7 +30,7 @@
 namespace atlas {
 namespace test {
 
-using CSPolygon = util::ConvexSphericalPolygon;
+using CSPolygon          = util::ConvexSphericalPolygon;
 using ConservativeMethod = interpolation::method::ConservativeMethod;
 
 Grid localgrid( int nx, int ny ) {
@@ -61,9 +61,9 @@ CASE( "test_interpolation_conservative" ) {
     Mesh src_mesh = meshgen.generate( src_grid );
     Mesh tgt_mesh = meshgen.generate( tgt_grid );
 
-	util::Config config;
-	config.set( "order", 2 );
-	ConservativeMethod conservativeMethod( config );
+    util::Config config;
+    config.set( "order", 2 );
+    ConservativeMethod conservativeMethod( config );
 
     functionspace::CellColumns src_fs( src_mesh );
     functionspace::CellColumns tgt_fs( tgt_mesh );
@@ -72,32 +72,32 @@ CASE( "test_interpolation_conservative" ) {
     auto src_vals  = array::make_view<double, 1>( src_field );
     auto tgt_vals  = array::make_view<double, 1>( tgt_field );
 
-	conservativeMethod.do_setup( src_mesh, tgt_mesh );
+    conservativeMethod.do_setup( src_mesh, tgt_mesh );
 
     for ( idx_t scell = 0; scell < src_vals.size(); ++scell ) {
-        auto p            = conservativeMethod.src_centroid(scell);
+        auto p            = conservativeMethod.src_centroid( scell );
         src_vals( scell ) = func( p[0], p[1], p[2] );
     }
 
-	conservativeMethod.do_execute( src_field, tgt_field );
+    conservativeMethod.do_execute( src_field, tgt_field );
 
     // validate first order conservation property
     double err = 0.;
     for ( idx_t scell = 0; scell < src_vals.size(); ++scell ) {
-        double scell_area               = 0.;
+        double scell_area  = 0.;
         const auto& iparam = conservativeMethod.iparam();
         for ( idx_t icell = 0; icell < iparam[scell].weights.size(); ++icell ) {
             scell_area += iparam[scell].weights[icell];
         }
-        Log::info() << " scell, scell_area, diff: " << conservativeMethod.src_area(scell) << " " << scell_area << " "
-                    << conservativeMethod.src_area(scell) - scell_area << "\n";
-        err += std::abs( conservativeMethod.src_area(scell) - scell_area );
+        Log::info() << " scell, scell_area, diff: " << conservativeMethod.src_area( scell ) << " " << scell_area << " "
+                    << conservativeMethod.src_area( scell ) - scell_area << "\n";
+        err += std::abs( conservativeMethod.src_area( scell ) - scell_area );
     }
 
     // validate error
     err = 0.;
     for ( idx_t tcell = 0; tcell < tgt_vals.size(); ++tcell ) {
-        auto p = conservativeMethod.tgt_centroid(tcell);
+        auto p = conservativeMethod.tgt_centroid( tcell );
         err += std::abs( tgt_vals( tcell ) - func( p[0], p[1], p[2] ) );
     }
     err /= tgt_vals.size();

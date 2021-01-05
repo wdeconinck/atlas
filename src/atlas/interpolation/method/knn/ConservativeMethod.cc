@@ -52,10 +52,10 @@ void ConservativeMethod::do_setup( Mesh& src_mesh, const Mesh& tgt_mesh ) {
         ATLAS_NOTIMPLEMENTED;
     }
 
-	src_centroids_.resize( src_mesh.cells().size() );
-	tgt_centroids_.resize( tgt_mesh.cells().size() );
-	src_areas_.resize( src_mesh.cells().size() );
-	tgt_areas_.resize( tgt_mesh.cells().size() );
+    src_centroids_.resize( src_mesh.cells().size() );
+    tgt_centroids_.resize( tgt_mesh.cells().size() );
+    src_areas_.resize( src_mesh.cells().size() );
+    tgt_areas_.resize( tgt_mesh.cells().size() );
 
     ATLAS_ASSERT( src_mesh );
     ATLAS_ASSERT( tgt_mesh );
@@ -96,8 +96,8 @@ void ConservativeMethod::do_setup( Mesh& src_mesh, const Mesh& tgt_mesh ) {
     iparam_.resize( src_nb_cells );
     // brute force (!) needs to be changed
     for ( idx_t scell = 0; scell < src_nb_cells; ++scell ) {
-		src_centroids_[scell] = src_csp[scell].centroid();
-		src_areas_[scell] = src_csp[scell].area();
+        src_centroids_[scell] = src_csp[scell].centroid();
+        src_areas_[scell]     = src_csp[scell].area();
         for ( idx_t tcell = 0; tcell < tgt_nb_cells; ++tcell ) {
             CSPolygon csp_i = src_csp[scell].intersect( tgt_csp[tcell] );
             if ( csp_i.area() > 0. ) {
@@ -108,22 +108,22 @@ void ConservativeMethod::do_setup( Mesh& src_mesh, const Mesh& tgt_mesh ) {
         }
     }
 
-	for ( idx_t tcell = 0; tcell < tgt_nb_cells; ++tcell ) {
-		tgt_centroids_[tcell] = tgt_csp[tcell].centroid();
-		tgt_areas_[tcell] = tgt_csp[tcell].area();
-	}
+    for ( idx_t tcell = 0; tcell < tgt_nb_cells; ++tcell ) {
+        tgt_centroids_[tcell] = tgt_csp[tcell].centroid();
+        tgt_areas_[tcell]     = tgt_csp[tcell].area();
+    }
 
     mesh::actions::build_edges( src_mesh );
-    src_cell2edge_ = &(src_mesh.cells().edge_connectivity());
-    src_edge2cell_ = &(src_mesh.edges().cell_connectivity());
+    src_cell2edge_ = &( src_mesh.cells().edge_connectivity() );
+    src_edge2cell_ = &( src_mesh.edges().cell_connectivity() );
 }
 
 void ConservativeMethod::do_execute( const Field& src_field, Field& tgt_field ) const {
-    auto src_vals  = array::make_view<double, 1>( src_field );
-    auto tgt_vals  = array::make_view<double, 1>( tgt_field );
+    auto src_vals = array::make_view<double, 1>( src_field );
+    auto tgt_vals = array::make_view<double, 1>( tgt_field );
 
-	const auto& src_cell2edge = *(src_cell2edge_);
-	const auto& src_edge2cell = *(src_edge2cell_);
+    const auto& src_cell2edge = *( src_cell2edge_ );
+    const auto& src_edge2cell = *( src_edge2cell_ );
 
     // assign field values on source mesh
     //for ( idx_t scell = 0; scell < src_vals.size(); ++scell ) {
@@ -136,7 +136,7 @@ void ConservativeMethod::do_execute( const Field& src_field, Field& tgt_field ) 
     }
     for ( idx_t scell = 0; scell < src_vals.size(); ++scell ) {
         //auto p = src_csp[scell].centroid();
-        PointXYZ grad    = {0., 0., 0.};
+        PointXYZ grad = {0., 0., 0.};
         if ( order_ > 1 ) {
             // get cell neighbours
             idx_t src_nb_edges = src_cell2edge.cols( scell );
@@ -167,18 +167,16 @@ void ConservativeMethod::do_execute( const Field& src_field, Field& tgt_field ) 
                         CSPolygon( {src_centroids_[ncell], src_centroids_[nncell], src_centroids_[scell]} ).area();
                     grad = PointXYZ::add(
                         grad,
-                        PointXYZ::mul( PointXYZ::cross( src_centroids_[ncell], src_centroids_[nncell]
-), coeff ) );
+                        PointXYZ::mul( PointXYZ::cross( src_centroids_[ncell], src_centroids_[nncell] ), coeff ) );
                 }
             }
-            grad                            = PointXYZ::mul( grad, ( dual_area > 0. ? 1. / dual_area : 1. ) );
+            grad = PointXYZ::mul( grad, ( dual_area > 0. ? 1. / dual_area : 1. ) );
         }
         for ( idx_t icell = 0; icell < iparam_[scell].centroids.size(); ++icell ) {
             // NOTE: check if this is correct barycenter of the source cell!!
             tgt_vals( iparam_[scell].cell_id[icell] ) +=
                 iparam_[scell].weights[icell] *
-                ( src_vals( scell ) + PointXYZ::dot( grad, iparam_[scell].centroids[icell] - src_centroids_[scell]
-) );
+                ( src_vals( scell ) + PointXYZ::dot( grad, iparam_[scell].centroids[icell] - src_centroids_[scell] ) );
         }
     }
     for ( idx_t tcell = 0; tcell < tgt_vals.size(); ++tcell ) {
