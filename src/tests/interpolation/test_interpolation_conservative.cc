@@ -50,12 +50,12 @@ double func( const double& lon, const double& lat ) {
 }
 
 double func( const double& x, const double& y, const double& z ) {
-    return 100 * x + 10 * y + z;
+    return 1.; //100 * x + 10 * y + z;
 }
 
 
 CASE( "test_interpolation_conservative" ) {
-    Grid src_grid = Grid( "O8" );
+    Grid src_grid = Grid( "O4" );
     Grid tgt_grid = Grid( "O8" );
     MeshGenerator meshgen( "structured" );
     Mesh src_mesh = meshgen.generate( src_grid );
@@ -93,6 +93,7 @@ CASE( "test_interpolation_conservative" ) {
                     << conservativeMethod.src_area( scell ) - scell_area << "\n";
         err += std::abs( conservativeMethod.src_area( scell ) - scell_area );
     }
+	Log::info() <<" Total conservation error: " <<err <<"\n";
 
     // validate error
     err = 0.;
