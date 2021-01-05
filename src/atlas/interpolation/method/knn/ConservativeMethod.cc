@@ -72,7 +72,7 @@ void ConservativeMethod::do_setup( Mesh& src_mesh, const Mesh& tgt_mesh ) {
         pts_ll.resize( nb_nodes );
         for ( idx_t jnode = 0; jnode < nb_nodes; ++jnode ) {
             idx_t inode                  = src_node_connectivity( jcell, jnode );
-            pts_ll[nb_nodes - 1 - jnode] = PointLonLat{src_lonlat( inode, 0 ), src_lonlat( inode, 1 )};
+            pts_ll[jnode] = PointLonLat{src_lonlat( inode, 0 ), src_lonlat( inode, 1 )};
         }
         src_csp[jcell] = CSPolygon( pts_ll );
     }
@@ -88,7 +88,7 @@ void ConservativeMethod::do_setup( Mesh& src_mesh, const Mesh& tgt_mesh ) {
         pts_ll.resize( nb_nodes );
         for ( idx_t jnode = 0; jnode < nb_nodes; ++jnode ) {
             idx_t inode                  = tgt_node_connectivity( jcell, jnode );
-            pts_ll[nb_nodes - 1 - jnode] = PointLonLat{tgt_lonlat( inode, 0 ), tgt_lonlat( inode, 1 )};
+            pts_ll[jnode] = PointLonLat{tgt_lonlat( inode, 0 ), tgt_lonlat( inode, 1 )};
         }
         tgt_csp[jcell] = CSPolygon( pts_ll );
     }
