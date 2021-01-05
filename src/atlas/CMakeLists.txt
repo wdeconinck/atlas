@@ -538,6 +538,8 @@ interpolation/method/Ray.cc
 interpolation/method/Ray.h
 interpolation/method/fe/FiniteElement.cc
 interpolation/method/fe/FiniteElement.h
+interpolation/method/knn/ConservativeMethod.cc
+interpolation/method/knn/ConservativeMethod.h
 interpolation/method/knn/GridBox.cc
 interpolation/method/knn/GridBox.h
 interpolation/method/knn/GridBoxAverage.cc
