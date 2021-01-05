@@ -118,8 +118,7 @@ void ConservativeMethod::do_setup( Mesh& src_mesh, const Mesh& tgt_mesh ) {
     }
 
     mesh::actions::build_edges( src_mesh );
-    src_cell2edge_ = &( src_mesh.cells().edge_connectivity() );
-    src_edge2cell_ = &( src_mesh.edges().cell_connectivity() );
+	src_mesh_ = src_mesh;
 }
 
 void ConservativeMethod::do_execute( const Field& src_field, Field& tgt_field ) const {
@@ -128,8 +127,8 @@ void ConservativeMethod::do_execute( const Field& src_field, Field& tgt_field ) 
     auto src_vals = array::make_view<double, 1>( src_field );
     auto tgt_vals = array::make_view<double, 1>( tgt_field );
 
-    const auto& src_cell2edge = *( src_cell2edge_ );
-    const auto& src_edge2cell = *( src_edge2cell_ );
+    const auto& src_cell2edge = src_mesh_.cells().edge_connectivity();
+    const auto& src_edge2cell = src_mesh_.edges().cell_connectivity();
 
     for ( idx_t tcell = 0; tcell < tgt_vals.size(); ++tcell ) {
         tgt_vals( tcell ) = 0.;

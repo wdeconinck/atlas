@@ -70,8 +70,6 @@ protected:
     std::vector<PointXYZ> tgt_centroids_;
     std::vector<double> src_areas_;
     std::vector<double> tgt_areas_;
-    mesh::HybridElements::Connectivity* src_cell2edge_;
-    mesh::HybridElements::Connectivity* src_edge2cell_;
 
     int order_;
 
