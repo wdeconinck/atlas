@@ -39,13 +39,11 @@ bool approx_eq_null( const PointXYZ& v1, const double t = ConvexSphericalPolygon
     return approx_eq( v1[0], 0., t ) && approx_eq( v1[1], 0., t ) && approx_eq( v1[2], 0., t );
 }
 
-#if DEBUG_OUTPUT or DEBUG_OUTPUT_DETAIL
 PointLonLat sph_to_lonlat( const PointXYZ& p ) {
     PointLonLat pp;
     eckit::geometry::Sphere::convertCartesianToSpherical( 1., p, pp );
     return pp;
 }
-#endif
 
 //------------------------------------------------------------------------------------------------------
 
@@ -55,11 +53,25 @@ ConvexSphericalPolygon::ConvexSphericalPolygon() : valid_( false ), size_( 0 ), 
 ConvexSphericalPolygon::ConvexSphericalPolygon( const std::vector<PointLonLat>& points ) :
     size_( points.size() ), area_( 0 ) {
     ATLAS_ASSERT( size_ < MAX_SIZE );
-    centroid_ = PointXYZ( 0, 0, 0 );
-    for ( size_t i = 0; i < points.size(); ++i ) {
-        eckit::geometry::Sphere::convertSphericalToCartesian( 1., points[i], sph_coords_[i] );
-        centroid_ = centroid_ + sph_coords_[i];
+    eckit::geometry::Sphere::convertSphericalToCartesian( 1., points[0], sph_coords_[0] );
+    centroid_  = sph_coords_[0];
+    size_t isp = 1;
+    for ( size_t i = 1; i < points.size() - 1; ++i ) {
+        eckit::geometry::Sphere::convertSphericalToCartesian( 1., points[i], sph_coords_[isp] );
+        if ( approx_eq( sph_coords_[isp], sph_coords_[isp - 1] ) ) {
+            continue;
+        }
+        centroid_ = centroid_ + sph_coords_[isp];
+        ++isp;
     }
+    eckit::geometry::Sphere::convertSphericalToCartesian( 1., points[points.size() - 1], sph_coords_[isp] );
+    if ( approx_eq( sph_coords_[isp], sph_coords_[0] ) or approx_eq( sph_coords_[isp], sph_coords_[isp - 1] ) ) {
+    }
+    else {
+        centroid_ = centroid_ + sph_coords_[isp];
+        ++isp;
+    }
+    size_  = isp;
     valid_ = size_ > 2;
     if ( valid_ ) {
         ATLAS_ASSERT( validate() );
@@ -88,11 +100,11 @@ ConvexSphericalPolygon::ConvexSphericalPolygon( const std::vector<PointXYZ>& poi
 bool ConvexSphericalPolygon::validate() {
     if ( valid_ ) {
         for ( int i = 0; i < size(); i++ ) {
-            int ni  = ( i != size() - 1 ? i + 1 : 0 );
-            int nni = ( ni != size() - 1 ? ni + 1 : 0 );
-            ATLAS_ASSERT( leftOf( sph_coords_[nni], sph_coords_[i], sph_coords_[ni] ) );
-            if ( !leftOf( sph_coords_[nni], sph_coords_[i], sph_coords_[ni] ) ) {
-                valid_ = false;
+            int ni      = ( i != size() - 1 ? i + 1 : 0 );
+            int nni     = ( ni != size() - 1 ? ni + 1 : 0 );
+            bool convex = leftOf( sph_coords_[nni], sph_coords_[i], sph_coords_[ni] );
+            valid_      = valid_ && leftOf( sph_coords_[nni], sph_coords_[i], sph_coords_[ni] );
+            if ( not valid_ ) {
                 return valid_;
             }
         }

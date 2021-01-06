@@ -45,24 +45,22 @@ Grid localgrid( int nx, int ny ) {
     return Grid{gridspec};
 }
 
-double func( const double& lon, const double& lat ) {
-    return lon + lat;
-}
-
 double func( const double& x, const double& y, const double& z ) {
-    return 1.; //100 * x + 10 * y + z;
+    return 1.;  //100 * x + 10 * y + z;
 }
 
 
 CASE( "test_interpolation_conservative" ) {
-    Grid src_grid = Grid( "O4" );
-    Grid tgt_grid = Grid( "O8" );
-    MeshGenerator meshgen( "structured" );
-    Mesh src_mesh = meshgen.generate( src_grid );
-    Mesh tgt_mesh = meshgen.generate( tgt_grid );
+    Grid src_grid = Grid( "H4" );
+    Grid tgt_grid = Grid( "O4" );
+    auto src_meshgen = MeshGenerator{"healpix"};
+    auto tgt_meshgen = MeshGenerator{"structured", util::Config( "include_pole", true )};
+    //auto tgt_meshgen = MeshGenerator{ "structured", util::Config("patch_pole", false) }; // dont!
+    Mesh src_mesh    = src_meshgen.generate( src_grid );
+    Mesh tgt_mesh    = tgt_meshgen.generate( tgt_grid );
 
     util::Config config;
-    config.set( "order", 1 );
+    config.set( "order", 2 );
     ConservativeMethod conservativeMethod( config );
 
     functionspace::CellColumns src_fs( src_mesh );
@@ -91,7 +89,7 @@ CASE( "test_interpolation_conservative" ) {
         }
         err += std::abs( conservativeMethod.src_area( scell ) - scell_area );
     }
-	Log::info() <<" Total conservation error: " <<err <<"\n";
+    Log::info() << " Total conservation error: " << err << "\n";
 
     // validate error
     err = 0.;

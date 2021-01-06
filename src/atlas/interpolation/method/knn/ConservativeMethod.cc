@@ -72,7 +72,7 @@ void ConservativeMethod::do_setup( Mesh& src_mesh, const Mesh& tgt_mesh ) {
         pts_ll.clear();
         pts_ll.resize( nb_nodes );
         for ( idx_t jnode = 0; jnode < nb_nodes; ++jnode ) {
-            idx_t inode                  = src_node_connectivity( jcell, jnode );
+            idx_t inode   = src_node_connectivity( jcell, jnode );
             pts_ll[jnode] = PointLonLat{src_lonlat( inode, 0 ), src_lonlat( inode, 1 )};
         }
         src_csp[jcell] = CSPolygon( pts_ll );
@@ -88,7 +88,7 @@ void ConservativeMethod::do_setup( Mesh& src_mesh, const Mesh& tgt_mesh ) {
         pts_ll.clear();
         pts_ll.resize( nb_nodes );
         for ( idx_t jnode = 0; jnode < nb_nodes; ++jnode ) {
-            idx_t inode                  = tgt_node_connectivity( jcell, jnode );
+            idx_t inode   = tgt_node_connectivity( jcell, jnode );
             pts_ll[jnode] = PointLonLat{tgt_lonlat( inode, 0 ), tgt_lonlat( inode, 1 )};
         }
         tgt_csp[jcell] = CSPolygon( pts_ll );
@@ -96,10 +96,10 @@ void ConservativeMethod::do_setup( Mesh& src_mesh, const Mesh& tgt_mesh ) {
 
     // brute force (!) needs to be changed
     iparam_.resize( src_nb_cells );
-	eckit::Channel blackhole;
-	eckit::ProgressTimer progress( "Intersecting polygons ", src_nb_cells, " cell",
-		double( 10 ), src_nb_cells > 50 ? Log::info() : blackhole );
-    for ( idx_t scell = 0; scell < src_nb_cells; ++scell, ++progress) {
+    eckit::Channel blackhole;
+    eckit::ProgressTimer progress( "Intersecting polygons ", src_nb_cells, " cell", double( 10 ),
+                                   src_nb_cells > 50 ? Log::info() : blackhole );
+    for ( idx_t scell = 0; scell < src_nb_cells; ++scell, ++progress ) {
         src_centroids_[scell] = src_csp[scell].centroid();
         src_areas_[scell]     = src_csp[scell].area();
         for ( idx_t tcell = 0; tcell < tgt_nb_cells; ++tcell ) {
@@ -117,8 +117,10 @@ void ConservativeMethod::do_setup( Mesh& src_mesh, const Mesh& tgt_mesh ) {
         tgt_areas_[tcell]     = tgt_csp[tcell].area();
     }
 
-    mesh::actions::build_edges( src_mesh );
-	src_mesh_ = src_mesh;
+    if ( order_ > 1 ) {
+        mesh::actions::build_edges( src_mesh );  // needed for gradient
+    }
+    src_mesh_ = src_mesh;
 }
 
 void ConservativeMethod::do_execute( const Field& src_field, Field& tgt_field ) const {
@@ -142,6 +144,8 @@ void ConservativeMethod::do_execute( const Field& src_field, Field& tgt_field ) 
             src_neighbour_cells.reserve( src_nb_edges );
             for ( idx_t sedge = 0; sedge < src_nb_edges; ++sedge ) {
                 idx_t iedge = src_cell2edge( scell, sedge );
+                ATLAS_ASSERT( iedge < src_mesh_.edges().size() );
+                ATLAS_ASSERT( iedge < src_edge2cell.rows() );
                 idx_t cell0 = src_edge2cell( iedge, 0 );
                 idx_t cell1 = src_edge2cell( iedge, 1 );
                 if ( cell0 != src_cell2edge.missing_value() && cell0 != scell ) {
