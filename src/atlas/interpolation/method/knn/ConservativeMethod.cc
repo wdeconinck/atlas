@@ -118,7 +118,7 @@ void ConservativeMethod::do_setup( Mesh& src_mesh, const Mesh& tgt_mesh ) {
     }
 
     if ( order_ > 1 ) {
-        mesh::actions::build_edges( src_mesh );  // needed for gradient
+        mesh::actions::build_edges( src_mesh, util::Config( "pole_edges", false ) );
     }
     src_mesh_ = src_mesh;
 }

@@ -51,13 +51,13 @@ double func( const double& x, const double& y, const double& z ) {
 
 
 CASE( "test_interpolation_conservative" ) {
-    Grid src_grid = Grid( "H4" );
-    Grid tgt_grid = Grid( "O4" );
+    Grid src_grid    = Grid( "H4" );
+    Grid tgt_grid    = Grid( "O4" );
     auto src_meshgen = MeshGenerator{"healpix"};
     auto tgt_meshgen = MeshGenerator{"structured", util::Config( "include_pole", true )};
     //auto tgt_meshgen = MeshGenerator{ "structured", util::Config("patch_pole", false) }; // dont!
-    Mesh src_mesh    = src_meshgen.generate( src_grid );
-    Mesh tgt_mesh    = tgt_meshgen.generate( tgt_grid );
+    Mesh src_mesh = src_meshgen.generate( src_grid );
+    Mesh tgt_mesh = tgt_meshgen.generate( tgt_grid );
 
     util::Config config;
     config.set( "order", 2 );
