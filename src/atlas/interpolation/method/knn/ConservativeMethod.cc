@@ -8,24 +8,17 @@
  * nor does it submit to any jurisdiction. and Interpolation
  */
 
-
-#include "atlas/interpolation/method/knn/ConservativeMethod.h"
-
-#include <algorithm>
 #include <vector>
 
-//#include "eckit/log/Plural.h"
-//#include "eckit/log/ProgressTimer.h"
-//#include "eckit/types/FloatCompare.h"
+#include "eckit/log/ProgressTimer.h"
 
 #include "atlas/grid.h"
+#include "atlas/interpolation/method/knn/ConservativeMethod.h"
 #include "atlas/mesh/actions/BuildEdges.h"
 #include "atlas/parallel/mpi/mpi.h"
 #include "atlas/runtime/Exception.h"
 #include "atlas/runtime/Log.h"
 #include "atlas/runtime/Trace.h"
-
-#include "eckit/log/ProgressTimer.h"
 
 namespace atlas {
 namespace interpolation {
@@ -36,15 +29,6 @@ using CSPolygon = util::ConvexSphericalPolygon;
 ConservativeMethod::ConservativeMethod( const util::Config& config ) {
     config.get( "order", order_ = 2 );
 }
-
-//void ConservativeMethod::print( std::ostream& out ) const {
-//    out << "ConservativeMethod[]";
-//}
-
-
-//void ConservativeMethod::do_setup( const FunctionSpace& /*source*/, const FunctionSpace& /*target*/ ) {
-//    ATLAS_NOTIMPLEMENTED;
-//}
 
 void ConservativeMethod::do_setup( Mesh& src_mesh, const Mesh& tgt_mesh ) {
     ATLAS_TRACE( "ConservativeMethod::do_setup()" );
@@ -123,7 +107,7 @@ void ConservativeMethod::do_setup( Mesh& src_mesh, const Mesh& tgt_mesh ) {
     src_mesh_ = src_mesh;
 }
 
-void ConservativeMethod::do_execute( const Field& src_field, Field& tgt_field ) const {
+double ConservativeMethod::do_execute( const Field& src_field, Field& tgt_field ) const {
     ATLAS_TRACE( "ConservativeMethod::do_execute()" );
 
     auto src_vals = array::make_view<double, 1>( src_field );
@@ -136,6 +120,7 @@ void ConservativeMethod::do_execute( const Field& src_field, Field& tgt_field ) 
         tgt_vals( tcell ) = 0.;
     }
     for ( idx_t scell = 0; scell < src_vals.size(); ++scell ) {
+		const auto& iparam = iparam_[scell];
         PointXYZ grad = {0., 0., 0.};
         if ( order_ > 1 ) {
             // get cell neighbours
@@ -172,18 +157,48 @@ void ConservativeMethod::do_execute( const Field& src_field, Field& tgt_field ) 
                         PointXYZ::mul( PointXYZ::cross( src_centroids_[ncell], src_centroids_[nncell] ), coeff ) );
                 }
             }
-            grad = PointXYZ::mul( grad, ( dual_area > 0. ? 1. / dual_area : 1. ) );
+            grad = PointXYZ::div( grad, ( dual_area > 0. ? dual_area : 1. ) );
         }
-        for ( idx_t icell = 0; icell < iparam_[scell].centroids.size(); ++icell ) {
-            // NOTE: check if this is correct barycenter of the source cell!!
-            tgt_vals( iparam_[scell].cell_id[icell] ) +=
-                iparam_[scell].weights[icell] *
-                ( src_vals( scell ) + PointXYZ::dot( grad, iparam_[scell].centroids[icell] - src_centroids_[scell] ) );
+		PointXYZ src_barycenter = PointXYZ{0,0,0};
+        for ( idx_t icell = 0; icell < iparam.centroids.size(); ++icell ) {
+			src_barycenter = src_barycenter + 
+				PointXYZ::mul( iparam.centroids[icell], iparam.weights[icell] );
+		}
+		src_barycenter = PointXYZ::div( src_barycenter, PointXYZ::norm( src_barycenter ) );
+		grad = grad - PointXYZ::mul( src_barycenter, PointXYZ::dot(grad, src_barycenter ) );
+		ATLAS_ASSERT( std::abs( PointXYZ::dot(grad, src_barycenter) ) < tol );
+        for ( idx_t icell = 0; icell < iparam.centroids.size(); ++icell ) {
+            tgt_vals( iparam.cell_id[icell] ) +=
+                iparam.weights[icell] *
+                ( src_vals( scell ) + PointXYZ::dot( grad, iparam.centroids[icell] -
+src_barycenter ) );
+                //( src_vals( scell ) + PointXYZ::dot( grad, iparam.centroids[icell] - src_centroids_[scell] ) );
         }
     }
     for ( idx_t tcell = 0; tcell < tgt_vals.size(); ++tcell ) {
         tgt_vals( tcell ) /= tgt_areas_[tcell];
     }
+
+	// local conservation
+	double err = 0.;
+    for ( idx_t scell = 0; scell < src_vals.size(); ++scell ) {
+        double tgt_sum_cell = 0.;
+        const auto& iparam = iparam_[scell];
+        for ( idx_t icell = 0; icell < iparam.weights.size(); ++icell ) {
+            tgt_sum_cell += tgt_vals( iparam.cell_id[icell] ) * iparam.weights[icell];
+        }
+        err += std::abs( src_vals( scell ) * src_areas_[scell] - tgt_sum_cell );
+    }
+	// global conservation
+	double src_sum  = 0.;
+	double tgt_sum  = 0.;
+    for ( idx_t scell = 0; scell < src_vals.size(); ++scell ) {
+        src_sum += src_vals( scell ) * src_areas_[scell];
+	}
+    for ( idx_t tcell = 0; tcell < tgt_vals.size(); ++tcell ) {
+        tgt_sum += tgt_vals( tcell ) * tgt_areas_[tcell];
+	}
+	return src_sum - tgt_sum;
 }
 
 

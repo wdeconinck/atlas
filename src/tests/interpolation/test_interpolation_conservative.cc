@@ -46,13 +46,14 @@ Grid localgrid( int nx, int ny ) {
 }
 
 double func( const double& x, const double& y, const double& z ) {
-    return 1.;  //100 * x + 10 * y + z;
+    return 100 * x + 10 * y + z;
+    //return 1.;
 }
 
 
 CASE( "test_interpolation_conservative" ) {
-    Grid src_grid    = Grid( "H4" );
-    Grid tgt_grid    = Grid( "O4" );
+    Grid src_grid    = Grid( "H5" );
+    Grid tgt_grid    = Grid( "O8" );
     auto src_meshgen = MeshGenerator{"healpix"};
     auto tgt_meshgen = MeshGenerator{"structured", util::Config( "include_pole", true )};
     //auto tgt_meshgen = MeshGenerator{ "structured", util::Config("patch_pole", false) }; // dont!
@@ -60,7 +61,7 @@ CASE( "test_interpolation_conservative" ) {
     Mesh tgt_mesh = tgt_meshgen.generate( tgt_grid );
 
     util::Config config;
-    config.set( "order", 2 );
+    config.set( "order", 1 );
     ConservativeMethod conservativeMethod( config );
 
     functionspace::CellColumns src_fs( src_mesh );
@@ -77,27 +78,19 @@ CASE( "test_interpolation_conservative" ) {
         src_vals( scell ) = func( p[0], p[1], p[2] );
     }
 
-    conservativeMethod.do_execute( src_field, tgt_field );
+    double cons_err = conservativeMethod.do_execute( src_field, tgt_field );
 
-    // validate first order conservation property
-    double err = 0.;
-    for ( idx_t scell = 0; scell < src_vals.size(); ++scell ) {
-        double scell_area  = 0.;
-        const auto& iparam = conservativeMethod.iparam();
-        for ( idx_t icell = 0; icell < iparam[scell].weights.size(); ++icell ) {
-            scell_area += iparam[scell].weights[icell];
-        }
-        err += std::abs( conservativeMethod.src_area( scell ) - scell_area );
-    }
-    Log::info() << " Total conservation error: " << err << "\n";
+	EXPECT_APPROX_EQ( cons_err, 0., 1e-10 );
+    Log::info() << "global conservation error: " << cons_err << "\n";
 
     // validate error
-    err = 0.;
+    double err = 0.;
     for ( idx_t tcell = 0; tcell < tgt_vals.size(); ++tcell ) {
         auto p = conservativeMethod.tgt_centroid( tcell );
-        err += std::abs( tgt_vals( tcell ) - func( p[0], p[1], p[2] ) );
+		double err_l = std::abs( tgt_vals( tcell ) - func( p[0], p[1], p[2] ) );
+        err += err_l * err_l;
     }
-    err /= tgt_vals.size();
+    err = std::sqrt( err / ( 4 * M_PI * tgt_vals.size() ) );
     Log::info() << "target field err: " << err << "\n";
 }
 

@@ -27,6 +27,8 @@ namespace method {
 
 class ConservativeMethod {
 public:
+	static constexpr double tol = 1e-14;
+
     ConservativeMethod( const util::Config& = util::NoConfig() );
 
     struct InterpolationParameters {
@@ -53,7 +55,7 @@ public:
     //const FunctionSpace& target() const { return target_; }
 
     //void do_execute( const FieldSet& source, FieldSet& target ) const override;
-    void do_execute( const Field& src_field, Field& tgt_field ) const;
+    double do_execute( const Field& src_field, Field& tgt_field ) const;
 
     const std::vector<InterpolationParameters>& iparam() const { return iparam_; }
     const PointXYZ& src_centroid( size_t id ) const { return src_centroids_[id]; }
