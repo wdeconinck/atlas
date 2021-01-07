@@ -24,7 +24,7 @@ class PartitionPolygon;
 
 class ConvexSphericalPolygon {
 public:
-    static constexpr int MAX_SIZE = 8;
+    static constexpr int MAX_SIZE = 9;
     static constexpr double eps_  = 1e-7;  // 1e-8 did not work for i=1,j=13 of test_spherical_geo.cc !!
 
     ConvexSphericalPolygon();
