@@ -45,23 +45,25 @@ Grid localgrid( int nx, int ny ) {
     return Grid{gridspec};
 }
 
-double func( const double& x, const double& y, const double& z ) {
-    return 100 * x + 10 * y + z;
+double func( const PointLonLat& p ) {
+	double cos = std::cos(p[0]);
+    return 2. + cos * cos * std::cos(2*p[1]);
     //return 1.;
 }
 
-
 CASE( "test_interpolation_conservative" ) {
-    Grid src_grid    = Grid( "H5" );
-    Grid tgt_grid    = Grid( "O8" );
-    auto src_meshgen = MeshGenerator{"healpix"};
-    auto tgt_meshgen = MeshGenerator{"structured", util::Config( "include_pole", true )};
-    //auto tgt_meshgen = MeshGenerator{ "structured", util::Config("patch_pole", false) }; // dont!
+    util::Config config;
+    config.set( "order", 1 );
+    Grid src_grid    = Grid( "H4" );
+    Grid tgt_grid    = Grid( "H16" );
+
+	auto src_meshgen = ( src_grid.name() == "healpix" ? MeshGenerator{"healpix"} : MeshGenerator{"structured",
+util::Config( "include_pole", true )} );
+	auto tgt_meshgen = ( tgt_grid.name() == "healpix" ? MeshGenerator{"healpix"} : MeshGenerator{"structured",
+util::Config( "include_pole", true )} );
     Mesh src_mesh = src_meshgen.generate( src_grid );
     Mesh tgt_mesh = tgt_meshgen.generate( tgt_grid );
 
-    util::Config config;
-    config.set( "order", 1 );
     ConservativeMethod conservativeMethod( config );
 
     functionspace::CellColumns src_fs( src_mesh );
@@ -71,27 +73,40 @@ CASE( "test_interpolation_conservative" ) {
     auto src_vals  = array::make_view<double, 1>( src_field );
     auto tgt_vals  = array::make_view<double, 1>( tgt_field );
 
+	auto start = std::chrono::system_clock::now();
     conservativeMethod.do_setup( src_mesh, tgt_mesh );
+    std::chrono::duration<double> elapsed_seconds = std::chrono::system_clock::now() - start;
+	Log::info() << "ConservativeMethod::do_setup took " << elapsed_seconds.count() << " seconds.\n";
 
     for ( idx_t scell = 0; scell < src_vals.size(); ++scell ) {
-        auto p            = conservativeMethod.src_centroid( scell );
-        src_vals( scell ) = func( p[0], p[1], p[2] );
+		auto p = conservativeMethod.src_centroid( scell );
+		PointLonLat pll;
+		eckit::geometry::Sphere::convertCartesianToSpherical( 1., p, pll );
+        src_vals( scell ) = func( pll );
     }
 
+	start = std::chrono::system_clock::now();
     double cons_err = conservativeMethod.do_execute( src_field, tgt_field );
+    elapsed_seconds = std::chrono::system_clock::now() - start;
+	Log::info() << "ConservativeMethod::do_execute took " << elapsed_seconds.count() << " seconds.\n";
 
-	EXPECT_APPROX_EQ( cons_err, 0., 1e-10 );
+	EXPECT_APPROX_EQ( cons_err, 0., 1e-9 );
     Log::info() << "global conservation error: " << cons_err << "\n";
 
-    // validate error
-    double err = 0.;
+    double err_2 = 0.;
+    double err_max = 0.;
     for ( idx_t tcell = 0; tcell < tgt_vals.size(); ++tcell ) {
-        auto p = conservativeMethod.tgt_centroid( tcell );
-		double err_l = std::abs( tgt_vals( tcell ) - func( p[0], p[1], p[2] ) );
-        err += err_l * err_l;
+		auto p = conservativeMethod.tgt_centroid( tcell );
+        PointLonLat pll;
+        eckit::geometry::Sphere::convertCartesianToSpherical( 1., p, pll );
+		double afunc = func( pll );
+		double err_l = std::abs( (tgt_vals( tcell ) - afunc) / afunc );
+        err_2 += err_l * err_l * conservativeMethod.tgt_area( tcell );
+        err_max = std::max( err_max, err_l * conservativeMethod.tgt_area( tcell ) );
     }
-    err = std::sqrt( err / ( 4 * M_PI * tgt_vals.size() ) );
-    Log::info() << "target field err: " << err << "\n";
+	err_2 = std::sqrt(err_2 * 0.25 * M_1_PI );
+	err_max *= 0.25 * M_1_PI;
+    Log::info() << "remap error : (L2) " << err_2 <<" (Lmax) " <<err_max << "\n";
 }
 
 }  // namespace test
