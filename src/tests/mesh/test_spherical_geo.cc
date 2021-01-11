@@ -81,9 +81,9 @@ CASE( "test_spherical_polygon_intersection" ) {
         getCSPolygon( {{0, 70}, {0, 60}, {40, 60}, {40, 70}} ),
         getCSPolygon( {{0, 65.5}, {6.9, 70.6}, {0, 70}} ),  //8
         getCSPolygon( {{0, 70}, {0, 60}, {40, 60}, {40, 70}} ),
-        getCSPolygon( {{0, 65}, {10, 61}, {40, 60}, {20, 65}} ),  //10
+        getCSPolygon( {{0, 65}, {10, 61.1}, {40, 60}, {20, 65}} ),  //10
         getCSPolygon( {{0, 60}, {40, 60}, {20, 65}} ),
-        getCSPolygon( {{12.6, 61}, {27.4, 61.3}, {30, 63}, {20, 65}, {10, 63}} ),  //12
+        getCSPolygon( {{12.6, 61.3}, {27.4, 61.3}, {30, 63}, {20, 65}, {10, 63}} ),  //12
         getCSPolygon( {{0, 70}, {1.9, 60.3}, {32.9, 60.9}, {40, 70}} ),
         getCSPolygon( {{0, 50}, {0, 40}, {5, 45}} ),  //14
         getCSPolygon( {{13.7, 61.4}, {26.3, 61.4}, {30, 70.8}, {10, 70.8}} ),
@@ -108,17 +108,14 @@ CASE( "test_spherical_polygon_intersection" ) {
     for ( int i = 0; i < nplg_f; i++ ) {
         for ( int j = 0; j < nplg_g; j++ ) {
             Log::info() << "\n(" << i * nplg_g + j << ") Intersecting polygon\n    " << plg_f[i] << std::endl;
-            Log::info() << "of area: " << plg_f[i].area() << ", convex: " << plg_f[i].validate() << std::endl;
             Log::info() << "with polygon\n    " << plg_g[j] << std::endl;
-            Log::info() << "of area: " << plg_g[j].area() << ", convex: " << plg_g[j].validate() << std::endl;
             auto plg_fg = plg_f[i].intersect( plg_g[j] );
             auto plg_gf = plg_g[j].intersect( plg_f[i] );
             Log::info() << "got polygon\n    ";
             if ( plg_fg ) {
                 Log::info() << plg_fg << std::endl;
-                Log::info() << "of area: " << plg_fg.area() << ", convex: " << plg_g[j].validate() << std::endl;
                 EXPECT( plg_fg.equals( plg_gf ) );
-                EXPECT( plg_fg.equals( plg_i[i * nplg_g + j], 0.5 ) );
+                EXPECT( plg_fg.equals( plg_i[i * nplg_g + j], 0.05 ) );
             }
             else {
                 Log::info() << "	empty" << std::endl;

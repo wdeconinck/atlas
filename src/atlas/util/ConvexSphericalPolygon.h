@@ -25,7 +25,7 @@ class PartitionPolygon;
 class ConvexSphericalPolygon {
 public:
     static constexpr int MAX_SIZE = 9;
-    static constexpr double eps_  = 1e-7;  // 1e-8 did not work for i=1,j=13 of test_spherical_geo.cc !!
+    static constexpr double eps_  = 1e-7;
 
     ConvexSphericalPolygon();
     ConvexSphericalPolygon( const std::vector<PointLonLat>& points );
@@ -75,7 +75,7 @@ public:
    * @param[in] P given point in (x,y,z) coordinates
    * @return true if equal vertices
    */
-    bool equals( const ConvexSphericalPolygon& plg, const double prec = eps_ ) const;
+    bool equals( const ConvexSphericalPolygon& plg, const double deg_prec = eps_ ) const;
 
     /*
    * @return true:polygon is convex
@@ -98,8 +98,7 @@ private:
    * @param[in] i starting edge of plg1
    * @param[in] j starting edge of plg2
    */
-    int nextIntersect( std::vector<PointXYZ>& plg_points, const ConvexSphericalPolygon& plg1, int i, int j,
-                       int inside = 0 ) const;
+    int nextIntersect( int control, std::vector<PointXYZ>& plg_points, const ConvexSphericalPolygon& plg1, int i, int j, int inside = 0 ) const;
 
     void compute_area();
 
