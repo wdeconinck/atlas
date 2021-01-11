@@ -45,22 +45,15 @@ Grid localgrid( int nx, int ny ) {
     return Grid{gridspec};
 }
 
-double func( const PointLonLat& p ) {
-	double cos = std::cos(p[0]);
-    return 2. + cos * cos * std::cos(2*p[1]);
-    //return 1.;
-}
-
-CASE( "test_interpolation_conservative" ) {
+void do_remapping_test( Grid src_grid, Grid tgt_grid, double func(const PointLonLat&), int order ) {
+	Log::info() << " ====== " << src_grid.name() <<" --> " << tgt_grid.name() <<" " << order <<". order\n";
     util::Config config;
-    config.set( "order", 1 );
-    Grid src_grid    = Grid( "H4" );
-    Grid tgt_grid    = Grid( "H16" );
+    config.set( "order", order );
 
-	auto src_meshgen = ( src_grid.name() == "healpix" ? MeshGenerator{"healpix"} : MeshGenerator{"structured",
-util::Config( "include_pole", true )} );
-	auto tgt_meshgen = ( tgt_grid.name() == "healpix" ? MeshGenerator{"healpix"} : MeshGenerator{"structured",
-util::Config( "include_pole", true )} );
+	auto src_meshgen = ( src_grid.name() == "healpix" ? MeshGenerator{"healpix"} : MeshGenerator{"structured", util::Config( "include_pole", true )} );
+	auto tgt_meshgen = ( tgt_grid.name() == "healpix" ? MeshGenerator{"healpix"} : MeshGenerator{"structured", util::Config( "include_pole", true )} );
+	//auto src_meshgen = MeshGenerator{"structured", util::Config( "include_pole", true )};
+	//auto tgt_meshgen = MeshGenerator{"structured", util::Config( "include_pole", true )};
     Mesh src_mesh = src_meshgen.generate( src_grid );
     Mesh tgt_mesh = tgt_meshgen.generate( tgt_grid );
 
@@ -89,9 +82,7 @@ util::Config( "include_pole", true )} );
     double cons_err = conservativeMethod.do_execute( src_field, tgt_field );
     elapsed_seconds = std::chrono::system_clock::now() - start;
 	Log::info() << "ConservativeMethod::do_execute took " << elapsed_seconds.count() << " seconds.\n";
-
-	EXPECT_APPROX_EQ( cons_err, 0., 1e-9 );
-    Log::info() << "global conservation error: " << cons_err << "\n";
+    Log::info() << "	global conservation error: " << cons_err << "\n";
 
     double err_2 = 0.;
     double err_max = 0.;
@@ -106,7 +97,42 @@ util::Config( "include_pole", true )} );
     }
 	err_2 = std::sqrt(err_2 * 0.25 * M_1_PI );
 	err_max *= 0.25 * M_1_PI;
-    Log::info() << "remap error : (L2) " << err_2 <<" (Lmax) " <<err_max << "\n";
+    Log::info() << "	remap error : (L2) " << err_2 <<" (Lmax) " <<err_max << "\n";
+}
+
+CASE( "test_interpolation_conservative" ) {
+
+	SECTION( "analytic function = 1" ) {
+		auto func = []( const PointLonLat& p ) {
+    		return 1.;
+		};
+		do_remapping_test( Grid("F2"), Grid("O8"), func, 1 );
+		do_remapping_test( Grid("O2"), Grid("N16"), func, 1 );
+		do_remapping_test( Grid("N16"), Grid("H3"), func, 1 );
+	}
+
+	SECTION( "analytic Y_2^2 as in Jones" ) {
+		auto func = []( const PointLonLat& p ) {
+			double cos = std::cos(p[0]);
+    		return 2. + cos * cos * std::cos(2*p[1]);
+		};
+		do_remapping_test( Grid("F2"), Grid("O8"), func, 1 );
+		do_remapping_test( Grid("O2"), Grid("N16"), func, 1 );
+		do_remapping_test( Grid("N16"), Grid("H3"), func, 1 );
+	}
+
+	SECTION( "analytic Hill as in Jones" ) {
+		auto func = []( const PointLonLat& p ) {
+			PointXYZ c = {1.,0.,0.};
+			PointXYZ p_sph;
+        	eckit::geometry::Sphere::convertSphericalToCartesian( 1., p, p_sph );
+			double r = PointXYZ::norm( p_sph - c );
+    		return 2. + std::cos( M_PI * r / 0.2 );
+		};
+		do_remapping_test( Grid("F2"), Grid("O8"), func, 1 );
+		do_remapping_test( Grid("O2"), Grid("N16"), func, 1 );
+		do_remapping_test( Grid("N16"), Grid("H3"), func, 1 );
+	}
 }
 
 }  // namespace test
