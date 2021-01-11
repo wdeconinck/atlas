@@ -112,20 +112,24 @@ bool ConvexSphericalPolygon::validate() {
     return valid_;
 }
 
-bool ConvexSphericalPolygon::equals( const ConvexSphericalPolygon& plg, const double prec ) const {
+bool ConvexSphericalPolygon::equals( const ConvexSphericalPolygon& plg, const double deg_prec ) const {
     const int sz = size();
+	const double le = 2.* std::sin( deg_prec / 90. );
     if ( sz != plg.size() ) {
         return false;
     }
     int i = 0;
-    for ( ; i < sz; i++ ) {
-        if ( approx_eq( plg.sph_coords_[i], this->sph_coords_[i], prec ) ) {
+    for ( ; i < sz; ++i ) {
+        if ( PointXYZ::norm( plg.sph_coords_[i] - sph_coords_[i] ) < le ) {
             break;
         }
     }
+	if ( i == sz ) {
+		 return false;
+	}
     for ( int j = 0; j < sz; j++ ) {
         int idx = ( i + j ) % sz;
-        if ( !approx_eq( plg.sph_coords_[idx], this->sph_coords_[idx], prec ) ) {
+        if ( PointXYZ::norm( plg.sph_coords_[idx] - sph_coords_[idx] ) > le ) {
             return false;
         }
     }
@@ -302,7 +306,7 @@ ConvexSphericalPolygon ConvexSphericalPolygon::intersect( const ConvexSphericalP
     }
     if ( jj != -1 ) {
         iplg_p.emplace_back( ip );
-        int intersect = nextIntersect( iplg_p, plg, ii, jj, 0 );
+        int intersect = nextIntersect( 0, iplg_p, plg, ii, jj, 0 );
         iplg_p.pop_back();
         return ( intersect ? ConvexSphericalPolygon( iplg_p ) : ConvexSphericalPolygon() );
     }
@@ -336,8 +340,14 @@ ConvexSphericalPolygon ConvexSphericalPolygon::intersect( const ConvexSphericalP
     }
 }
 
-int ConvexSphericalPolygon::nextIntersect( std::vector<PointXYZ>& iplg_p, const ConvexSphericalPolygon& plg,
-                                           const int ii0, const int jj0, const int inside ) const {
+int ConvexSphericalPolygon::nextIntersect( int control, std::vector<PointXYZ>& iplg_p, const ConvexSphericalPolygon& plg, const int ii0, const int jj0, const int inside ) const {
+	//ATLAS_ASSERT( control <= MAX_SIZE );
+	if ( control > MAX_SIZE ) {
+		Log::info() <<" ** Intersecting plg " <<*this <<"\nwith plg " <<plg <<"\n";
+		Log::info() <<"    so far got plg " <<iplg_p <<"\n";
+		Log::info().flush();
+		ATLAS_ASSERT( false );
+	}
     const int n_iplg = iplg_p.size() - 1;
     const int n_plg1 = size();
     const int n_plg2 = plg.size();
@@ -349,13 +359,13 @@ int ConvexSphericalPolygon::nextIntersect( std::vector<PointXYZ>& iplg_p, const 
 
     const PointXYZ* pnp1 = &sph_coords_[nii];
     const PointXYZ* pnp2 = &plg.sph_coords_[njj];
-    if ( !inside && approx_eq_null( P - *pnp1 ) ) {
+    if ( !inside && approx_eq( P, *pnp1 ) ) {
         int nnii = ( nii != n_plg1 - 1 ) ? nii + 1 : 0;
         ii       = nii;
         nii      = nnii;
         pnp1     = &sph_coords_[nii];
     }
-    if ( !inside && approx_eq_null( P - *pnp2 ) ) {
+    if ( !inside && approx_eq( P, *pnp2 ) ) {
         int nnjj = ( njj != n_plg2 - 1 ) ? njj + 1 : 0;
         jj       = njj;
         njj      = nnjj;
@@ -375,15 +385,15 @@ int ConvexSphericalPolygon::nextIntersect( std::vector<PointXYZ>& iplg_p, const 
     std::cout << "P = " << sph_to_lonlat( P );
     std::cout.flush();
 #endif
-    if ( n_iplg > 1 && approx_eq_null( iplg_p[0] - iplg_p[n_iplg] ) ) {
+    if ( n_iplg > 1 && approx_eq( iplg_p[0], iplg_p[n_iplg] ) ) {
         return 1;
     }
 
     PointXYZ ip;  //next vertex of the iplg
     int new_ii           = ii;
     int new_jj           = jj;
-    const bool P_eq_plgi = approx_eq_null( P - sph_coords_[ii] );
-    const bool P_eq_plgj = approx_eq_null( P - plg.sph_coords_[jj] );
+    const bool P_eq_plgi = approx_eq( P, sph_coords_[ii] );
+    const bool P_eq_plgj = approx_eq( P, plg.sph_coords_[jj] );
 #if DEBUG_OUTPUT_DETAIL
     std::cout << "   P_eq_plgi, P_eq_plgj: " << P_eq_plgi << ", " << P_eq_plgj << "\n";
     std::cout.flush();
@@ -392,7 +402,7 @@ int ConvexSphericalPolygon::nextIntersect( std::vector<PointXYZ>& iplg_p, const 
     if ( inside ) {
         if ( P_eq_plgi ) {
             new_jj       = -1 + plg.intersect( P, np1, ip, njj );
-            bool ip_eq_P = approx_eq_null( ip - iplg_p[n_iplg] );
+            bool ip_eq_P = approx_eq( ip, iplg_p[n_iplg] );
             if ( new_jj == -1 || ip_eq_P ) {  // no intersection of plg with [P,np1] means np1 is inside plg
 #if DEBUG_OUTPUT_DETAIL
                 std::cout << "   inside of plg: no intersection with polygon.\n";
@@ -400,7 +410,7 @@ int ConvexSphericalPolygon::nextIntersect( std::vector<PointXYZ>& iplg_p, const 
 #endif
                 if ( plg.contains( np1 ) == 1 ) {
                     iplg_p.emplace_back( np1 );
-                    return nextIntersect( iplg_p, plg, nii, jj, 1 );
+                    return nextIntersect( control+1, iplg_p, plg, nii, jj, 1 );
                 }
                 else {
 #if DEBUG_OUTPUT_DETAIL
@@ -417,12 +427,12 @@ int ConvexSphericalPolygon::nextIntersect( std::vector<PointXYZ>& iplg_p, const 
                 std::cout.flush();
 #endif
                 iplg_p.emplace_back( ip );
-                return nextIntersect( iplg_p, plg, ii, new_jj, 0 );
+                return nextIntersect( control+1, iplg_p, plg, ii, new_jj, 0 );
             }
         }
         else {
             new_ii       = -1 + this->intersect( P, np2, ip, nii );
-            bool ip_eq_P = approx_eq_null( ip - iplg_p[n_iplg] );
+            bool ip_eq_P = approx_eq( ip, iplg_p[n_iplg] );
             if ( new_ii == -1 || ip_eq_P ) {  // no intersection of this with [P,np2]
 #if DEBUG_OUTPUT_DETAIL
                 std::cout << "   inside of this: no intersection with polygon.\n";
@@ -430,7 +440,7 @@ int ConvexSphericalPolygon::nextIntersect( std::vector<PointXYZ>& iplg_p, const 
 #endif
                 if ( this->contains( np2 ) == 1 ) {
                     iplg_p.emplace_back( np2 );
-                    return nextIntersect( iplg_p, plg, ii, njj, 1 );
+                    return nextIntersect( control+1, iplg_p, plg, ii, njj, 1 );
                 }
                 else {
 #if DEBUG_OUTPUT_DETAIL
@@ -447,7 +457,7 @@ int ConvexSphericalPolygon::nextIntersect( std::vector<PointXYZ>& iplg_p, const 
                 std::cout.flush();
 #endif
                 iplg_p.emplace_back( ip );
-                return nextIntersect( iplg_p, plg, new_ii, jj, 0 );
+                return nextIntersect( control+1, iplg_p, plg, new_ii, jj, 0 );
             }
         }
         ATLAS_ASSERT( false );
@@ -464,11 +474,11 @@ int ConvexSphericalPolygon::nextIntersect( std::vector<PointXYZ>& iplg_p, const 
         // polygon edges overlap
         if ( onSegment( np1, P, np2 ) ) {
             iplg_p.emplace_back( np1 );
-            return nextIntersect( iplg_p, plg, ii, jj, 0 );
+            return nextIntersect( control+1, iplg_p, plg, ii, jj, 0 );
         }
         else if ( onSegment( np2, P, np1 ) ) {
             iplg_p.emplace_back( np2 );
-            return nextIntersect( iplg_p, plg, ii, jj, 0 );
+            return nextIntersect( control+1, iplg_p, plg, ii, jj, 0 );
         }
         else if ( onSegment( P, np1, np2 ) ) {
             // polygons intersect only on segment --> no polygon intersection
@@ -486,14 +496,14 @@ int ConvexSphericalPolygon::nextIntersect( std::vector<PointXYZ>& iplg_p, const 
 #endif
     if ( leftOf( np2, P, np1 ) ) {  // 2a) 3b)
         new_ii       = -1 + this->intersect( P, np2, ip, nii );
-        bool ip_eq_P = approx_eq_null( ip - iplg_p[n_iplg] );
+        bool ip_eq_P = approx_eq( ip, iplg_p[n_iplg] );
         if ( new_ii == -1 || ip_eq_P ) {  // no intersection of plg with [P,np2] means np2 is inside plg
 #if DEBUG_OUTPUT_DETAIL
             std::cout << "   no intersection with polygon.\n";
             std::cout.flush();
 #endif
             iplg_p.emplace_back( np2 );
-            return nextIntersect( iplg_p, plg, ii, njj, 1 );
+            return nextIntersect( control+1, iplg_p, plg, ii, njj, 1 );
         }
         else {
 #if DEBUG_OUTPUT_DETAIL
@@ -502,12 +512,12 @@ int ConvexSphericalPolygon::nextIntersect( std::vector<PointXYZ>& iplg_p, const 
             std::cout.flush();
 #endif
             iplg_p.emplace_back( ip );
-            return nextIntersect( iplg_p, plg, new_ii, new_jj, 0 );
+            return nextIntersect( control+1, iplg_p, plg, new_ii, new_jj, 0 );
         }
     }
     else {  //if ( leftOf( np1, P, np2 ) ) { // 3a) 2b)
         new_jj       = -1 + plg.intersect( P, np1, ip, njj );
-        bool ip_eq_P = approx_eq_null( ip - iplg_p[n_iplg] );
+        bool ip_eq_P = approx_eq( ip, iplg_p[n_iplg] );
         if ( new_jj == -1 || ip_eq_P ) {
 #if DEBUG_OUTPUT_DETAIL
             std::cout << "   no intersection with polygon.\n";
@@ -515,7 +525,7 @@ int ConvexSphericalPolygon::nextIntersect( std::vector<PointXYZ>& iplg_p, const 
 #endif
             // no intersection of plg2 with [P,np1] means np1 is inside plg
             iplg_p.emplace_back( np1 );
-            return nextIntersect( iplg_p, plg, nii, jj, 1 );
+            return nextIntersect( control+1, iplg_p, plg, nii, jj, 1 );
         }
         else {
 #if DEBUG_OUTPUT_DETAIL
@@ -524,7 +534,7 @@ int ConvexSphericalPolygon::nextIntersect( std::vector<PointXYZ>& iplg_p, const 
             std::cout.flush();
 #endif
             iplg_p.emplace_back( ip );
-            return nextIntersect( iplg_p, plg, new_ii, new_jj, 0 );
+            return nextIntersect( control+1, iplg_p, plg, new_ii, new_jj, 0 );
         }
     }
 }
@@ -533,7 +543,7 @@ void ConvexSphericalPolygon::print( std::ostream& out ) const {
     out << "[";
     for ( size_t i = 0; i < size(); ++i ) {
         if ( i > 0 ) {
-            out << " ";
+            out << ",";
         }
         PointLonLat ip_ll;
         eckit::geometry::Sphere::convertCartesianToSpherical( 1., sph_coords_[i], ip_ll );
