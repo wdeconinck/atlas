@@ -26,6 +26,7 @@ class ConvexSphericalPolygon {
 public:
     static constexpr int MAX_SIZE = 9;
     static constexpr double eps_  = 1e-7;
+    static constexpr double deps_ = 1e-14;
 
     ConvexSphericalPolygon();
     ConvexSphericalPolygon( const std::vector<PointLonLat>& points );
@@ -98,7 +99,8 @@ private:
    * @param[in] i starting edge of plg1
    * @param[in] j starting edge of plg2
    */
-    int nextIntersect( int control, std::vector<PointXYZ>& plg_points, const ConvexSphericalPolygon& plg1, int i, int j, int inside = 0 ) const;
+    int nextIntersect( int control, std::vector<PointXYZ>& plg_points, const ConvexSphericalPolygon& plg1, int i, int j,
+                       int inside = 0 ) const;
 
     void compute_area();
 
