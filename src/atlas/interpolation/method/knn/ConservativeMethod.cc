@@ -107,7 +107,7 @@ void ConservativeMethod::do_setup( Mesh& src_mesh, const Mesh& tgt_mesh ) {
     src_mesh_ = src_mesh;
 }
 
-double ConservativeMethod::do_execute( const Field& src_field, Field& tgt_field ) const {
+void ConservativeMethod::do_execute( const Field& src_field, Field& tgt_field ) const {
     ATLAS_TRACE( "ConservativeMethod::do_execute()" );
 
     auto src_vals = array::make_view<double, 1>( src_field );
@@ -120,8 +120,8 @@ double ConservativeMethod::do_execute( const Field& src_field, Field& tgt_field 
         tgt_vals( tcell ) = 0.;
     }
     for ( idx_t scell = 0; scell < src_vals.size(); ++scell ) {
-		const auto& iparam = iparam_[scell];
-        PointXYZ grad = {0., 0., 0.};
+        const auto& iparam = iparam_[scell];
+        PointXYZ grad      = {0., 0., 0.};
         if ( order_ > 1 ) {
             // get cell neighbours
             idx_t src_nb_edges = src_cell2edge.cols( scell );
@@ -159,46 +159,36 @@ double ConservativeMethod::do_execute( const Field& src_field, Field& tgt_field 
             }
             grad = PointXYZ::div( grad, ( dual_area > 0. ? dual_area : 1. ) );
         }
-		PointXYZ src_barycenter = PointXYZ{0,0,0};
+        PointXYZ src_barycenter = PointXYZ{0, 0, 0};
+        //	PointXYZ src_barycenter = ( iparam.centroids.size() ? PointXYZ{0,0,0} : src_centroids_[scell]);
         for ( idx_t icell = 0; icell < iparam.centroids.size(); ++icell ) {
-			src_barycenter = src_barycenter + 
-				PointXYZ::mul( iparam.centroids[icell], iparam.weights[icell] );
-		}
-		src_barycenter = PointXYZ::div( src_barycenter, PointXYZ::norm( src_barycenter ) );
-		grad = grad - PointXYZ::mul( src_barycenter, PointXYZ::dot(grad, src_barycenter ) );
-		ATLAS_ASSERT( std::abs( PointXYZ::dot(grad, src_barycenter) ) < tol );
+            src_barycenter = src_barycenter + PointXYZ::mul( iparam.centroids[icell], iparam.weights[icell] );
+        }
+        if ( PointXYZ::norm( src_barycenter ) < 1e-5 ) {
+            for ( idx_t icell = 0; icell < iparam.centroids.size(); ++icell ) {
+                src_barycenter = src_barycenter + PointXYZ::mul( iparam.centroids[icell], iparam.weights[icell] );
+                Log::info() << "bary: " << src_barycenter << ", add " << iparam.centroids[icell] << " with "
+                            << iparam.weights[icell] << "\n";
+                Log::info().flush();
+            }
+        }
+        src_barycenter = PointXYZ::div( src_barycenter, PointXYZ::norm( src_barycenter ) );
+        grad           = grad - PointXYZ::mul( src_barycenter, PointXYZ::dot( grad, src_barycenter ) );
+        //ATLAS_ASSERT( std::abs( PointXYZ::dot(grad, src_barycenter) ) < tol );
         for ( idx_t icell = 0; icell < iparam.centroids.size(); ++icell ) {
             tgt_vals( iparam.cell_id[icell] ) +=
                 iparam.weights[icell] *
-                ( src_vals( scell ) + PointXYZ::dot( grad, iparam.centroids[icell] -
-src_barycenter ) );
-                //( src_vals( scell ) + PointXYZ::dot( grad, iparam.centroids[icell] - src_centroids_[scell] ) );
+                ( src_vals( scell ) + PointXYZ::dot( grad, iparam.centroids[icell] - src_barycenter ) );
+            //( src_vals( scell ) + PointXYZ::dot( grad, iparam.centroids[icell] - src_centroids_[scell] ) );
         }
     }
     for ( idx_t tcell = 0; tcell < tgt_vals.size(); ++tcell ) {
         tgt_vals( tcell ) /= tgt_areas_[tcell];
     }
 
-	// local conservation
-	double err = 0.;
-    for ( idx_t scell = 0; scell < src_vals.size(); ++scell ) {
-        double tgt_sum_cell = 0.;
-        const auto& iparam = iparam_[scell];
-        for ( idx_t icell = 0; icell < iparam.weights.size(); ++icell ) {
-            tgt_sum_cell += tgt_vals( iparam.cell_id[icell] ) * iparam.weights[icell];
-        }
-        err += std::abs( src_vals( scell ) * src_areas_[scell] - tgt_sum_cell );
-    }
-	// global conservation
-	double src_sum  = 0.;
-	double tgt_sum  = 0.;
-    for ( idx_t scell = 0; scell < src_vals.size(); ++scell ) {
-        src_sum += src_vals( scell ) * src_areas_[scell];
-	}
-    for ( idx_t tcell = 0; tcell < tgt_vals.size(); ++tcell ) {
-        tgt_sum += tgt_vals( tcell ) * tgt_areas_[tcell];
-	}
-	return src_sum - tgt_sum;
+    // Willem: write gmsh
+    //Gmsh( "out_3d.msh", util::Config( "coordinates", "xyz" ) ).write( tgt_mesh );
+    //Gmsh( "out_3d.msh", util::Config( "coordinates", "xyz" ) ).write( tgt_field );
 }
 
 
