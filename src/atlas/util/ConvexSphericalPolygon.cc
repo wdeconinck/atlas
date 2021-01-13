@@ -157,7 +157,7 @@ void ConvexSphericalPolygon::compute_area() {
         int ip1 = ( i != sz - 1 ) ? i + 1 : 0;
         area_ += angle( sph_coords_[im1], sph_coords_[i], sph_coords_[ip1] );
     }
-    ATLAS_ASSERT( area_ > 0. );
+    ATLAS_ASSERT( area_ > -deps_ );
 }
 
 // return 0:P_right_of_[p1,p2], -1:overlap_of_[P,p1]_and_[P,p2], 1:P_left_of_[p1,p2]
