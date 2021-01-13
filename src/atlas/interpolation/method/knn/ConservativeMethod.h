@@ -27,7 +27,7 @@ namespace method {
 
 class ConservativeMethod {
 public:
-	static constexpr double tol = 1e-14;
+    static constexpr double tol = 1e-14;
 
     ConservativeMethod( const util::Config& = util::NoConfig() );
 
@@ -41,8 +41,6 @@ public:
         }
     };
 
-    //virtual void print( std::ostream& ) const override;
-
     /**
      * @brief setup ConvexSphericalPolygons for two grids
      * @param source functionspace containing source points
@@ -51,23 +49,19 @@ public:
     //virtual void do_setup( const FunctionSpace& source, const FunctionSpace& target ) override;
     void do_setup( Mesh& source, const Mesh& target );
 
-    //const FunctionSpace& source() const { return source_; }
-    //const FunctionSpace& target() const { return target_; }
-
     //void do_execute( const FieldSet& source, FieldSet& target ) const override;
-    double do_execute( const Field& src_field, Field& tgt_field ) const;
+    void do_execute( const Field& src_field, Field& tgt_field ) const;
 
-    const std::vector<InterpolationParameters>& iparam() const { return iparam_; }
-    const PointXYZ& src_centroid( size_t id ) const { return src_centroids_[id]; }
-    const PointXYZ& tgt_centroid( size_t id ) const { return tgt_centroids_[id]; }
-    const double& src_area( size_t id ) const { return src_areas_[id]; }
-    const double& tgt_area( size_t id ) const { return tgt_areas_[id]; }
+    inline const std::vector<InterpolationParameters>& iparam() const { return iparam_; }
+    inline const PointXYZ& src_centroid( size_t id ) const { return src_centroids_[id]; }
+    inline const PointXYZ& tgt_centroid( size_t id ) const { return tgt_centroids_[id]; }
+    inline const double& src_area( size_t id ) const { return src_areas_[id]; }
+    inline const double& tgt_area( size_t id ) const { return tgt_areas_[id]; }
+
+    void set_order( int order ) { order_ = order; }
 
 protected:
-    //FunctionSpace source_;
-    //FunctionSpace target_;
     Mesh src_mesh_;
-    //Mesh& tgt_mesh_;
     std::vector<PointXYZ> src_centroids_;
     std::vector<PointXYZ> tgt_centroids_;
     std::vector<double> src_areas_;
