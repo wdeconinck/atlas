@@ -71,7 +71,7 @@ CASE( "test_spherical_polygon_intersection" ) {
         getCSPolygon( {{0, 65}, {0, 55}, {40, 65}, {40, 75}} ),  //17
     };
     std::array<ConvexSphericalPolygon, nplg_i> plg_i = {
-        getCSPolygon( {{0, 60}, {40, 60}} ),  //0
+        getCSPolygon( {} ),  //0
         getCSPolygon( {} ),
         getCSPolygon( {} ),  //2
         getCSPolygon( {{0, 60}, {40, 60}, {40, 70}, {10, 70.8}} ),
@@ -132,7 +132,7 @@ CASE( "Size of ConvexSphericalPolygon" ) {
     expected_size += ( 1 + ConvexSphericalPolygon::MAX_SIZE ) * sizeof( PointXYZ );
     expected_size += sizeof( size_t );
     expected_size += sizeof( bool );
-    expected_size += sizeof( double );
+    expected_size += 2 * sizeof( double );
     EXPECT( sizeof( ConvexSphericalPolygon ) >= expected_size );  // greater because compiler may add some padding
 }
 

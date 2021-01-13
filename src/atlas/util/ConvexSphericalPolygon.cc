@@ -39,6 +39,11 @@ bool approx_eq_null( const PointXYZ& v1, const double t = ConvexSphericalPolygon
     return approx_eq( v1[0], 0., t ) && approx_eq( v1[1], 0., t ) && approx_eq( v1[2], 0., t );
 }
 
+double cart_diff( const PointXYZ& v1, const PointXYZ& v2 ) {
+    double m12 =  std::max( std::abs(v1[0] - v2[0]), std::abs(v1[1] - v2[1]) );
+    return  std::max( m12, std::abs(v1[2] - v2[2]) );
+}
+
 PointLonLat sph_to_lonlat( const PointXYZ& p ) {
     PointLonLat pp;
     eckit::geometry::Sphere::convertCartesianToSpherical( 1., p, pp );
@@ -78,6 +83,10 @@ ConvexSphericalPolygon::ConvexSphericalPolygon( const std::vector<PointLonLat>& 
         ATLAS_ASSERT( not approx_eq_null( centroid_ ) );
         centroid_ = PointXYZ::div( centroid_, PointXYZ::norm( centroid_ ) );
         compute_area();
+		bbdiam_ = 0.;
+		for ( size_t i = 0; i < size_ - 1; ++i ) {
+			bbdiam_ = 1.2 * std::max( bbdiam_, cart_diff( sph_coords_[i], centroid_ ) );
+		}
     }
 }
 
@@ -283,6 +292,10 @@ int ConvexSphericalPolygon::intersect( const PointXYZ& s1, const PointXYZ& s2, P
 // @param[out] intersecting polygon
 ConvexSphericalPolygon ConvexSphericalPolygon::intersect( const ConvexSphericalPolygon& plg ) const {
     std::vector<PointXYZ> iplg_p;
+	if ( cart_diff( plg.centroid_, centroid_ ) > plg.bbdiam_ + bbdiam_ ) {
+		return ConvexSphericalPolygon();
+	}
+
     int ii = 0;  // "this" vertex counter
     int jj = 0;  // "plg" vertex counter
     PointXYZ ip;
