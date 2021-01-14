@@ -83,7 +83,7 @@ ConvexSphericalPolygon::ConvexSphericalPolygon( const std::vector<PointLonLat>& 
         centroid_ = PointXYZ::div( centroid_, PointXYZ::norm( centroid_ ) );
         compute_area();
         bbdiam_ = 0.;
-        for ( size_t i = 0; i < size_ - 1; ++i ) {
+        for ( size_t i = 0; i < size_; ++i ) {
             bbdiam_ = std::max( bbdiam_, cart_diff( sph_coords_[i], centroid_ ) );
         }
     }
@@ -151,7 +151,7 @@ inline double ConvexSphericalPolygon::angle( const PointXYZ& pl, const PointXYZ&
     const PointXYZ& ppr = PointXYZ( PointXYZ::cross( p, pr ) );
     double s1p          = PointXYZ::dot( plp, ppr ) / ( PointXYZ::norm( plp ) * PointXYZ::norm( ppr ) );
     s1p                 = std::acos( ( s1p < 0. ? -1 : 1 ) * std::min( 1., std::abs( s1p ) ) );
-    return M_PI - s1p;
+    return M_PI - std::abs(s1p);
 }
 
 
@@ -292,7 +292,7 @@ int ConvexSphericalPolygon::intersect( const PointXYZ& s1, const PointXYZ& s2, P
 // @param[out] intersecting polygon
 ConvexSphericalPolygon ConvexSphericalPolygon::intersect( const ConvexSphericalPolygon& plg ) const {
     std::vector<PointXYZ> iplg_p;
-    if ( cart_diff( plg.centroid_, centroid_ ) > 1.3 * ( plg.bbdiam_ + bbdiam_ ) ) {
+    if ( cart_diff( plg.centroid_, centroid_ ) > plg.bbdiam_ + bbdiam_ ) {
         return ConvexSphericalPolygon();
     }
 
