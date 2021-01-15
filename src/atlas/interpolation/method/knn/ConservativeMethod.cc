@@ -122,6 +122,7 @@ void ConservativeMethod::do_execute( const Field& src_field, Field& tgt_field ) 
     for ( idx_t scell = 0; scell < src_vals.size(); ++scell ) {
         const auto& iparam = iparam_[scell];
         PointXYZ grad      = {0., 0., 0.};
+       	PointXYZ src_barycenter = {0., 0., 0.};
         if ( order_ > 1 ) {
             // get cell neighbours
             idx_t src_nb_edges = src_cell2edge.cols( scell );
@@ -136,10 +137,11 @@ void ConservativeMethod::do_execute( const Field& src_field, Field& tgt_field ) 
                 if ( cell0 != src_cell2edge.missing_value() && cell0 != scell ) {
                     src_neighbour_cells.emplace_back( cell0 );
                 }
-                else if ( cell1 != src_cell2edge.missing_value() ) {
+                else if ( cell1 != src_cell2edge.missing_value() && cell1 != scell ) {
                     src_neighbour_cells.emplace_back( cell1 );
                 }
                 else {
+					// even for global meshes we come here, why?
                     src_neighbour_cells.emplace_back( scell );
                 }
             }
@@ -149,32 +151,27 @@ void ConservativeMethod::do_execute( const Field& src_field, Field& tgt_field ) 
                 idx_t ncell  = src_neighbour_cells[nid];
                 idx_t nncell = src_neighbour_cells[nid != src_neighbour_cells.size() - 1 ? nid + 1 : 0];
                 if ( ncell != scell && nncell != scell ) {
-                    double coeff = 0.5 * ( src_vals( ncell ) + src_vals( nncell ) ) - src_vals( scell );
+                    double val = 0.5 * ( src_vals( ncell ) + src_vals( nncell ) ) - src_vals( scell );
                     dual_area +=
                         CSPolygon( {src_centroids_[ncell], src_centroids_[nncell], src_centroids_[scell]} ).area();
-                    grad = PointXYZ::add(
-                        grad,
-                        PointXYZ::mul( PointXYZ::cross( src_centroids_[ncell], src_centroids_[nncell] ), coeff ) );
+					PointXYZ out_normal = PointXYZ::cross( src_centroids_[ncell],
+src_centroids_[nncell] );
+                    grad = grad + PointXYZ::mul( out_normal, val );
                 }
+				//else if ( ncell != scell ) {
+                //    double coeff = src_vals( ncell ) - src_vals( scell );
+				//	ATLAS_ASSERT( false );
+				//}
             }
-            grad = PointXYZ::div( grad, ( dual_area > 0. ? dual_area : 1. ) );
-        }
-        PointXYZ src_barycenter = PointXYZ{0, 0, 0};
-        //	PointXYZ src_barycenter = ( iparam.centroids.size() ? PointXYZ{0,0,0} : src_centroids_[scell]);
-        for ( idx_t icell = 0; icell < iparam.centroids.size(); ++icell ) {
-            src_barycenter = src_barycenter + PointXYZ::mul( iparam.centroids[icell], iparam.weights[icell] );
-        }
-        if ( PointXYZ::norm( src_barycenter ) < 1e-5 ) {
+            grad                    = PointXYZ::div( grad, ( dual_area > 0. ? dual_area : 1. ) );
             for ( idx_t icell = 0; icell < iparam.centroids.size(); ++icell ) {
                 src_barycenter = src_barycenter + PointXYZ::mul( iparam.centroids[icell], iparam.weights[icell] );
-                Log::info() << "bary: " << src_barycenter << ", add " << iparam.centroids[icell] << " with "
-                            << iparam.weights[icell] << "\n";
-                Log::info().flush();
             }
+            ATLAS_ASSERT( PointXYZ::norm( src_barycenter ) > 1e-7 );
+            src_barycenter = PointXYZ::div( src_barycenter, PointXYZ::norm( src_barycenter ) );
+            grad           = grad - PointXYZ::mul( src_barycenter, PointXYZ::dot( grad, src_barycenter ) );
         }
-        src_barycenter = PointXYZ::div( src_barycenter, PointXYZ::norm( src_barycenter ) );
-        grad           = grad - PointXYZ::mul( src_barycenter, PointXYZ::dot( grad, src_barycenter ) );
-        //ATLAS_ASSERT( std::abs( PointXYZ::dot(grad, src_barycenter) ) < tol );
+        //ATLAS_ASSERT( std::abs( PointXYZ::dot(grad, src_barycenter) ) < 1e-14 );
         for ( idx_t icell = 0; icell < iparam.centroids.size(); ++icell ) {
             tgt_vals( iparam.cell_id[icell] ) +=
                 iparam.weights[icell] *
@@ -185,10 +182,6 @@ void ConservativeMethod::do_execute( const Field& src_field, Field& tgt_field ) 
     for ( idx_t tcell = 0; tcell < tgt_vals.size(); ++tcell ) {
         tgt_vals( tcell ) /= tgt_areas_[tcell];
     }
-
-    // Willem: write gmsh
-    //Gmsh( "out_3d.msh", util::Config( "coordinates", "xyz" ) ).write( tgt_mesh );
-    //Gmsh( "out_3d.msh", util::Config( "coordinates", "xyz" ) ).write( tgt_field );
 }
 
 
