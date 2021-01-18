@@ -58,7 +58,7 @@ void compute_geom_errors( const array::ArrayView<double, 1>& src_vals,
     for ( idx_t tcell = 0; tcell < tgt_vals.size(); ++tcell ) {
         tgt_sum += conservativeMethod.tgt_area( tcell );
     }
-    Log::info() << "    global cons error (test creation of CSPolygons): "
+    Log::info() << "    global cons err (creation of CSPolygons): "
                 << std::abs( src_sum - tgt_sum ) * 0.25 * M_1_PI << "\n";
 
     double err_2   = 0.;
@@ -75,7 +75,7 @@ void compute_geom_errors( const array::ArrayView<double, 1>& src_vals,
     }
     err_2 = std::sqrt( err_2 * 0.25 * M_1_PI );
     err_max *= 0.25 * M_1_PI;
-    Log::info() << "    local cons error (test CSPolygon intersections) : (L2) " << err_2 << " (Lmax) " << err_max << "\n";
+    Log::info() << "    local cons err (CSPolygon intersections) : (L2) " << err_2 << " (Lmax) " << err_max << "\n";
 }
 
 void compute_field_errors( const array::ArrayView<double, 1>& src_vals, 
