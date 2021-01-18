@@ -83,6 +83,15 @@ void compute_field_errors( const array::ArrayView<double, 1>& src_vals,
 					 array::ArrayView<double, 1>& diff_vals,
                      ConservativeMethod& conservativeMethod, double func( const PointLonLat& ),
 					 int order ) {
+    for ( idx_t scell = 0; scell < src_vals.size(); ++scell ) {
+        diff_vals( scell ) = src_vals( scell ) * conservativeMethod.src_area( scell );
+        const auto& iparam  = conservativeMethod.iparam()[scell];
+        for ( idx_t icell = 0; icell < iparam.weights.size(); ++icell ) {
+            diff_vals( scell ) -= tgt_vals( iparam.cell_id[icell] ) * iparam.weights[icell];
+        }
+        diff_vals( scell ) /= conservativeMethod.src_area( scell );
+    }
+	
     double err_2   = 0.;
     double err_max = 0.;
     for ( idx_t tcell = 0; tcell < tgt_vals.size(); ++tcell ) {
@@ -167,7 +176,7 @@ true )} );
 CASE( "test_interpolation_conservative" ) {
     SECTION( "analytic function = 1" ) {
         auto func = []( const PointLonLat& p ) { return 1.; };
-        do_remapping_test( Grid( "F8" ), Grid( "H13" ), func );
+        do_remapping_test( Grid( "O32" ), Grid( "N32" ), func );
     }
 
     SECTION( "analytic Y_2^2 as in Jones" ) {
