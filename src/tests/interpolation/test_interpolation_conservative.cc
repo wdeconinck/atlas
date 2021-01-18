@@ -23,6 +23,7 @@
 #include "atlas/mesh/Mesh.h"
 #include "atlas/meshgenerator.h"
 #include "atlas/option.h"
+#include "atlas/output/Gmsh.h"
 #include "atlas/util/Config.h"
 
 #include "tests/AtlasTestEnvironment.h"
@@ -48,6 +49,17 @@ Grid localgrid( int nx, int ny ) {
 
 void compute_errors( array::ArrayView<double, 1>& src_vals, array::ArrayView<double, 1>& tgt_vals,
                      ConservativeMethod& conservativeMethod, double func( const PointLonLat& ) ) {
+    double src_sum = 0.;
+    double tgt_sum = 0.;
+    for ( idx_t scell = 0; scell < src_vals.size(); ++scell ) {
+        src_sum += conservativeMethod.src_area( scell );
+    }
+    for ( idx_t tcell = 0; tcell < tgt_vals.size(); ++tcell ) {
+        tgt_sum += conservativeMethod.tgt_area( tcell );
+    }
+    Log::info() << "    global cons error (test creation of CSPolygons): "
+                << std::abs( src_sum - tgt_sum ) * 0.25 * M_1_PI << "\n";
+
     double err_2   = 0.;
     double err_max = 0.;
     for ( idx_t scell = 0; scell < src_vals.size(); ++scell ) {
@@ -62,17 +74,8 @@ void compute_errors( array::ArrayView<double, 1>& src_vals, array::ArrayView<dou
     }
     err_2 = std::sqrt( err_2 * 0.25 * M_1_PI );
     err_max *= 0.25 * M_1_PI;
-    Log::info() << "     local cons error : (L2) " << err_2 << " (Lmax) " << err_max << "\n";
-
-    double src_sum = 0.;
-    double tgt_sum = 0.;
-    for ( idx_t scell = 0; scell < src_vals.size(); ++scell ) {
-        src_sum += conservativeMethod.src_area( scell );
-    }
-    for ( idx_t tcell = 0; tcell < tgt_vals.size(); ++tcell ) {
-        tgt_sum += conservativeMethod.tgt_area( tcell );
-    }
-    Log::info() << "    global cons error : " << std::abs( src_sum - tgt_sum ) * 0.25 * M_1_PI << "\n";
+    Log::info() << "     local cons error (test CSPolygon intersections) : (L2) " << err_2 << " (Lmax) " << err_max
+                << "\n";
 
     err_2   = 0.;
     err_max = 0.;
@@ -114,6 +117,7 @@ void do_remapping_test( Grid src_grid, Grid tgt_grid, double func( const PointLo
     auto start = std::chrono::system_clock::now();
     conservativeMethod.do_setup( src_mesh, tgt_mesh );
     std::chrono::duration<double> elapsed_seconds = std::chrono::system_clock::now() - start;
+    Log::info() << " REMAPPING: " << src_grid.name() << " --> " << tgt_grid.name() << "\n";
     Log::info() << "ConservativeMethod::do_setup took " << elapsed_seconds.count() << " seconds.\n";
 
     for ( idx_t scell = 0; scell < src_vals.size(); ++scell ) {
@@ -123,7 +127,7 @@ void do_remapping_test( Grid src_grid, Grid tgt_grid, double func( const PointLo
         src_vals( scell ) = func( pll );
     }
 
-    Log::info() << " ====== " << src_grid.name() << " --> " << tgt_grid.name() << " 1. order\n";
+    Log::info() << " ++++++  1st order\n";
     conservativeMethod.set_order( 1 );
     start = std::chrono::system_clock::now();
     conservativeMethod.do_execute( src_field, tgt_field );
@@ -132,7 +136,7 @@ void do_remapping_test( Grid src_grid, Grid tgt_grid, double func( const PointLo
 
     compute_errors( src_vals, tgt_vals, conservativeMethod, func );
 
-    Log::info() << " ====== " << src_grid.name() << " --> " << tgt_grid.name() << " 2. order\n";
+    Log::info() << " ++++++  2nd order\n";
     conservativeMethod.set_order( 2 );
     start = std::chrono::system_clock::now();
     conservativeMethod.do_execute( src_field, tgt_field );
@@ -140,6 +144,10 @@ void do_remapping_test( Grid src_grid, Grid tgt_grid, double func( const PointLo
     Log::info() << "ConservativeMethod::do_execute took " << elapsed_seconds.count() << " seconds.\n";
 
     compute_errors( src_vals, tgt_vals, conservativeMethod, func );
+
+    output::Gmsh( "maa.msh", util::Config( "coordinates", "xyz" ) ).write( tgt_mesh );
+    output::Gmsh( "saa.msh", util::Config( "coordinates", "xyz" ) ).write( src_field );
+    output::Gmsh( "taa.msh", util::Config( "coordinates", "xyz" ) ).write( tgt_field );
 }
 
 CASE( "test_interpolation_conservative" ) {
@@ -166,7 +174,7 @@ CASE( "test_interpolation_conservative" ) {
             PointXYZ p_sph;
             eckit::geometry::Sphere::convertSphericalToCartesian( 1., p, p_sph );
             double r = PointXYZ::norm( p_sph - c );
-            return 2. + std::cos( M_PI * r / 0.2 );
+            return 2. + std::cos( M_PI * r / 10. );
         };
         do_remapping_test( Grid( "F8" ), Grid( "H13" ), func );
         do_remapping_test( Grid( "H2" ), Grid( "N32" ), func );
