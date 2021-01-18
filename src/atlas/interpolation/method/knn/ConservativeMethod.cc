@@ -120,9 +120,9 @@ void ConservativeMethod::do_execute( const Field& src_field, Field& tgt_field ) 
         tgt_vals( tcell ) = 0.;
     }
     for ( idx_t scell = 0; scell < src_vals.size(); ++scell ) {
-        const auto& iparam = iparam_[scell];
-        PointXYZ grad      = {0., 0., 0.};
-       	PointXYZ src_barycenter = {0., 0., 0.};
+        const auto& iparam      = iparam_[scell];
+        PointXYZ grad           = {0., 0., 0.};
+        PointXYZ src_barycenter = {0., 0., 0.};
         if ( order_ > 1 ) {
             // get cell neighbours
             idx_t src_nb_edges = src_cell2edge.cols( scell );
@@ -141,7 +141,7 @@ void ConservativeMethod::do_execute( const Field& src_field, Field& tgt_field ) 
                     src_neighbour_cells.emplace_back( cell1 );
                 }
                 else {
-					// even for global meshes we come here, why?
+                    // even for global meshes we come here, why?
                     src_neighbour_cells.emplace_back( scell );
                 }
             }
@@ -154,16 +154,15 @@ void ConservativeMethod::do_execute( const Field& src_field, Field& tgt_field ) 
                     double val = 0.5 * ( src_vals( ncell ) + src_vals( nncell ) ) - src_vals( scell );
                     dual_area +=
                         CSPolygon( {src_centroids_[ncell], src_centroids_[nncell], src_centroids_[scell]} ).area();
-					PointXYZ out_normal = PointXYZ::cross( src_centroids_[ncell],
-src_centroids_[nncell] );
-                    grad = grad + PointXYZ::mul( out_normal, val );
+                    PointXYZ out_normal = PointXYZ::cross( src_centroids_[ncell], src_centroids_[nncell] );
+                    grad                = grad + PointXYZ::mul( out_normal, val );
                 }
-				//else if ( ncell != scell ) {
+                //else if ( ncell != scell ) {
                 //    double coeff = src_vals( ncell ) - src_vals( scell );
-				//	ATLAS_ASSERT( false );
-				//}
+                //	ATLAS_ASSERT( false );
+                //}
             }
-            grad                    = PointXYZ::div( grad, ( dual_area > 0. ? dual_area : 1. ) );
+            grad = PointXYZ::div( grad, ( dual_area > 0. ? dual_area : 1. ) );
             for ( idx_t icell = 0; icell < iparam.centroids.size(); ++icell ) {
                 src_barycenter = src_barycenter + PointXYZ::mul( iparam.centroids[icell], iparam.weights[icell] );
             }
