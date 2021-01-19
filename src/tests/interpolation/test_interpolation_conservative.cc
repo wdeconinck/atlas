@@ -47,9 +47,8 @@ Grid localgrid( int nx, int ny ) {
     return Grid{gridspec};
 }
 
-void compute_geom_errors( const array::ArrayView<double, 1>& src_vals, 
-					 const array::ArrayView<double, 1>& tgt_vals,
-                     ConservativeMethod& conservativeMethod, double func( const PointLonLat& ) ) {
+void compute_geom_errors( const array::ArrayView<double, 1>& src_vals, const array::ArrayView<double, 1>& tgt_vals,
+                          ConservativeMethod& conservativeMethod, double func( const PointLonLat& ) ) {
     double src_sum = 0.;
     double tgt_sum = 0.;
     for ( idx_t scell = 0; scell < src_vals.size(); ++scell ) {
@@ -58,70 +57,72 @@ void compute_geom_errors( const array::ArrayView<double, 1>& src_vals,
     for ( idx_t tcell = 0; tcell < tgt_vals.size(); ++tcell ) {
         tgt_sum += conservativeMethod.tgt_area( tcell );
     }
-    Log::info() << "    global cons err (creation of CSPolygons): "
-                << std::abs( src_sum - tgt_sum ) * 0.25 * M_1_PI << "\n";
+    Log::info() << "    global cons err (creation of CSPolygons): " << std::abs( src_sum - tgt_sum ) * 0.25 * M_1_PI
+                << "\n";
 
     double err_2   = 0.;
     double err_max = 0.;
     for ( idx_t scell = 0; scell < src_vals.size(); ++scell ) {
-        double tgt_sum_cell = 0.;
-        const auto& iparam  = conservativeMethod.iparam()[scell];
+        double diff_cell   = conservativeMethod.src_area( scell );
+        const auto& iparam = conservativeMethod.iparam()[scell];
         for ( idx_t icell = 0; icell < iparam.weights.size(); ++icell ) {
-            tgt_sum_cell += iparam.weights[icell];
+            diff_cell -= iparam.weights[icell];
         }
-        double err_l = conservativeMethod.src_area( scell ) - tgt_sum_cell;
-        err_2 += err_l * err_l;
-        err_max = std::max( err_max, std::abs( err_l ) );
+        err_2 += diff_cell * diff_cell;
+        err_max = std::max( err_max, std::abs( diff_cell ) );
     }
     err_2 = std::sqrt( err_2 * 0.25 * M_1_PI );
-    err_max *= 0.25 * M_1_PI;
     Log::info() << "    local cons err (CSPolygon intersections) : (L2) " << err_2 << " (Lmax) " << err_max << "\n";
 }
 
-void compute_field_errors( const array::ArrayView<double, 1>& src_vals, 
-					 const array::ArrayView<double, 1>& tgt_vals,
-					 array::ArrayView<double, 1>& diff_vals,
-                     ConservativeMethod& conservativeMethod, double func( const PointLonLat& ),
-					 int order ) {
+void compute_field_errors( const array::ArrayView<double, 1>& src_vals, const array::ArrayView<double, 1>& tgt_vals,
+                           array::ArrayView<double, 1>& diff_vals, ConservativeMethod& conservativeMethod,
+                           double func( const PointLonLat& ), int order ) {
     for ( idx_t scell = 0; scell < src_vals.size(); ++scell ) {
         diff_vals( scell ) = src_vals( scell ) * conservativeMethod.src_area( scell );
-        const auto& iparam  = conservativeMethod.iparam()[scell];
+        const auto& iparam = conservativeMethod.iparam()[scell];
         for ( idx_t icell = 0; icell < iparam.weights.size(); ++icell ) {
             diff_vals( scell ) -= tgt_vals( iparam.cell_id[icell] ) * iparam.weights[icell];
         }
         diff_vals( scell ) /= conservativeMethod.src_area( scell );
     }
-	
+
     double err_2   = 0.;
     double err_max = 0.;
     for ( idx_t tcell = 0; tcell < tgt_vals.size(); ++tcell ) {
         auto p = conservativeMethod.tgt_centroid( tcell );
         PointLonLat pll;
         eckit::geometry::Sphere::convertCartesianToSpherical( 1., p, pll );
-        double afunc = func( pll );
-        double err_l = std::abs( tgt_vals( tcell ) - afunc ) * conservativeMethod.tgt_area( tcell );
-        err_2 += err_l * std::abs( tgt_vals( tcell ) - afunc );
+        double err_l = std::abs( tgt_vals( tcell ) - func( pll ) );
+        err_2 += err_l * err_l * conservativeMethod.tgt_area( tcell );
         err_max = std::max( err_max, err_l );
     }
     err_2 = std::sqrt( err_2 * 0.25 * M_1_PI );
-    err_max *= 0.25 * M_1_PI;
-    Log::info() << "    " << order <<"-order remap error : (L2) " << err_2 << " (Lmax) " << err_max << "\n";
+    Log::info() << "    " << order << "-order remap analytical error : (L2) " << err_2 << " (Lmax) " << err_max << "\n";
+    err_2   = 0.;
+    err_max = 0.;
+    for ( idx_t scell = 0; scell < src_vals.size(); ++scell ) {
+        const auto& iparam = conservativeMethod.iparam()[scell];
+        for ( idx_t icell = 0; icell < iparam.weights.size(); ++icell ) {
+            double err_l = std::abs( src_vals( scell ) - tgt_vals( iparam.cell_id[icell] ) );
+            err_2 += err_l * err_l * iparam.weights[icell];
+            err_max = std::max( err_max, err_l );
+        }
+    }
+    err_2 = std::sqrt( err_2 * 0.25 * M_1_PI );
+    Log::info() << "    " << order << "-order remap mesh2mesh error  : (L2) " << err_2 << " (Lmax) " << err_max << "\n";
 }
 
 void do_remapping_test( Grid src_grid, Grid tgt_grid, double func( const PointLonLat& ) ) {
     util::Config config;
+    config.set( "include_pole", true );
 
-	bool src_healpix = ( src_grid.name()[0] == 'H' ) or ( src_grid.name()[0] == 'h' );
-	bool tgt_healpix = ( tgt_grid.name()[0] == 'H' ) or ( tgt_grid.name()[0] == 'h' );
-    auto src_meshgen =
-        ( src_healpix ? MeshGenerator{"healpix"}
-                                       : MeshGenerator{"structured", util::Config( "include_pole", true )} );
-    auto tgt_meshgen =
-        ( tgt_healpix ? MeshGenerator{"healpix"}
-                                       : MeshGenerator{"structured", util::Config( "include_pole",
-true )} );
-    Mesh src_mesh = src_meshgen.generate( src_grid );
-    Mesh tgt_mesh = tgt_meshgen.generate( tgt_grid );
+    bool src_healpix = ( src_grid.name()[0] == 'H' ) or ( src_grid.name()[0] == 'h' );
+    bool tgt_healpix = ( tgt_grid.name()[0] == 'H' ) or ( tgt_grid.name()[0] == 'h' );
+    auto src_meshgen = ( src_healpix ? MeshGenerator{"healpix"} : MeshGenerator{"structured", config} );
+    auto tgt_meshgen = ( tgt_healpix ? MeshGenerator{"healpix"} : MeshGenerator{"structured", config} );
+    Mesh src_mesh    = src_meshgen.generate( src_grid );
+    Mesh tgt_mesh    = tgt_meshgen.generate( tgt_grid );
 
     ConservativeMethod conservativeMethod( config );
 
@@ -136,7 +137,7 @@ true )} );
     conservativeMethod.do_setup( src_mesh, tgt_mesh );
     std::chrono::duration<double> elapsed_seconds = std::chrono::system_clock::now() - start;
     Log::info() << "REMAPPING: " << src_grid.name() << " --> " << tgt_grid.name() << "\n";
-    Log::info() << "  Setup (computing supergrid weights) took " << elapsed_seconds.count() << " seconds.\n";
+    Log::info() << "  Setup (computing supermesh) took " << elapsed_seconds.count() << " seconds.\n";
 
     compute_geom_errors( src_vals, tgt_vals, conservativeMethod, func );
     output::Gmsh( "cons-remap_smesh.msh", util::Config( "coordinates", "xyz" ) ).write( src_mesh );
@@ -157,8 +158,8 @@ true )} );
     Log::info() << "  1-order remap took " << elapsed_seconds.count() << " seconds.\n";
     output::Gmsh( "cons-remap_tfield-1ord.msh", util::Config( "coordinates", "xyz" ) ).write( tgt_field );
 
-	auto diff_field = src_fs.createField<double>();
-	auto diff_vals  = array::make_view<double, 1>( diff_field );
+    auto diff_field = src_fs.createField<double>();
+    auto diff_vals  = array::make_view<double, 1>( diff_field );
     compute_field_errors( src_vals, tgt_vals, diff_vals, conservativeMethod, func, 1 );
     output::Gmsh( "cons-remap_dfield-1ord.msh", util::Config( "coordinates", "xyz" ) ).write( diff_field );
 
