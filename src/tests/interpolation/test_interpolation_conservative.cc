@@ -83,7 +83,7 @@ void compute_field_errors( const array::ArrayView<double, 1>& src_vals, const ar
         for ( idx_t icell = 0; icell < iparam.weights.size(); ++icell ) {
             diff_vals( scell ) -= tgt_vals( iparam.cell_id[icell] ) * iparam.weights[icell];
         }
-        diff_vals( scell ) /= conservativeMethod.src_area( scell );
+        diff_vals( scell ) = std::abs( diff_vals( scell ) ) * conservativeMethod.src_area( scell );
     }
 
     double err_2   = 0.;
@@ -139,8 +139,8 @@ void do_remapping_test( Grid src_grid, Grid tgt_grid, double func( const PointLo
     Log::info() << "  Setup (computing supermesh) took " << elapsed_seconds.count() << " seconds.\n";
 
     compute_geom_errors( src_vals, tgt_vals, conservativeMethod, func );
-    output::Gmsh( "cons-remap_smesh.msh", util::Config( "coordinates", "xyz" ) ).write( src_mesh );
-    output::Gmsh( "cons-remap_tmesh.msh", util::Config( "coordinates", "xyz" ) ).write( tgt_mesh );
+    output::Gmsh( "cons-remap_smesh.msh", util::Config( "coordinates", "lonlat" ) ).write( src_mesh );
+    output::Gmsh( "cons-remap_tmesh.msh", util::Config( "coordinates", "lonlat" ) ).write( tgt_mesh );
 
     for ( idx_t scell = 0; scell < src_vals.size(); ++scell ) {
         auto p = conservativeMethod.src_centroid( scell );
@@ -148,42 +148,42 @@ void do_remapping_test( Grid src_grid, Grid tgt_grid, double func( const PointLo
         eckit::geometry::Sphere::convertCartesianToSpherical( 1., p, pll );
         src_vals( scell ) = func( pll );
     }
-    output::Gmsh( "cons-remap_sfield.msh", util::Config( "coordinates", "xyz" ) ).write( src_field );
+    output::Gmsh( "cons-remap_sfield.msh", util::Config( "coordinates", "lonlat" ) ).write( src_field );
 
     conservativeMethod.set_order( 1 );
     start = std::chrono::system_clock::now();
     conservativeMethod.do_execute( src_field, tgt_field );
     elapsed_seconds = std::chrono::system_clock::now() - start;
     Log::info() << "  1-order remap took " << elapsed_seconds.count() << " seconds.\n";
-    output::Gmsh( "cons-remap_tfield-1ord.msh", util::Config( "coordinates", "xyz" ) ).write( tgt_field );
+    output::Gmsh( "cons-remap_tfield-1ord.msh", util::Config( "coordinates", "lonlat" ) ).write( tgt_field );
 
     auto diff_field = src_fs.createField<double>();
     auto diff_vals  = array::make_view<double, 1>( diff_field );
     compute_field_errors( src_vals, tgt_vals, diff_vals, conservativeMethod, func, 1 );
-    output::Gmsh( "cons-remap_dfield-1ord.msh", util::Config( "coordinates", "xyz" ) ).write( diff_field );
+    output::Gmsh( "cons-remap_dfield-1ord.msh", util::Config( "coordinates", "lonlat" ) ).write( diff_field );
 
     conservativeMethod.set_order( 2 );
     start = std::chrono::system_clock::now();
     conservativeMethod.do_execute( src_field, tgt_field );
     elapsed_seconds = std::chrono::system_clock::now() - start;
     Log::info() << "  2-order remap took " << elapsed_seconds.count() << " seconds.\n";
-    output::Gmsh( "cons-remap_tfield-2ord.msh", util::Config( "coordinates", "xyz" ) ).write( tgt_field );
+    output::Gmsh( "cons-remap_tfield-2ord.msh", util::Config( "coordinates", "lonlat" ) ).write( tgt_field );
 
     compute_field_errors( src_vals, tgt_vals, diff_vals, conservativeMethod, func, 2 );
-    output::Gmsh( "cons-remap_dfield-2ord.msh", util::Config( "coordinates", "xyz" ) ).write( diff_field );
+    output::Gmsh( "cons-remap_dfield-2ord.msh", util::Config( "coordinates", "lonlat" ) ).write( diff_field );
 }
 
 CASE( "test_interpolation_conservative" ) {
     SECTION( "analytic function = 1" ) {
         auto func = []( const PointLonLat& p ) { return 1.; };
-        do_remapping_test( Grid( "O32" ), Grid( "N32" ), func );
     }
 
     SECTION( "analytic Y_2^2 as in Jones" ) {
         auto func = []( const PointLonLat& p ) {
-            double cos = std::cos( p[0] );
-            return 2. + cos * cos * std::cos( 2 * p[1] );
+            double cos = std::cos( 0.025 * p[0] );
+            return 2. + cos * cos * std::cos( 2 * 0.025 * p[1] );
         };
+        do_remapping_test( Grid( "O16" ), Grid( "N16" ), func );
     }
 
     SECTION( "analytic Hill as in Jones" ) {
