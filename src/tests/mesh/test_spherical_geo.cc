@@ -124,6 +124,24 @@ CASE( "test_spherical_polygon_intersection" ) {
     }
 }
 
+CASE( "test_spherical_polygon_intersection_grid_specific" ) {
+    auto p1  = getCSPolygon( {{22.5, 41.8103149}, {0, 19.47122063}, {45, 19.47122063}} );
+    auto p2  = getCSPolygon( {{33.38931298, 32.81913485}, {33.47560976, 32.73126568}, {33.52671756, 32.81913485}} );
+    auto p3  = getCSPolygon( {{22.8358, 2.10115}, {23.8235, 0.700384}, {24.1791, 2.10115}} );
+    auto p4  = getCSPolygon( {{23.2031, 1.58049}, {23.463, 1.22927}, {23.5547, 1.58049}} );
+    auto p5  = getCSPolygon( {{6.61765, -0.700384}, {6.71642, -2.10115}, {7.94118, -0.700384}} );
+    auto p6  = getCSPolygon( {{6.67969, -1.58049}, {6.70588, -1.93171}, {7.03125, -1.58049}} );
+    auto p12 = p1.intersect( p2 );
+    auto p21 = p2.intersect( p1 );
+	EXPECT( p12.equals( p21 ) );
+    auto p34 = p3.intersect( p4 );
+    auto p43 = p4.intersect( p3 );
+	EXPECT( p34.equals( p43 ) );
+    auto p56 = p5.intersect( p6 );
+    auto p65 = p6.intersect( p5 );
+	EXPECT( p56.equals( p65 ) );
+}
+
 CASE( "Size of ConvexSphericalPolygon" ) {
     // This test illustrates that ConvexSphericalPolygon is allocated on the stack completely,
     // as sizeof(ConvexSphericalPolygon) includes space for MAX_SIZE coordinates of type PointXYZ
