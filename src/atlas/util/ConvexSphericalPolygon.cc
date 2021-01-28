@@ -146,7 +146,7 @@ bool ConvexSphericalPolygon::equals( const ConvexSphericalPolygon& plg, const do
 
 // note: two diameterly opposite points forming segment are not allowed
 // return tangential angle between [pl,p] and [p,pr]
-inline double ConvexSphericalPolygon::angle( const PointXYZ& pl, const PointXYZ& p, const PointXYZ& pr ) const {
+double ConvexSphericalPolygon::angle( const PointXYZ& pl, const PointXYZ& p, const PointXYZ& pr ) const {
     const PointXYZ& plp = PointXYZ( PointXYZ::cross( pl, p ) );
     const PointXYZ& ppr = PointXYZ( PointXYZ::cross( p, pr ) );
     double s1p          = PointXYZ::dot( plp, ppr ) / ( PointXYZ::norm( plp ) * PointXYZ::norm( ppr ) );
@@ -170,7 +170,7 @@ void ConvexSphericalPolygon::compute_area() {
 }
 
 // return 0:P_right_of_[p1,p2], -1:overlap_of_[P,p1]_and_[P,p2], 1:P_left_of_[p1,p2]
-inline int ConvexSphericalPolygon::leftOf( const PointXYZ& P, const PointXYZ& p1, const PointXYZ& p2 ) const {
+int ConvexSphericalPolygon::leftOf( const PointXYZ& P, const PointXYZ& p1, const PointXYZ& p2 ) const {
     const PointXYZ& cp = PointXYZ( PointXYZ::cross( p1, p2 ) );
     ATLAS_ASSERT( not approx_eq_null( cp, deps_ ) );
     const double dp = PointXYZ::dot( cp, P );
@@ -391,7 +391,7 @@ int ConvexSphericalPolygon::nextIntersect( int control, std::vector<PointXYZ>& i
     std::cout << "P = " << sph_to_lonlat( P );
     std::cout.flush();
 #endif
-    if ( n_iplg > 1 && approx_eq( iplg_p[0], iplg_p[n_iplg] ) ) {
+    if ( n_iplg > 1 && approx_eq( iplg_p[0], iplg_p[n_iplg], 1000 * eps_ ) ) {
         return 1;
     }
 
