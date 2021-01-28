@@ -83,7 +83,7 @@ public:
    * @param[in] P given point in (x,y,z) coordinates
    * @return true if equal vertices
    */
-    bool equals( const ConvexSphericalPolygon& plg, const double deg_prec = eps_ ) const;
+    bool equals( const ConvexSphericalPolygon& plg, const double deg_prec = deps_ ) const;
 
     /*
    * @return true:polygon is convex
