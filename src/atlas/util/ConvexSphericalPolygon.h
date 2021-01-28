@@ -56,6 +56,13 @@ public:
     bool onSegment( const PointXYZ& P, const PointXYZ& s1, const PointXYZ& p2 ) const;
 
     /*
+   * Point left of [p1,p2]
+   * @param[in] P, p1, p2 given point in xyz-coordinates
+   * @return 0:P_right_of_[p1,p2], -1:overlap_of_[P,p1]_and_[P,p2], 1:P_left_of_[p1,p2]
+   */
+    int leftOf( const PointXYZ& P, const PointXYZ& p1, const PointXYZ& p2 ) const;
+
+    /*
    * @brief Segment-sph_polygon intersection
    * @param[in] s1, s2 segment endpoints in (x,y,z) coordinates
    * @param[in] start start with polygon segments [pol[start],pol[start+1]],...
@@ -106,13 +113,6 @@ private:
 
     // return tangential angle between [pl,p] and [p,pr]
     inline double angle( const PointXYZ& pl, const PointXYZ& p, const PointXYZ& pr ) const;
-
-    /*
-   * Point left of [p1,p2]
-   * @param[in] P, p1, p2 given point in xyz-coordinates
-   * @return 0:P_right_of_[p1,p2], -1:overlap_of_[P,p1]_and_[P,p2], 1:P_left_of_[p1,p2]
-   */
-    inline int leftOf( const PointXYZ& P, const PointXYZ& p1, const PointXYZ& p2 ) const;
 
 private:
     std::array<PointXYZ, MAX_SIZE> sph_coords_;

@@ -59,6 +59,7 @@ public:
     inline const double& tgt_area( size_t id ) const { return tgt_areas_[id]; }
 
     void set_order( int order ) { order_ = order; }
+    const int order() const { return order_; }
 
 protected:
     Mesh src_mesh_;
@@ -66,9 +67,7 @@ protected:
     std::vector<PointXYZ> tgt_centroids_;
     std::vector<double> src_areas_;
     std::vector<double> tgt_areas_;
-
     int order_;
-
     std::vector<InterpolationParameters> iparam_;
 };
 

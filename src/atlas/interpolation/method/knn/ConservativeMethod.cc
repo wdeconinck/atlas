@@ -15,10 +15,14 @@
 #include "atlas/grid.h"
 #include "atlas/interpolation/method/knn/ConservativeMethod.h"
 #include "atlas/mesh/actions/BuildEdges.h"
+#include "atlas/mesh/actions/BuildHalo.h"
 #include "atlas/parallel/mpi/mpi.h"
 #include "atlas/runtime/Exception.h"
 #include "atlas/runtime/Log.h"
 #include "atlas/runtime/Trace.h"
+#include "atlas/util/ConvexSphericalPolygon.h"
+
+#define DEBUG_OUTPUT_DETAIL 0
 
 namespace atlas {
 namespace interpolation {
@@ -102,6 +106,7 @@ void ConservativeMethod::do_setup( Mesh& src_mesh, const Mesh& tgt_mesh ) {
     }
 
     if ( order_ > 1 ) {
+        mesh::actions::build_halo( src_mesh, 0 );
         mesh::actions::build_edges( src_mesh, util::Config( "pole_edges", false ) );
     }
     src_mesh_ = src_mesh;
@@ -112,6 +117,7 @@ void ConservativeMethod::do_execute( const Field& src_field, Field& tgt_field ) 
 
     auto src_vals = array::make_view<double, 1>( src_field );
     auto tgt_vals = array::make_view<double, 1>( tgt_field );
+    auto halo     = array::make_view<int, 1>( src_mesh_.cells().halo() );
 
     const auto& src_cell2edge = src_mesh_.cells().edge_connectivity();
     const auto& src_edge2cell = src_mesh_.edges().cell_connectivity();
@@ -120,7 +126,11 @@ void ConservativeMethod::do_execute( const Field& src_field, Field& tgt_field ) 
         tgt_vals( tcell ) = 0.;
     }
     for ( idx_t scell = 0; scell < src_vals.size(); ++scell ) {
+        if ( halo( scell ) ) {
+            continue;
+        }
         const auto& iparam      = iparam_[scell];
+        const PointXYZ& P       = src_centroids_[scell];
         PointXYZ grad           = {0., 0., 0.};
         PointXYZ src_barycenter = {0., 0., 0.};
         if ( order_ > 1 ) {
@@ -134,33 +144,65 @@ void ConservativeMethod::do_execute( const Field& src_field, Field& tgt_field ) 
                 ATLAS_ASSERT( iedge < src_edge2cell.rows() );
                 idx_t cell0 = src_edge2cell( iedge, 0 );
                 idx_t cell1 = src_edge2cell( iedge, 1 );
+#if DEBUG_OUTPUT_DETAIL
+                Log::info() << " mv, cell0, cell1, scell: " << src_cell2edge.missing_value() << " " << cell0 << " "
+                            << cell1 << " " << scell;
+                Log::info().flush();
+#endif
                 if ( cell0 != src_cell2edge.missing_value() && cell0 != scell ) {
                     src_neighbour_cells.emplace_back( cell0 );
+#if DEBUG_OUTPUT_DETAIL
+                    Log::info() << ", add " << cell0 << "\n";
+                    Log::info().flush();
+#endif
                 }
                 else if ( cell1 != src_cell2edge.missing_value() && cell1 != scell ) {
                     src_neighbour_cells.emplace_back( cell1 );
+#if DEBUG_OUTPUT_DETAIL
+                    Log::info() << ", add " << cell1 << "\n";
+                    Log::info().flush();
+#endif
                 }
                 else {
                     // even for global meshes we come here, why?
                     src_neighbour_cells.emplace_back( scell );
+#if DEBUG_OUTPUT_DETAIL
+                    Log::info() << ", add " << scell << "\n";
+                    Log::info().flush();
+#endif
                 }
             }
+#if DEBUG_OUTPUT_DETAIL
+            Log::info() << "\n";
+            Log::info().flush();
+#endif
             // calculate gradient
             double dual_area = 0.;
-            for ( idx_t nid = 0; nid < src_neighbour_cells.size(); ++nid ) {
-                idx_t ncell  = src_neighbour_cells[nid];
-                idx_t nncell = src_neighbour_cells[nid != src_neighbour_cells.size() - 1 ? nid + 1 : 0];
+            for ( idx_t nb_id = 0; nb_id < src_neighbour_cells.size(); ++nb_id ) {
+                idx_t nnb_id    = ( nb_id != src_neighbour_cells.size() - 1 ) ? nb_id + 1 : 0;
+                idx_t ncell     = src_neighbour_cells[nb_id];
+                idx_t nncell    = src_neighbour_cells[nnb_id];
+                const auto& Pn  = src_centroids_[ncell];
+                const auto& Pnn = src_centroids_[nncell];
                 if ( ncell != scell && nncell != scell ) {
                     double val = 0.5 * ( src_vals( ncell ) + src_vals( nncell ) ) - src_vals( scell );
-                    dual_area +=
-                        CSPolygon( {src_centroids_[ncell], src_centroids_[nncell], src_centroids_[scell]} ).area();
-                    PointXYZ out_normal = PointXYZ::cross( src_centroids_[ncell], src_centroids_[nncell] );
-                    grad                = grad + PointXYZ::mul( out_normal, val );
+                    auto csp   = CSPolygon( {Pn, Pnn, P} );
+                    //auto orientation = ( csp.leftOf( Pnn, P, Pn ) ? -1 : 1 );
+                    //ATLAS_ASSERT( orientation == -1 ); // orientation changes !
+                    val *= ( csp.leftOf( Pnn, P, Pn ) ? -1 : 1 );
+                    dual_area += csp.area();
+                    grad = grad + PointXYZ::mul( PointXYZ::cross( Pn, Pnn ), val );
                 }
-                //else if ( ncell != scell ) {
-                //    double coeff = src_vals( ncell ) - src_vals( scell );
-                //	ATLAS_ASSERT( false );
-                //}
+                else if ( ncell != scell ) {
+                    double val = 0.5 * ( src_vals( ncell ) - src_vals( scell ) );
+                    val *= -1;
+                    //grad = grad + PointXYZ::mul( PointXYZ::cross( Pn, P ), val );
+                }
+                else if ( nncell != scell ) {
+                    double val = 0.5 * ( src_vals( nncell ) - src_vals( scell ) );
+                    val *= -1;
+                    //grad = grad + PointXYZ::mul( PointXYZ::cross( P, Pnn ), val );
+                }
             }
             grad = PointXYZ::div( grad, ( dual_area > 0. ? dual_area : 1. ) );
             for ( idx_t icell = 0; icell < iparam.centroids.size(); ++icell ) {

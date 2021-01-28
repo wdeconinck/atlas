@@ -10,6 +10,7 @@
 
 
 #include <cmath>
+#include <fstream>
 
 #include "eckit/geometry/Sphere.h"
 #include "eckit/types/FloatCompare.h"
@@ -48,7 +49,8 @@ Grid localgrid( int nx, int ny ) {
 }
 
 void compute_geom_errors( const array::ArrayView<double, 1>& src_vals, const array::ArrayView<double, 1>& tgt_vals,
-                          ConservativeMethod& conservativeMethod, double func( const PointLonLat& ) ) {
+                          ConservativeMethod& conservativeMethod, double func( const PointLonLat& ),
+                          std::ofstream& outfile ) {
     double src_sum = 0.;
     double tgt_sum = 0.;
     for ( idx_t scell = 0; scell < src_vals.size(); ++scell ) {
@@ -58,6 +60,7 @@ void compute_geom_errors( const array::ArrayView<double, 1>& src_vals, const arr
         tgt_sum += conservativeMethod.tgt_area( tcell );
     }
     Log::info() << "    cons err in polygon create     : " << std::abs( src_sum - tgt_sum ) * 0.25 * M_1_PI << "\n";
+    outfile << std::setw( 10 ) << std::abs( src_sum - tgt_sum ) * 0.25 * M_1_PI;
 
     double err_2   = 0.;
     double err_max = 0.;
@@ -72,18 +75,19 @@ void compute_geom_errors( const array::ArrayView<double, 1>& src_vals, const arr
     }
     err_2 = std::sqrt( err_2 * 0.25 * M_1_PI );
     Log::info() << "    cons err in polygon intersect  : (L2) " << err_2 << " (Lmax) " << err_max << "\n";
+    outfile << std::setw( 10 ) << err_2 << std::setw( 10 ) << err_max;
 }
 
 void compute_field_errors( const array::ArrayView<double, 1>& src_vals, const array::ArrayView<double, 1>& tgt_vals,
                            array::ArrayView<double, 1>& diff_vals, ConservativeMethod& conservativeMethod,
-                           double func( const PointLonLat& ), int order ) {
+                           double func( const PointLonLat& ), std::ofstream& outfile ) {
     for ( idx_t scell = 0; scell < src_vals.size(); ++scell ) {
         diff_vals( scell ) = src_vals( scell ) * conservativeMethod.src_area( scell );
         const auto& iparam = conservativeMethod.iparam()[scell];
         for ( idx_t icell = 0; icell < iparam.weights.size(); ++icell ) {
             diff_vals( scell ) -= tgt_vals( iparam.cell_id[icell] ) * iparam.weights[icell];
         }
-        diff_vals( scell ) = std::abs( diff_vals( scell ) ) * conservativeMethod.src_area( scell );
+        diff_vals( scell ) = std::abs( diff_vals( scell ) ) / conservativeMethod.src_area( scell );
     }
 
     double err_2   = 0.;
@@ -97,7 +101,10 @@ void compute_field_errors( const array::ArrayView<double, 1>& src_vals, const ar
         err_max = std::max( err_max, err_l );
     }
     err_2 = std::sqrt( err_2 * 0.25 * M_1_PI );
-    Log::info() << "    " << order << "-order remap analytical error : (L2) " << err_2 << " (Lmax) " << err_max << "\n";
+    Log::info() << "    " << conservativeMethod.order() << "-order remap analytical error : (L2) " << err_2
+                << " (Lmax) " << err_max << "\n";
+    outfile << std::setw( 10 ) << err_2 << std::setw( 10 ) << err_max;
+
     err_2   = 0.;
     err_max = 0.;
     for ( idx_t scell = 0; scell < src_vals.size(); ++scell ) {
@@ -109,13 +116,17 @@ void compute_field_errors( const array::ArrayView<double, 1>& src_vals, const ar
         }
     }
     err_2 = std::sqrt( err_2 * 0.25 * M_1_PI );
-    Log::info() << "    " << order << "-order remap mesh2mesh error  : (L2) " << err_2 << " (Lmax) " << err_max << "\n";
+    Log::info() << "    " << conservativeMethod.order() << "-order remap mesh2mesh error  : (L2) " << err_2
+                << " (Lmax) " << err_max << "\n";
+    outfile << std::setw( 10 ) << err_2 << std::setw( 10 ) << err_max;
 }
 
-void do_remapping_test( Grid src_grid, Grid tgt_grid, double func( const PointLonLat& ) ) {
+void do_remapping_test( Grid src_grid, Grid tgt_grid, double func( const PointLonLat& ), std::ofstream& outfile ) {
     util::Config config;
     config.set( "include_pole", true );
+    //config.set( "triangulate", true );
 
+    outfile << std::setw( 10 ) << src_grid.name() << std::setw( 10 ) << tgt_grid.name();
     bool src_healpix = ( src_grid.name()[0] == 'H' ) or ( src_grid.name()[0] == 'h' );
     bool tgt_healpix = ( tgt_grid.name()[0] == 'H' ) or ( tgt_grid.name()[0] == 'h' );
     auto src_meshgen = ( src_healpix ? MeshGenerator{"healpix"} : MeshGenerator{"structured", config} );
@@ -137,10 +148,11 @@ void do_remapping_test( Grid src_grid, Grid tgt_grid, double func( const PointLo
     std::chrono::duration<double> elapsed_seconds = std::chrono::system_clock::now() - start;
     Log::info() << "REMAPPING: " << src_grid.name() << " --> " << tgt_grid.name() << "\n";
     Log::info() << "  Setup (computing supermesh) took " << elapsed_seconds.count() << " seconds.\n";
+    outfile << std::setw( 10 ) << elapsed_seconds.count();
 
-    compute_geom_errors( src_vals, tgt_vals, conservativeMethod, func );
-    output::Gmsh( "cons-remap_smesh.msh", util::Config( "coordinates", "lonlat" ) ).write( src_mesh );
-    output::Gmsh( "cons-remap_tmesh.msh", util::Config( "coordinates", "lonlat" ) ).write( tgt_mesh );
+    compute_geom_errors( src_vals, tgt_vals, conservativeMethod, func, outfile );
+    output::Gmsh( "cons-remap_smesh.msh", util::Config( "coordinates", "xyz" ) ).write( src_mesh );
+    output::Gmsh( "cons-remap_tmesh.msh", util::Config( "coordinates", "xyz" ) ).write( tgt_mesh );
 
     for ( idx_t scell = 0; scell < src_vals.size(); ++scell ) {
         auto p = conservativeMethod.src_centroid( scell );
@@ -148,34 +160,40 @@ void do_remapping_test( Grid src_grid, Grid tgt_grid, double func( const PointLo
         eckit::geometry::Sphere::convertCartesianToSpherical( 1., p, pll );
         src_vals( scell ) = func( pll );
     }
-    output::Gmsh( "cons-remap_sfield.msh", util::Config( "coordinates", "lonlat" ) ).write( src_field );
+    output::Gmsh( "cons-remap_sfield.msh", util::Config( "coordinates", "xyz" ) ).write( src_field );
 
     conservativeMethod.set_order( 1 );
     start = std::chrono::system_clock::now();
     conservativeMethod.do_execute( src_field, tgt_field );
     elapsed_seconds = std::chrono::system_clock::now() - start;
     Log::info() << "  1-order remap took " << elapsed_seconds.count() << " seconds.\n";
-    output::Gmsh( "cons-remap_tfield-1ord.msh", util::Config( "coordinates", "lonlat" ) ).write( tgt_field );
+    outfile << std::setw( 10 ) << elapsed_seconds.count();
+    output::Gmsh( "cons-remap_tfield-1ord.msh", util::Config( "coordinates", "xyz" ) ).write( tgt_field );
 
     auto diff_field = src_fs.createField<double>();
     auto diff_vals  = array::make_view<double, 1>( diff_field );
-    compute_field_errors( src_vals, tgt_vals, diff_vals, conservativeMethod, func, 1 );
-    output::Gmsh( "cons-remap_dfield-1ord.msh", util::Config( "coordinates", "lonlat" ) ).write( diff_field );
+    compute_field_errors( src_vals, tgt_vals, diff_vals, conservativeMethod, func, outfile );
+    output::Gmsh( "cons-remap_dfield-1ord.msh", util::Config( "coordinates", "xyz" ) ).write( diff_field );
 
     conservativeMethod.set_order( 2 );
     start = std::chrono::system_clock::now();
     conservativeMethod.do_execute( src_field, tgt_field );
     elapsed_seconds = std::chrono::system_clock::now() - start;
     Log::info() << "  2-order remap took " << elapsed_seconds.count() << " seconds.\n";
-    output::Gmsh( "cons-remap_tfield-2ord.msh", util::Config( "coordinates", "lonlat" ) ).write( tgt_field );
+    outfile << std::setw( 10 ) << elapsed_seconds.count();
+    output::Gmsh( "cons-remap_tfield-2ord.msh", util::Config( "coordinates", "xyz" ) ).write( tgt_field );
 
-    compute_field_errors( src_vals, tgt_vals, diff_vals, conservativeMethod, func, 2 );
-    output::Gmsh( "cons-remap_dfield-2ord.msh", util::Config( "coordinates", "lonlat" ) ).write( diff_field );
+    compute_field_errors( src_vals, tgt_vals, diff_vals, conservativeMethod, func, outfile );
+    output::Gmsh( "cons-remap_dfield-2ord.msh", util::Config( "coordinates", "xyz" ) ).write( diff_field );
+
+    outfile << "\n";
+    outfile.flush();
 }
 
 CASE( "test_interpolation_conservative" ) {
     SECTION( "analytic function = 1" ) {
         auto func = []( const PointLonLat& p ) { return 1.; };
+        //do_remapping_test( Grid( "F32" ), Grid( "H32" ), func );
     }
 
     SECTION( "analytic Y_2^2 as in Jones" ) {
@@ -183,7 +201,25 @@ CASE( "test_interpolation_conservative" ) {
             double cos = std::cos( 0.025 * p[0] );
             return 2. + cos * cos * std::cos( 2 * 0.025 * p[1] );
         };
-        do_remapping_test( Grid( "O16" ), Grid( "N16" ), func );
+        std::ofstream outfile( "LOG_y22.dat" );
+        outfile << std::scientific << std::setprecision( 1 );
+        outfile << "# (1) s-grid   (2) t-grid   (3) setup [s]   (4) err.polygon.create";
+        outfile << "   (5) err.polygon.intrsc.L2   (6) err.polygon.intrsc.Lmax   (7) 1st-rmp [s]\n";
+        outfile << "# (8) err.1st.ana.L2   (9) err.1st.ana.Lmax   (10) err.1st.mesh2mesh.err.L2";
+        outfile << "   (11) err.1st.mesh2mesh.err.Lmax   (12) 2nd-remap[s]   (13) 2nd-ana-err.L2\n";
+        outfile << "# (14) 2nd-ana-err.Lmax   (15) 2nd-mesh2mesh-err.L2   (16) 2nd-mesh2mesh-err.Lmax\n";
+        for ( int i = 1; i < 17; ++i ) {
+            outfile << std::setw( 10 ) << i;
+        }
+        outfile << "\n";
+        ;
+        do_remapping_test( Grid( "O1" ), Grid( "H128" ), func, outfile );
+        do_remapping_test( Grid( "O2" ), Grid( "H128" ), func, outfile );
+        do_remapping_test( Grid( "O4" ), Grid( "H128" ), func, outfile );
+        do_remapping_test( Grid( "O8" ), Grid( "H128" ), func, outfile );
+        do_remapping_test( Grid( "O16" ), Grid( "H128" ), func, outfile );
+        do_remapping_test( Grid( "O32" ), Grid( "H128" ), func, outfile );
+        do_remapping_test( Grid( "O64" ), Grid( "H128" ), func, outfile );
     }
 
     SECTION( "analytic Hill as in Jones" ) {
