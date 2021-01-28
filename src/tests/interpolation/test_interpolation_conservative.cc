@@ -191,38 +191,52 @@ void do_remapping_test( Grid src_grid, Grid tgt_grid, double func( const PointLo
 }
 
 CASE( "test_interpolation_conservative" ) {
-    SECTION( "analytic function = 1" ) {
+	std::stringstream ss;
+	ss << "# (1) s-grid   (2) t-grid   (3) setup [s]   (4) err.polygon.create";
+	ss << "   (5) err.polygon.intrsc.L2   (6) err.polygon.intrsc.Lmax   (7) 1st-rmp [s]\n";
+	ss << "# (8) err.1st.ana.L2   (9) err.1st.ana.Lmax   (10) err.1st.mesh2mesh.err.L2";
+	ss << "   (11) err.1st.mesh2mesh.err.Lmax   (12) 2nd-remap[s]   (13) 2nd-ana-err.L2\n";
+	ss << "# (14) 2nd-ana-err.Lmax   (15) 2nd-mesh2mesh-err.L2   (16) 2nd-mesh2mesh-err.Lmax\n";
+	for ( int i = 1; i < 17; ++i ) {
+		ss << std::setw( 10 ) << i;
+	}
+    ss << "\n";
+
+    SECTION( "analytic constfunc" ) {
         auto func = []( const PointLonLat& p ) { return 1.; };
-        //do_remapping_test( Grid( "F32" ), Grid( "H32" ), func );
+		std::ofstream outfile;
+		outfile.open( "cons-remap_constfunc.dat", std::ios_base::app );
+        outfile << "# Test -- analytic function = 1\n";
+		outfile << std::scientific << std::setprecision( 1 );
+		outfile << ss.str();
+        do_remapping_test( Grid( "F32" ), Grid( "H32" ), func, outfile );
+        do_remapping_test( Grid( "H32" ), Grid( "O32" ), func, outfile );
+        do_remapping_test( Grid( "O32" ), Grid( "N32" ), func, outfile );
+        do_remapping_test( Grid( "N32" ), Grid( "H32" ), func, outfile );
+		outfile.close();
     }
 
     SECTION( "analytic Y_2^2 as in Jones" ) {
+		std::ofstream outfile;
+		outfile.open( "cons-remap_JonesY22.dat", std::ios_base::app );
+        outfile << "# Test -- analytic Y_2^2 as in Jones\n";
+		outfile << std::scientific << std::setprecision( 1 );
+		outfile << ss.str();
         auto func = []( const PointLonLat& p ) {
             double cos = std::cos( 0.025 * p[0] );
             return 2. + cos * cos * std::cos( 2 * 0.025 * p[1] );
         };
-        std::ofstream outfile( "LOG_y22.dat" );
-        outfile << std::scientific << std::setprecision( 1 );
-        outfile << "# (1) s-grid   (2) t-grid   (3) setup [s]   (4) err.polygon.create";
-        outfile << "   (5) err.polygon.intrsc.L2   (6) err.polygon.intrsc.Lmax   (7) 1st-rmp [s]\n";
-        outfile << "# (8) err.1st.ana.L2   (9) err.1st.ana.Lmax   (10) err.1st.mesh2mesh.err.L2";
-        outfile << "   (11) err.1st.mesh2mesh.err.Lmax   (12) 2nd-remap[s]   (13) 2nd-ana-err.L2\n";
-        outfile << "# (14) 2nd-ana-err.Lmax   (15) 2nd-mesh2mesh-err.L2   (16) 2nd-mesh2mesh-err.Lmax\n";
-        for ( int i = 1; i < 17; ++i ) {
-            outfile << std::setw( 10 ) << i;
-        }
-        outfile << "\n";
-        ;
         do_remapping_test( Grid( "O1" ), Grid( "H128" ), func, outfile );
         do_remapping_test( Grid( "O2" ), Grid( "H128" ), func, outfile );
-        do_remapping_test( Grid( "O4" ), Grid( "H128" ), func, outfile );
-        do_remapping_test( Grid( "O8" ), Grid( "H128" ), func, outfile );
-        do_remapping_test( Grid( "O16" ), Grid( "H128" ), func, outfile );
-        do_remapping_test( Grid( "O32" ), Grid( "H128" ), func, outfile );
-        do_remapping_test( Grid( "O64" ), Grid( "H128" ), func, outfile );
+		outfile.close();
     }
 
     SECTION( "analytic Hill as in Jones" ) {
+		std::ofstream outfile;
+		outfile.open( "cons-remap_JonesHill.dat", std::ios_base::app );
+        outfile << "# Test -- analytic Hill as in Jones\n";
+		outfile << std::scientific << std::setprecision( 1 );
+		outfile << ss.str();
         auto func = []( const PointLonLat& p ) {
             PointXYZ c = {1., 0., 0.};
             PointXYZ p_sph;
@@ -230,6 +244,7 @@ CASE( "test_interpolation_conservative" ) {
             double r = PointXYZ::norm( p_sph - c );
             return 2. + std::cos( M_PI * r / 10. );
         };
+		outfile.close();
     }
 }
 
