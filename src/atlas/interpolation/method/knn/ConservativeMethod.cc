@@ -121,6 +121,7 @@ void ConservativeMethod::do_execute( const Field& src_field, Field& tgt_field ) 
 
     const auto& src_cell2edge = src_mesh_.cells().edge_connectivity();
     const auto& src_edge2cell = src_mesh_.edges().cell_connectivity();
+    const auto& src_edge2node = src_mesh_.edges().node_connectivity();
 
     for ( idx_t tcell = 0; tcell < tgt_vals.size(); ++tcell ) {
         tgt_vals( tcell ) = 0.;
@@ -134,48 +135,56 @@ void ConservativeMethod::do_execute( const Field& src_field, Field& tgt_field ) 
         PointXYZ grad           = {0., 0., 0.};
         PointXYZ src_barycenter = {0., 0., 0.};
         if ( order_ > 1 ) {
+			auto c2e_missval = src_cell2edge.missing_value();
+			auto valid_nb_cell  = [ scell, c2e_missval ]( idx_t cid1, idx_t cid2 ) { 
+                if ( cid1 != c2e_missval && cid1 != scell ) {
+					return cid1;
+                }
+                else if ( cid2 != c2e_missval && cid2 != scell ) {
+                    return cid2;
+                }
+				return -1;
+			};
             // get cell neighbours
             idx_t src_nb_edges = src_cell2edge.cols( scell );
             std::vector<idx_t> src_neighbour_cells;
             src_neighbour_cells.reserve( src_nb_edges );
-            for ( idx_t sedge = 0; sedge < src_nb_edges; ++sedge ) {
-                idx_t iedge = src_cell2edge( scell, sedge );
-                ATLAS_ASSERT( iedge < src_mesh_.edges().size() );
-                ATLAS_ASSERT( iedge < src_edge2cell.rows() );
-                idx_t cell0 = src_edge2cell( iedge, 0 );
-                idx_t cell1 = src_edge2cell( iedge, 1 );
-#if DEBUG_OUTPUT_DETAIL
-                Log::info() << " mv, cell0, cell1, scell: " << src_cell2edge.missing_value() << " " << cell0 << " "
-                            << cell1 << " " << scell;
-                Log::info().flush();
-#endif
-                if ( cell0 != src_cell2edge.missing_value() && cell0 != scell ) {
-                    src_neighbour_cells.emplace_back( cell0 );
-#if DEBUG_OUTPUT_DETAIL
-                    Log::info() << ", add " << cell0 << "\n";
-                    Log::info().flush();
-#endif
-                }
-                else if ( cell1 != src_cell2edge.missing_value() && cell1 != scell ) {
-                    src_neighbour_cells.emplace_back( cell1 );
-#if DEBUG_OUTPUT_DETAIL
-                    Log::info() << ", add " << cell1 << "\n";
-                    Log::info().flush();
-#endif
-                }
-                else {
-                    // even for global meshes we come here, why?
-                    src_neighbour_cells.emplace_back( scell );
-#if DEBUG_OUTPUT_DETAIL
-                    Log::info() << ", add " << scell << "\n";
-                    Log::info().flush();
-#endif
-                }
-            }
-#if DEBUG_OUTPUT_DETAIL
-            Log::info() << "\n";
-            Log::info().flush();
-#endif
+			std::vector<bool> edge_done;
+			edge_done.resize( src_nb_edges );
+			std::vector<idx_t> loc_edge_id( src_nb_edges );
+			for ( int ledge = 0; ledge < src_nb_edges; ++ledge ) {
+				loc_edge_id[ ledge ] = src_cell2edge( scell, ledge );
+			}
+			idx_t ledge = 0;
+			idx_t iedge = src_cell2edge( scell, ledge );
+			idx_t nbid = valid_nb_cell( src_edge2cell( iedge, 0 ), src_edge2cell( iedge, 1 ) );
+            if ( nbid != -1 ) {
+				src_neighbour_cells.emplace_back( nbid );
+			}
+			edge_done[ ledge ] = true;
+			idx_t nedge_done = 1;
+			auto last_node = src_edge2node( iedge, 1 ); // take any end point
+
+			for ( ledge = 0; nedge_done < src_nb_edges; ++ledge ) {
+				if ( edge_done[ ledge ] ) {
+					ledge = ( ledge == src_nb_edges - 1 ? -1 : ledge );
+					continue;
+				}
+				idx_t node0 = src_edge2node( src_cell2edge( scell, ledge ), 0 );
+				idx_t node1 = src_edge2node( src_cell2edge( scell, ledge ), 1 );
+				if ( last_node == node0 or last_node == node1 ) {
+					nbid = valid_nb_cell( src_edge2cell( src_cell2edge( scell, ledge ), 0 ), 
+						src_edge2cell( src_cell2edge( scell, ledge ), 1 ) );
+					if ( nbid != -1 ) {
+						src_neighbour_cells.emplace_back( nbid );
+					}
+					last_node = ( last_node == node0 ? node1 : node0 );
+					edge_done[ ledge ] = true;
+					++nedge_done;
+				}
+				ledge = ( ledge == src_nb_edges - 1 ? -1 : ledge );
+			}
+
             // calculate gradient
             double dual_area = 0.;
             for ( idx_t nb_id = 0; nb_id < src_neighbour_cells.size(); ++nb_id ) {
