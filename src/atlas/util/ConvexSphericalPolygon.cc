@@ -8,10 +8,8 @@
  * nor does it submit to any jurisdiction.
  */
 
-#include <algorithm>
-#include <cmath>
 #include <iostream>
-#include <limits>
+#include <iomanip>
 
 #include "eckit/geometry/Sphere.h"
 #include "eckit/types/FloatCompare.h"
@@ -166,8 +164,7 @@ void ConvexSphericalPolygon::compute_area() {
         int ip1 = ( i != sz - 1 ) ? i + 1 : 0;
         area_ += angle( sph_coords_[im1], sph_coords_[i], sph_coords_[ip1] );
     }
-    ATLAS_ASSERT( area_ > -eps_ );
-    area_ = ( area_ < 0. ? 0. : area_ );
+    area_ = ( area_ < 0. ? -area_ : area_ );
 }
 
 // return 0:P_right_of_[p1,p2], -1:overlap_of_[P,p1]_and_[P,p2], 1:P_left_of_[p1,p2]
@@ -351,8 +348,11 @@ int ConvexSphericalPolygon::nextIntersect( int control, std::vector<PointXYZ>& i
     //ATLAS_ASSERT( control <= MAX_SIZE );
     if ( control > MAX_SIZE ) {
         Log::info() << " ** Intersecting plg " << *this << "\nwith plg " << plg << "\n";
-        Log::info() << "    so far got plg " << iplg_p << "\n";
-        Log::info().flush();
+        Log::info() << "    so far got plg\n";
+        for ( int i = 0; i < iplg_p.size(); ++i ) {
+			Log::info() << std::setprecision(15) << sph_to_lonlat( iplg_p[i] ) << " ";
+		}
+		(Log::info() << "\n").flush();
         ATLAS_ASSERT( false );
     }
     const int n_iplg = iplg_p.size() - 1;
