@@ -8,8 +8,8 @@
  * nor does it submit to any jurisdiction.
  */
 
-#include <iostream>
 #include <iomanip>
+#include <iostream>
 
 #include "eckit/geometry/Sphere.h"
 #include "eckit/types/FloatCompare.h"
@@ -350,9 +350,17 @@ int ConvexSphericalPolygon::nextIntersect( int control, std::vector<PointXYZ>& i
         Log::info() << " ** Intersecting plg " << *this << "\nwith plg " << plg << "\n";
         Log::info() << "    so far got plg\n";
         for ( int i = 0; i < iplg_p.size(); ++i ) {
-			Log::info() << std::setprecision(15) << sph_to_lonlat( iplg_p[i] ) << " ";
-		}
-		(Log::info() << "\n").flush();
+            Log::info() << std::setprecision( 20 ) << sph_to_lonlat( iplg_p[i] ) << " ";
+        }
+        ( Log::info() << "\n" ).flush();
+        for ( int i = 1; i < iplg_p.size(); ++i ) {
+            std::cout << "		dist to first point: "
+                      << std::max( std::abs( iplg_p[0][0] - iplg_p[i][0] ),
+                                   std::max( std::abs( iplg_p[0][1] - iplg_p[i][1] ),
+                                             std::abs( iplg_p[0][2] - iplg_p[i][2] ) ) )
+                      << "\n";
+        }
+        std::cout.flush();
         ATLAS_ASSERT( false );
     }
     const int n_iplg = iplg_p.size() - 1;
@@ -392,7 +400,7 @@ int ConvexSphericalPolygon::nextIntersect( int control, std::vector<PointXYZ>& i
     std::cout << "P = " << sph_to_lonlat( P );
     std::cout.flush();
 #endif
-    if ( n_iplg > 1 && approx_eq( iplg_p[0], iplg_p[n_iplg], 1000 * eps_ ) ) {
+    if ( n_iplg > 1 && approx_eq( iplg_p[0], iplg_p[n_iplg], 5000 * eps_ ) ) {
         return 1;
     }
 
@@ -547,7 +555,7 @@ int ConvexSphericalPolygon::nextIntersect( int control, std::vector<PointXYZ>& i
 }
 
 void ConvexSphericalPolygon::print( std::ostream& out ) const {
-    out << "[";
+    out << "{";
     for ( size_t i = 0; i < size(); ++i ) {
         if ( i > 0 ) {
             out << ",";
@@ -556,7 +564,7 @@ void ConvexSphericalPolygon::print( std::ostream& out ) const {
         eckit::geometry::Sphere::convertCartesianToSpherical( 1., sph_coords_[i], ip_ll );
         out << ip_ll;
     }
-    out << "]";
+    out << "}";
 }
 
 
