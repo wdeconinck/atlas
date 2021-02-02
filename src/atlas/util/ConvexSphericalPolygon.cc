@@ -399,7 +399,8 @@ int ConvexSphericalPolygon::nextIntersect( int control, std::vector<PointXYZ>& i
     std::cout << "P = " << sph_to_lonlat( P );
     std::cout.flush();
 #endif
-    if ( n_iplg > 1 && approx_eq( iplg_p[0], iplg_p[n_iplg], 5000 * eps_ ) ) {
+    if ( n_iplg > 1 && ( approx_eq( iplg_p[0], iplg_p[n_iplg], 7000 * eps_ ) or
+                         approx_eq( iplg_p[1], iplg_p[n_iplg], 7000 * eps_ ) ) ) {
         return 1;
     }
 
