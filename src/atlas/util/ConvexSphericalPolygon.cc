@@ -80,9 +80,9 @@ ConvexSphericalPolygon::ConvexSphericalPolygon( const std::vector<PointLonLat>& 
         ATLAS_ASSERT( not approx_eq_null( centroid_ ) );
         centroid_ = PointXYZ::div( centroid_, PointXYZ::norm( centroid_ ) );
         compute_area();
-        bbdiam_ = 0.;
+        cell_radius_ = 0.;
         for ( size_t i = 0; i < size_; ++i ) {
-            bbdiam_ = std::max( bbdiam_, cart_diff( sph_coords_[i], centroid_ ) );
+            cell_radius_ = std::max( cell_radius_, cart_diff( sph_coords_[i], centroid_ ) );
         }
     }
 }
@@ -282,7 +282,7 @@ int ConvexSphericalPolygon::intersect( const PointXYZ& s1, const PointXYZ& s2, P
 // @param[out] intersecting polygon
 ConvexSphericalPolygon ConvexSphericalPolygon::intersect( const ConvexSphericalPolygon& plg ) const {
     std::vector<PointXYZ> iplg_p;
-    if ( cart_diff( plg.centroid_, centroid_ ) > plg.bbdiam_ + bbdiam_ ) {
+    if ( cart_diff( plg.centroid_, centroid_ ) > plg.cell_radius_ + cell_radius_ ) {
         return ConvexSphericalPolygon();
     }
 
