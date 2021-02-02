@@ -83,22 +83,31 @@ void ConservativeMethod::do_setup( Mesh& src_mesh, const Mesh& tgt_mesh ) {
     }
 
     // brute force (!) needs to be changed
+    size_t nonintersect = 0;
     iparam_.resize( src_nb_cells );
     eckit::Channel blackhole;
     eckit::ProgressTimer progress( "Intersecting polygons ", src_nb_cells, " cell", double( 10 ),
                                    src_nb_cells > 50 ? Log::info() : blackhole );
     for ( idx_t scell = 0; scell < src_nb_cells; ++scell, ++progress ) {
-        src_centroids_[scell] = src_csp[scell].centroid();
-        src_areas_[scell]     = src_csp[scell].area();
+        src_centroids_[scell]      = src_csp[scell].centroid();
+        src_areas_[scell]          = src_csp[scell].area();
+        double src_area_notcovered = src_areas_[scell];
         for ( idx_t tcell = 0; tcell < tgt_nb_cells; ++tcell ) {
             CSPolygon csp_i = src_csp[scell].intersect( tgt_csp[tcell] );
             if ( csp_i.area() > 0. ) {
                 iparam_[scell].cell_id.emplace_back( tcell );
                 iparam_[scell].weights.emplace_back( csp_i.area() );
                 iparam_[scell].centroids.emplace_back( csp_i.centroid() );
+                src_area_notcovered -= csp_i.area();
             }
         }
+        if ( iparam_[scell].cell_id.size() == 0. ) {
+            ++nonintersect;
+        }
+        //ATLAS_ASSERT( iparam_[scell].cell_id.size() > 0 );
     }
+    Log::info() << "WARNING " << nonintersect << " source mesh polygons do NOT intersect any other polygon.\n";
+    Log::info() << "WARNING " << src_area_notcovered << " area of source mesh NOT covered by target mesh.\n";
 
     for ( idx_t tcell = 0; tcell < tgt_nb_cells; ++tcell ) {
         tgt_centroids_[tcell] = tgt_csp[tcell].centroid();
@@ -135,55 +144,55 @@ void ConservativeMethod::do_execute( const Field& src_field, Field& tgt_field ) 
         PointXYZ grad           = {0., 0., 0.};
         PointXYZ src_barycenter = {0., 0., 0.};
         if ( order_ > 1 ) {
-			auto c2e_missval = src_cell2edge.missing_value();
-			auto valid_nb_cell  = [ scell, c2e_missval ]( idx_t cid1, idx_t cid2 ) { 
+            auto c2e_missval   = src_cell2edge.missing_value();
+            auto valid_nb_cell = [scell, c2e_missval]( idx_t cid1, idx_t cid2 ) {
                 if ( cid1 != c2e_missval && cid1 != scell ) {
-					return cid1;
+                    return cid1;
                 }
                 else if ( cid2 != c2e_missval && cid2 != scell ) {
                     return cid2;
                 }
-				return -1;
-			};
+                return -1;
+            };
             // get cell neighbours
             idx_t src_nb_edges = src_cell2edge.cols( scell );
             std::vector<idx_t> src_neighbour_cells;
             src_neighbour_cells.reserve( src_nb_edges );
-			std::vector<bool> edge_done;
-			edge_done.resize( src_nb_edges );
-			std::vector<idx_t> loc_edge_id( src_nb_edges );
-			for ( int ledge = 0; ledge < src_nb_edges; ++ledge ) {
-				loc_edge_id[ ledge ] = src_cell2edge( scell, ledge );
-			}
-			idx_t ledge = 0;
-			idx_t iedge = src_cell2edge( scell, ledge );
-			idx_t nbid = valid_nb_cell( src_edge2cell( iedge, 0 ), src_edge2cell( iedge, 1 ) );
+            std::vector<bool> edge_done;
+            edge_done.resize( src_nb_edges );
+            std::vector<idx_t> loc_edge_id( src_nb_edges );
+            for ( int ledge = 0; ledge < src_nb_edges; ++ledge ) {
+                loc_edge_id[ledge] = src_cell2edge( scell, ledge );
+            }
+            idx_t ledge = 0;
+            idx_t iedge = src_cell2edge( scell, ledge );
+            idx_t nbid  = valid_nb_cell( src_edge2cell( iedge, 0 ), src_edge2cell( iedge, 1 ) );
             if ( nbid != -1 ) {
-				src_neighbour_cells.emplace_back( nbid );
-			}
-			edge_done[ ledge ] = true;
-			idx_t nedge_done = 1;
-			auto last_node = src_edge2node( iedge, 1 ); // take any end point
+                src_neighbour_cells.emplace_back( nbid );
+            }
+            edge_done[ledge] = true;
+            idx_t nedge_done = 1;
+            auto last_node   = src_edge2node( iedge, 1 );  // take any end point
 
-			for ( ledge = 0; nedge_done < src_nb_edges; ++ledge ) {
-				if ( edge_done[ ledge ] ) {
-					ledge = ( ledge == src_nb_edges - 1 ? -1 : ledge );
-					continue;
-				}
-				idx_t node0 = src_edge2node( src_cell2edge( scell, ledge ), 0 );
-				idx_t node1 = src_edge2node( src_cell2edge( scell, ledge ), 1 );
-				if ( last_node == node0 or last_node == node1 ) {
-					nbid = valid_nb_cell( src_edge2cell( src_cell2edge( scell, ledge ), 0 ), 
-						src_edge2cell( src_cell2edge( scell, ledge ), 1 ) );
-					if ( nbid != -1 ) {
-						src_neighbour_cells.emplace_back( nbid );
-					}
-					last_node = ( last_node == node0 ? node1 : node0 );
-					edge_done[ ledge ] = true;
-					++nedge_done;
-				}
-				ledge = ( ledge == src_nb_edges - 1 ? -1 : ledge );
-			}
+            for ( ledge = 0; nedge_done < src_nb_edges; ++ledge ) {
+                if ( edge_done[ledge] ) {
+                    ledge = ( ledge == src_nb_edges - 1 ? -1 : ledge );
+                    continue;
+                }
+                idx_t node0 = src_edge2node( src_cell2edge( scell, ledge ), 0 );
+                idx_t node1 = src_edge2node( src_cell2edge( scell, ledge ), 1 );
+                if ( last_node == node0 or last_node == node1 ) {
+                    nbid = valid_nb_cell( src_edge2cell( src_cell2edge( scell, ledge ), 0 ),
+                                          src_edge2cell( src_cell2edge( scell, ledge ), 1 ) );
+                    if ( nbid != -1 ) {
+                        src_neighbour_cells.emplace_back( nbid );
+                    }
+                    last_node        = ( last_node == node0 ? node1 : node0 );
+                    edge_done[ledge] = true;
+                    ++nedge_done;
+                }
+                ledge = ( ledge == src_nb_edges - 1 ? -1 : ledge );
+            }
 
             // calculate gradient
             double dual_area = 0.;
@@ -217,16 +226,21 @@ void ConservativeMethod::do_execute( const Field& src_field, Field& tgt_field ) 
             for ( idx_t icell = 0; icell < iparam.centroids.size(); ++icell ) {
                 src_barycenter = src_barycenter + PointXYZ::mul( iparam.centroids[icell], iparam.weights[icell] );
             }
-            ATLAS_ASSERT( PointXYZ::norm( src_barycenter ) > 1e-7 );
-            src_barycenter = PointXYZ::div( src_barycenter, PointXYZ::norm( src_barycenter ) );
-            grad           = grad - PointXYZ::mul( src_barycenter, PointXYZ::dot( grad, src_barycenter ) );
+            const double src_brc_norm = PointXYZ::norm( src_barycenter );
+            //ATLAS_ASSERT( src_brc_norm > 1e-7 );
+            if ( src_brc_norm < 1e-7 ) {
+                src_barycenter = src_centroids_[scell];
+            }
+            else {
+                src_barycenter = PointXYZ::div( src_barycenter, src_brc_norm );
+            }
+            grad = grad - PointXYZ::mul( src_barycenter, PointXYZ::dot( grad, src_barycenter ) );
         }
         //ATLAS_ASSERT( std::abs( PointXYZ::dot(grad, src_barycenter) ) < 1e-14 );
         for ( idx_t icell = 0; icell < iparam.centroids.size(); ++icell ) {
             tgt_vals( iparam.cell_id[icell] ) +=
                 iparam.weights[icell] *
                 ( src_vals( scell ) + PointXYZ::dot( grad, iparam.centroids[icell] - src_barycenter ) );
-            //( src_vals( scell ) + PointXYZ::dot( grad, iparam.centroids[icell] - src_centroids_[scell] ) );
         }
     }
     for ( idx_t tcell = 0; tcell < tgt_vals.size(); ++tcell ) {
