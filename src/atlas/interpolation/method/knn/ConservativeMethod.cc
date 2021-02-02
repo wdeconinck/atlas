@@ -84,6 +84,7 @@ void ConservativeMethod::do_setup( Mesh& src_mesh, const Mesh& tgt_mesh ) {
 
     // brute force (!) needs to be changed
     size_t nonintersect = 0;
+    double src_area_notcovered = 0.;
     iparam_.resize( src_nb_cells );
     eckit::Channel blackhole;
     eckit::ProgressTimer progress( "Intersecting polygons ", src_nb_cells, " cell", double( 10 ),
@@ -91,16 +92,17 @@ void ConservativeMethod::do_setup( Mesh& src_mesh, const Mesh& tgt_mesh ) {
     for ( idx_t scell = 0; scell < src_nb_cells; ++scell, ++progress ) {
         src_centroids_[scell]      = src_csp[scell].centroid();
         src_areas_[scell]          = src_csp[scell].area();
-        double src_area_notcovered = src_areas_[scell];
+        double loc_area_notcovered = src_areas_[scell];
         for ( idx_t tcell = 0; tcell < tgt_nb_cells; ++tcell ) {
             CSPolygon csp_i = src_csp[scell].intersect( tgt_csp[tcell] );
             if ( csp_i.area() > 0. ) {
                 iparam_[scell].cell_id.emplace_back( tcell );
                 iparam_[scell].weights.emplace_back( csp_i.area() );
                 iparam_[scell].centroids.emplace_back( csp_i.centroid() );
-                src_area_notcovered -= csp_i.area();
+                loc_area_notcovered -= csp_i.area();
             }
         }
+		src_area_notcovered += std::abs( loc_area_notcovered );
         if ( iparam_[scell].cell_id.size() == 0. ) {
             ++nonintersect;
         }
