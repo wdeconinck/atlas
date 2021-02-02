@@ -92,6 +92,8 @@ public:
 
     size_t size() const { return size_; }
 
+    double cell_radius() const { return cell_radius_; }
+
     void print( std::ostream& ) const;
 
     friend std::ostream& operator<<( std::ostream& out, const ConvexSphericalPolygon& p ) {
@@ -120,7 +122,7 @@ private:
     size_t size_;
     bool valid_;
     double area_;
-    double bbdiam_;
+    double cell_radius_;
 };
 
 //------------------------------------------------------------------------------------------------------

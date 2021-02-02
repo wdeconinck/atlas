@@ -21,6 +21,8 @@
 #include "atlas/runtime/Log.h"
 #include "atlas/runtime/Trace.h"
 #include "atlas/util/ConvexSphericalPolygon.h"
+#include "atlas/util/KDTree.h"
+
 
 #define DEBUG_OUTPUT_DETAIL 0
 
@@ -45,6 +47,9 @@ void ConservativeMethod::do_setup( Mesh& src_mesh, const Mesh& tgt_mesh ) {
     tgt_centroids_.resize( tgt_mesh.cells().size() );
     src_areas_.resize( src_mesh.cells().size() );
     tgt_areas_.resize( tgt_mesh.cells().size() );
+    util::KDTree<idx_t> kdt_search;
+    kdt_search.reserve( tgt_mesh.cells().size() );
+    double max_tgtcell_rad = 0.;
 
     ATLAS_ASSERT( src_mesh );
     ATLAS_ASSERT( tgt_mesh );
@@ -80,10 +85,14 @@ void ConservativeMethod::do_setup( Mesh& src_mesh, const Mesh& tgt_mesh ) {
             pts_ll[jnode] = PointLonLat{tgt_lonlat( inode, 0 ), tgt_lonlat( inode, 1 )};
         }
         tgt_csp[jcell] = CSPolygon( pts_ll );
+        kdt_search.insert( tgt_csp[jcell].centroid(), jcell );
+        max_tgtcell_rad = std::max( max_tgtcell_rad, tgt_csp[jcell].cell_radius() );
     }
 
+    kdt_search.build();
+
     // brute force (!) needs to be changed
-    size_t nonintersect = 0;
+    size_t nonintersect        = 0;
     double src_area_notcovered = 0.;
     iparam_.resize( src_nb_cells );
     eckit::Channel blackhole;
@@ -93,16 +102,19 @@ void ConservativeMethod::do_setup( Mesh& src_mesh, const Mesh& tgt_mesh ) {
         src_centroids_[scell]      = src_csp[scell].centroid();
         src_areas_[scell]          = src_csp[scell].area();
         double loc_area_notcovered = src_areas_[scell];
-        for ( idx_t tcell = 0; tcell < tgt_nb_cells; ++tcell ) {
-            CSPolygon csp_i = src_csp[scell].intersect( tgt_csp[tcell] );
+        auto tgt_cells             = kdt_search.closestPointsWithinRadius( src_centroids_[scell],
+                                                               src_csp[scell].cell_radius() + max_tgtcell_rad );
+        for ( idx_t tcell = 0; tcell < tgt_cells.size(); ++tcell ) {
+            auto ttcell     = tgt_cells[tcell].payload();
+            CSPolygon csp_i = src_csp[scell].intersect( tgt_csp[ttcell] );
             if ( csp_i.area() > 0. ) {
-                iparam_[scell].cell_id.emplace_back( tcell );
+                iparam_[scell].cell_id.emplace_back( ttcell );
                 iparam_[scell].weights.emplace_back( csp_i.area() );
                 iparam_[scell].centroids.emplace_back( csp_i.centroid() );
                 loc_area_notcovered -= csp_i.area();
             }
         }
-		src_area_notcovered += std::abs( loc_area_notcovered );
+        src_area_notcovered += std::abs( loc_area_notcovered );
         if ( iparam_[scell].cell_id.size() == 0. ) {
             ++nonintersect;
         }
