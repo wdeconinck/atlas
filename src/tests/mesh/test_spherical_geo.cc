@@ -125,7 +125,7 @@ CASE( "test_spherical_polygon_intersection" ) {
 }
 
 CASE( "test_spherical_polygon_intersection_grid_specific" ) {
-    constexpr int nplg                             = 6;
+    constexpr int nplg                             = 7;
     std::array<ConvexSphericalPolygon, nplg> plg_f = {
         getCSPolygon( {{22.5, 41.8103149}, {0, 19.47122063}, {45, 19.47122063}} ),
         getCSPolygon( {{22.8358, 2.10115}, {23.8235, 0.700384}, {24.1791, 2.10115}} ),
@@ -135,7 +135,8 @@ CASE( "test_spherical_polygon_intersection_grid_specific" ) {
         getCSPolygon( {{30.234375, -0.350876526343},
                        {30.234375, -1.052629578828},
                        {30.9375, -1.052629578828},
-                       {30.9375, -0.350876526343}} )};
+                       {30.9375, -0.350876526343}} ),
+        getCSPolygon( {{37.2414, 46.5718}, {39, 44.9939}, {40.3448, 46.5718}, {38.5714, 48.1412}} )};
     std::array<ConvexSphericalPolygon, nplg> plg_g = {
         getCSPolygon( {{33.38931298, 32.81913485}, {33.47560976, 32.73126568}, {33.52671756, 32.81913485}} ),
         getCSPolygon( {{23.2031, 1.58049}, {23.463, 1.22927}, {23.5547, 1.58049}} ),
@@ -144,7 +145,8 @@ CASE( "test_spherical_polygon_intersection_grid_specific" ) {
         getCSPolygon( {{31.3636, -0.350877}, {30.916, -1.05263}, {31.6031, -1.05263}} ),
         getCSPolygon( {{31.363636363636363313, -0.35087652634299998367},
                        {30.916030534351154557, -1.0526295788280000121},
-                       {31.603053435114510705, -1.0526295788280000121}} )};
+                       {31.603053435114510705, -1.0526295788280000121}} ),
+        getCSPolygon( {{38.5714, 45.3892}, {38.7866, 45.1916}, {38.9496, 45.3892}, {38.7342, 45.5867}} )};
     for ( int i = 0; i < nplg; ++i ) {
         auto p1 = plg_f[i].intersect( plg_g[i] );
         auto p2 = plg_g[i].intersect( plg_f[i] );
