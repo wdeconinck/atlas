@@ -53,7 +53,7 @@ public:
    * @param[in] P given point in (x,y,z) coordinates
    * @return 
    */
-    bool onSegment( const PointXYZ& P, const PointXYZ& s1, const PointXYZ& p2 ) const;
+    bool onSegment( const PointXYZ& P, const PointXYZ& s1, const PointXYZ& p2, const double eps = eps_ ) const;
 
     /*
    * Point left of [p1,p2]
