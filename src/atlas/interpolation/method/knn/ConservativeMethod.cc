@@ -91,7 +91,6 @@ void ConservativeMethod::do_setup( Mesh& src_mesh, const Mesh& tgt_mesh ) {
 
     kdt_search.build();
 
-    // brute force (!) needs to be changed
     size_t nonintersect        = 0;
     double src_area_notcovered = 0.;
     iparam_.resize( src_nb_cells );
@@ -104,11 +103,11 @@ void ConservativeMethod::do_setup( Mesh& src_mesh, const Mesh& tgt_mesh ) {
         double loc_area_notcovered = src_areas_[scell];
         auto tgt_cells             = kdt_search.closestPointsWithinRadius( src_centroids_[scell],
                                                                src_csp[scell].cell_radius() + max_tgtcell_rad );
-        for ( idx_t tcell = 0; tcell < tgt_cells.size(); ++tcell ) {
-            auto ttcell     = tgt_cells[tcell].payload();
-            CSPolygon csp_i = src_csp[scell].intersect( tgt_csp[ttcell] );
+        for ( idx_t ttcell = 0; ttcell < tgt_cells.size(); ++ttcell ) {
+            auto tcell      = tgt_cells[ttcell].payload();
+            CSPolygon csp_i = src_csp[scell].intersect( tgt_csp[tcell] );
             if ( csp_i.area() > 0. ) {
-                iparam_[scell].cell_id.emplace_back( ttcell );
+                iparam_[scell].cell_id.emplace_back( tcell );
                 iparam_[scell].weights.emplace_back( csp_i.area() );
                 iparam_[scell].centroids.emplace_back( csp_i.centroid() );
                 loc_area_notcovered -= csp_i.area();
@@ -118,7 +117,7 @@ void ConservativeMethod::do_setup( Mesh& src_mesh, const Mesh& tgt_mesh ) {
         if ( iparam_[scell].cell_id.size() == 0. ) {
             ++nonintersect;
         }
-        //ATLAS_ASSERT( iparam_[scell].cell_id.size() > 0 );
+        //       ATLAS_ASSERT( iparam_[scell].cell_id.size() > 0 );
     }
     Log::info() << "WARNING " << nonintersect << " source mesh polygons do NOT intersect any other polygon.\n";
     Log::info() << "WARNING " << src_area_notcovered << " area of source mesh NOT covered by target mesh.\n";
