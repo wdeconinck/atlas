@@ -130,7 +130,7 @@ bool ConvexSphericalPolygon::equals( const ConvexSphericalPolygon& plg, const do
             break;
         }
     }
-    if ( i == sz ) {
+    if ( i == sz && sz > 0 ) {
         return false;
     }
     for ( int j = 0; j < sz; j++ ) {
@@ -157,7 +157,7 @@ double ConvexSphericalPolygon::angle( const PointXYZ& pl, const PointXYZ& p, con
 // I. Todhunter (1886), Paragr. 99
 void ConvexSphericalPolygon::compute_area() {
     const int sz = size();
-    area_        = ( sz == 0 ? 0. : M_PI * ( 2 - sz ) );
+    area_        = ( sz < 3 ? 0. : M_PI * ( 2 - sz ) );
     for ( int i = 0; i < sz; i++ ) {
         int im1 = ( i != 0 ) ? i - 1 : sz - 1;
         int ip1 = ( i != sz - 1 ) ? i + 1 : 0;
@@ -409,6 +409,7 @@ int ConvexSphericalPolygon::nextIntersect( int control, std::vector<PointXYZ>& i
         }
         if ( first_pt < n_iplg ) {
             iplg_p.erase( iplg_p.begin(), iplg_p.begin() + first_pt );
+            iplg_p.shrink_to_fit();
             return 1;
         }
     }
