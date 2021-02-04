@@ -404,7 +404,7 @@ int ConvexSphericalPolygon::nextIntersect( int control, std::vector<PointXYZ>& i
     if ( n_iplg > 1 ) {
         int first_pt = 0;
         for ( ; first_pt < n_iplg; ++first_pt ) {
-            if ( approx_eq( iplg_p[first_pt], iplg_p[n_iplg], 5e-15 ) ) {
+            if ( approx_eq( iplg_p[first_pt], iplg_p[n_iplg], eps_ ) ) {
                 break;
             }
         }
@@ -417,8 +417,8 @@ int ConvexSphericalPolygon::nextIntersect( int control, std::vector<PointXYZ>& i
     PointXYZ ip;  //next vertex of the iplg
     int new_ii           = ii;
     int new_jj           = jj;
-    const bool P_eq_plgi = approx_eq( P, sph_coords_[ii] );
-    const bool P_eq_plgj = approx_eq( P, plg.sph_coords_[jj] );
+    const bool P_eq_plgi = approx_eq( P, sph_coords_[ii], eps_ );
+    const bool P_eq_plgj = approx_eq( P, plg.sph_coords_[jj], eps_ );
 #if DEBUG_OUTPUT_DETAIL
     std::cout << "   P_eq_plgi, P_eq_plgj: " << P_eq_plgi << ", " << P_eq_plgj << "\n";
     std::cout.flush();
