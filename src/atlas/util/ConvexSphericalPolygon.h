@@ -113,9 +113,6 @@ private:
 
     void compute_area();
 
-    // return tangential angle between [pl,p] and [p,pr]
-    inline double angle( const PointXYZ& pl, const PointXYZ& p, const PointXYZ& pr ) const;
-
 private:
     std::array<PointXYZ, MAX_SIZE> sph_coords_;
     PointXYZ centroid_;

@@ -143,26 +143,25 @@ bool ConvexSphericalPolygon::equals( const ConvexSphericalPolygon& plg, const do
     return true;
 }
 
-// note: two diameterly opposite points forming segment are not allowed
-// return tangential angle between [pl,p] and [p,pr]
-double ConvexSphericalPolygon::angle( const PointXYZ& pl, const PointXYZ& p, const PointXYZ& pr ) const {
-    const PointXYZ& plp = PointXYZ( PointXYZ::cross( pl, p ) );
-    const PointXYZ& ppr = PointXYZ( PointXYZ::cross( p, pr ) );
-    double s1p          = PointXYZ::dot( plp, ppr ) / ( PointXYZ::norm( plp ) * PointXYZ::norm( ppr ) );
-    s1p                 = std::acos( ( s1p < 0. ? -1 : 1 ) * std::min( 1., std::abs( s1p ) ) );
-    return M_PI - s1p;
-}
-
-
 // note: unit sphere!
 // I. Todhunter (1886), Paragr. 99
 void ConvexSphericalPolygon::compute_area() {
     const int sz = size();
     area_        = ( sz < 3 ? 0. : M_PI * ( 2 - sz ) );
     for ( int i = 0; i < sz; i++ ) {
-        int im1 = ( i != 0 ) ? i - 1 : sz - 1;
-        int ip1 = ( i != sz - 1 ) ? i + 1 : 0;
-        area_ += angle( sph_coords_[im1], sph_coords_[i], sph_coords_[ip1] );
+        int im1               = ( i != 0 ) ? i - 1 : sz - 1;
+        int ip1               = ( i != sz - 1 ) ? i + 1 : 0;
+        const PointXYZ& pl    = sph_coords_[im1];
+        const PointXYZ& p     = sph_coords_[i];
+        const PointXYZ& pr    = sph_coords_[ip1];
+        PointXYZ plp          = PointXYZ( PointXYZ::cross( pl, p ) );
+        PointXYZ ppr          = PointXYZ( PointXYZ::cross( p, pr ) );
+        const double plp_norm = PointXYZ::norm( plp );
+        const double ppr_norm = PointXYZ::norm( ppr );
+        ATLAS_ASSERT( plp_norm > deps_ && ppr_norm > deps_ );
+        double s1p = PointXYZ::dot( plp, ppr ) / ( plp_norm * ppr_norm );
+        s1p        = std::acos( ( s1p < 0. ? -1 : 1 ) * std::min( 1., std::abs( s1p ) ) );
+        area_ += M_PI - s1p;
     }
     area_ = ( area_ < 0. ? -area_ : area_ );
 }
