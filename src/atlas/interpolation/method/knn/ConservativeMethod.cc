@@ -8,6 +8,7 @@
  * nor does it submit to any jurisdiction. and Interpolation
  */
 
+#include <iomanip>
 #include <vector>
 
 #include "eckit/log/ProgressTimer.h"
@@ -98,14 +99,15 @@ void ConservativeMethod::do_setup( Mesh& src_mesh, const Mesh& tgt_mesh ) {
     eckit::ProgressTimer progress( "Intersecting polygons ", src_nb_cells, " cell", double( 10 ),
                                    src_nb_cells > 50 ? Log::info() : blackhole );
     for ( idx_t scell = 0; scell < src_nb_cells; ++scell, ++progress ) {
-        src_centroids_[scell]      = src_csp[scell].centroid();
-        src_areas_[scell]          = src_csp[scell].area();
+        const auto& s_csp          = src_csp[scell];
+        src_centroids_[scell]      = s_csp.centroid();
+        src_areas_[scell]          = s_csp.area();
         double loc_area_notcovered = src_areas_[scell];
-        auto tgt_cells             = kdt_search.closestPointsWithinRadius( src_centroids_[scell],
-                                                               src_csp[scell].cell_radius() + max_tgtcell_rad );
+        auto tgt_cells =
+            kdt_search.closestPointsWithinRadius( s_csp.centroid(), s_csp.cell_radius() + max_tgtcell_rad );
         for ( idx_t ttcell = 0; ttcell < tgt_cells.size(); ++ttcell ) {
             auto tcell      = tgt_cells[ttcell].payload();
-            CSPolygon csp_i = src_csp[scell].intersect( tgt_csp[tcell] );
+            CSPolygon csp_i = s_csp.intersect( tgt_csp[tcell] );
             if ( csp_i.area() > 0. ) {
                 iparam_[scell].cell_id.emplace_back( tcell );
                 iparam_[scell].weights.emplace_back( csp_i.area() );
@@ -117,7 +119,38 @@ void ConservativeMethod::do_setup( Mesh& src_mesh, const Mesh& tgt_mesh ) {
         if ( iparam_[scell].cell_id.size() == 0. ) {
             ++nonintersect;
         }
-        //       ATLAS_ASSERT( iparam_[scell].cell_id.size() > 0 );
+//#ifndef NDEBUG
+        if ( std::abs( loc_area_notcovered ) > 1e-5 ) {
+            Log::info().flush();
+            Log::info() << "\n === DEBUG ===\n\n";
+            Log::info() << "* src cell area NOT covered: " << loc_area_notcovered << "\n";
+            Log::info() << "* src cell: " << std::setprecision( 20 ) << s_csp << "\n";
+            Log::info() << "* src area: " << s_csp.area() << "\n\n";
+            double area_ncov = s_csp.area();
+            for ( int i = 0; i < tgt_cells.size(); ++i ) {
+                const auto tcell  = tgt_cells[i].payload();
+                const auto& t_csp = tgt_csp[tcell];
+                Log::info() << "* tgt cell: " << t_csp << "\n";
+                auto iplg          = s_csp.intersect( t_csp );
+                auto jplg          = t_csp.intersect( s_csp );
+                const double darea = std::abs( iplg.area() - jplg.area() );
+                Log::info() << "* src ^ tgt      : " << iplg << "\n";
+                Log::info() << "* src ^ tgt area : " << iplg.area() << "\n";
+                if ( darea > 1e-14 or iplg.area() > 0.1 ) {
+                    s_csp.intersect( t_csp, 1 );
+                    ATLAS_ASSERT( false );
+                    //jplg.compute_area(1);
+                    Log::info() << "* (!!) intersect comm area diff: " << darea << "\n";
+                    Log::info() << "* (!!) tgt ^ src      : " << jplg << "\n";
+                    Log::info() << "* (!!) tgt ^ src area : " << jplg.area() << "\n";
+                }
+                Log::info() << "\n";
+                area_ncov -= iplg.area();
+            }
+            Log::info() << "\n=== END DEBUG ===\n\n";
+            ATLAS_ASSERT( false );
+        }
+//#endif
     }
     Log::info() << "WARNING " << nonintersect << " source mesh polygons do NOT intersect any other polygon.\n";
     Log::info() << "WARNING " << src_area_notcovered << " area of source mesh NOT covered by target mesh.\n";
