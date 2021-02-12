@@ -53,7 +53,7 @@ public:
    * @param[in] P given point in (x,y,z) coordinates
    * @return 
    */
-    bool onSegment( const PointXYZ& P, const PointXYZ& s1, const PointXYZ& p2, const double eps = eps_ ) const;
+    bool onSegment( const PointXYZ& P, const PointXYZ& s1, const PointXYZ& p2, const double tol = eps_ ) const;
 
     /*
    * Point left of [p1,p2]
@@ -69,14 +69,15 @@ public:
    * @param[out] ip intersection point or nullptr
    * @return 0:no_intersection, 1:
    */
-    int intersect( const PointXYZ& s1, const PointXYZ& s2, PointXYZ& ip, int start = 0 ) const;
+    int intersect( const PointXYZ& s1, const PointXYZ& s2, PointXYZ& ip, const int start = 0, const double tol = eps_,
+                   const bool debug = false ) const;
 
     /*
    * @brief intersect a polygon with this polygon
    * @param[in] pol clipping polygon
    * @param[out] intersecting polygon
    */
-    ConvexSphericalPolygon intersect( const ConvexSphericalPolygon& pol ) const;
+    ConvexSphericalPolygon intersect( const ConvexSphericalPolygon& pol, const bool debug = false ) const;
 
     /*
    * @brief check if two spherical polygons area equal
@@ -108,8 +109,8 @@ private:
    * @param[in] i starting edge of plg1
    * @param[in] j starting edge of plg2
    */
-    int nextIntersect( int control, std::vector<PointXYZ>& plg_points, const ConvexSphericalPolygon& plg1, int i, int j,
-                       int inside = 0 ) const;
+    int nextIntersect( const int control, std::vector<PointXYZ>& plg_points, const ConvexSphericalPolygon& plg1,
+                       const int i, const int j, const bool inside = false, const bool debug = false ) const;
 
     void compute_area();
 
