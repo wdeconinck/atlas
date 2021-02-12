@@ -32,8 +32,7 @@ public:
     ConvexSphericalPolygon( const std::vector<PointLonLat>& points );
     //ConvexSphericalPolygon( const PartitionPolygon& );
 
-    // @brief This constructor does not need vertex orientation
-    ConvexSphericalPolygon( const std::vector<PointXYZ>& points );
+    ConvexSphericalPolygon( const std::vector<PointXYZ>& points, const bool debug = false );
 
     /*
    * @brief Point-in-polygon test on sphere with spherical polygons
