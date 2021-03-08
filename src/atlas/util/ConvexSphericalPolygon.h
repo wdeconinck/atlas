@@ -40,23 +40,22 @@ public:
 
     const PointXYZ& centroid() const { return centroid_; }
 
-	static double norm_max( const PointXYZ& p, const PointXYZ& q );
+    static double norm_max( const PointXYZ& p, const PointXYZ& q );
 
     /*
    * @brief Point-on-segment test on great circle segments
    * @param[in] P given point in (x,y,z) coordinates
    * @return 
    */
-	static bool between( const PointXYZ& p, const PointXYZ& p1, const PointXYZ& p2,
-		const int debug = 0 );
+    static bool between( const PointXYZ& p, const PointXYZ& p1, const PointXYZ& p2, const int debug = 0 );
 
     /*
    * Point left of [p1,p2]
    * @param[in] P, p1, p2 given point in xyz-coordinates
    * @return 0:P_right_of_[p1,p2], -1:overlap_of_[P,p1]_and_[P,p2], 1:P_left_of_[p1,p2]
    */
-    int leftOf( const PointXYZ& P, const PointXYZ& p1, const PointXYZ& p2, const double tol =
-		1e-14, const int debug = 0 ) const;
+    int leftOf( const PointXYZ& P, const PointXYZ& p1, const PointXYZ& p2, const double tol = 1e-14,
+                const int debug = 0 ) const;
 
     /*
    * @brief Segment-sph_polygon intersection
@@ -65,13 +64,13 @@ public:
    * @param[out] ip intersection point or nullptr
    * @return 0:no_intersection, 1:
    */
-    int intersect( const PointXYZ& s1, const PointXYZ& s2, PointXYZ& ip, const int start, 
-		const bool debug = false ) const;
-	static PointXYZ common( const PointXYZ& s1, const PointXYZ& s2, 
-		const PointXYZ& p1, const PointXYZ& p2, const int debug = 0 );
+    int intersect( const PointXYZ& s1, const PointXYZ& s2, PointXYZ& ip, const int start,
+                   const bool debug = false ) const;
+    static PointXYZ common( const PointXYZ& s1, const PointXYZ& s2, const PointXYZ& p1, const PointXYZ& p2,
+                            const int debug = 0 );
 
-	void clip( const PointXYZ& s1, const PointXYZ& s2, const int debug = 0 );
-	void clip( const PointLonLat& s1, const PointLonLat& s2, const int debug = 0 );
+    void clip( const PointXYZ& s1, const PointXYZ& s2, const int debug = 0 );
+    void clip( const PointLonLat& s1, const PointLonLat& s2, const int debug = 0 );
     ConvexSphericalPolygon intersect( const ConvexSphericalPolygon& pol, const int debug = 0 ) const;
 
     /*
@@ -102,7 +101,7 @@ public:
         return sph_coords_[n];
     }
 
-//private:
+    //private:
 
     void compute_area();
 

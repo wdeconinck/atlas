@@ -69,6 +69,7 @@ protected:
     std::vector<double> tgt_areas_;
     int order_;
     std::vector<InterpolationParameters> iparam_;
+    int normalise_intersections_;
 };
 
 
