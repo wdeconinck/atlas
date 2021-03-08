@@ -25,7 +25,7 @@
 #include "atlas/util/KDTree.h"
 
 
-#define DEBUG_OUTPUT_DETAIL 0
+#define DEBUG_OUTPUT_DETAIL 1
 
 namespace atlas {
 namespace interpolation {
@@ -35,6 +35,7 @@ using CSPolygon = util::ConvexSphericalPolygon;
 
 ConservativeMethod::ConservativeMethod( const util::Config& config ) {
     config.get( "order", order_ = 2 );
+    config.get( "normalise_intersections", normalise_intersections_ = 1 );
 }
 
 void ConservativeMethod::do_setup( Mesh& src_mesh, const Mesh& tgt_mesh ) {
@@ -99,10 +100,10 @@ void ConservativeMethod::do_setup( Mesh& src_mesh, const Mesh& tgt_mesh ) {
     eckit::ProgressTimer progress( "Intersecting polygons ", src_nb_cells, " cell", double( 10 ),
                                    src_nb_cells > 50 ? Log::info() : blackhole );
     for ( idx_t scell = 0; scell < src_nb_cells; ++scell, ++progress ) {
-        const auto& s_csp          = src_csp[scell];
-        src_centroids_[scell]      = s_csp.centroid();
-        src_areas_[scell]          = s_csp.area();
-        double loc_area_notcovered = src_areas_[scell];
+        const auto& s_csp     = src_csp[scell];
+        src_centroids_[scell] = s_csp.centroid();
+        src_areas_[scell]     = s_csp.area();
+        double covered_area   = 0.;
         auto tgt_cells =
             kdt_search.closestPointsWithinRadius( s_csp.centroid(), s_csp.cell_radius() + max_tgtcell_rad );
         for ( idx_t ttcell = 0; ttcell < tgt_cells.size(); ++ttcell ) {
@@ -112,37 +113,48 @@ void ConservativeMethod::do_setup( Mesh& src_mesh, const Mesh& tgt_mesh ) {
                 iparam_[scell].cell_id.emplace_back( tcell );
                 iparam_[scell].weights.emplace_back( csp_i.area() );
                 iparam_[scell].centroids.emplace_back( csp_i.centroid() );
-                loc_area_notcovered -= csp_i.area();
+                covered_area += csp_i.area();
             }
         }
-        src_area_notcovered += std::abs( loc_area_notcovered );
+        const double loc_csp_error = std::abs( src_csp[scell].area() - covered_area );
+        src_area_notcovered += loc_csp_error;
         if ( iparam_[scell].cell_id.size() == 0. ) {
             ++nonintersect;
         }
-//#ifndef NDEBUG
-        if ( std::abs( loc_area_notcovered ) > 1e-5 ) {
+        // normalise
+        if ( normalise_intersections_ ) {
+            double wfactor = src_csp[scell].area() / ( covered_area > 1e-10 ? covered_area : 1. );
+            for ( idx_t i = 0; i < iparam_[scell].weights.size(); i++ ) {
+                iparam_[scell].weights[i] *= wfactor;
+            }
+        }
+
+        //#ifndef NDEBUG
+        if ( false && loc_csp_error > 1e-5 ) {
             Log::info().flush();
             Log::info() << "\n === DEBUG ===\n\n";
-            Log::info() << "* src cell area NOT covered: " << loc_area_notcovered << "\n";
-            Log::info() << "* src cell: " << std::setprecision( 20 ) << s_csp << "\n";
+            Log::info() << "* src cell area NOT covered: " << loc_csp_error << "\n";
+            Log::info() << "* src cell: " << std::setprecision( 30 ) << s_csp << "\n";
             Log::info() << "* src area: " << s_csp.area() << "\n\n";
             double area_ncov = s_csp.area();
             for ( int i = 0; i < tgt_cells.size(); ++i ) {
                 const auto tcell  = tgt_cells[i].payload();
                 const auto& t_csp = tgt_csp[tcell];
+                Log::info() << "* src cell: " << s_csp << "\n";
                 Log::info() << "* tgt cell: " << t_csp << "\n";
                 auto iplg          = s_csp.intersect( t_csp );
                 auto jplg          = t_csp.intersect( s_csp );
                 const double darea = std::abs( iplg.area() - jplg.area() );
                 Log::info() << "* src ^ tgt      : " << iplg << "\n";
                 Log::info() << "* src ^ tgt area : " << iplg.area() << "\n";
-                if ( darea > 1e-14 or iplg.area() > 0.1 ) {
+                if ( darea > 1e-9 or iplg.area() > 0.1 ) {
+                    //ATLAS_ASSERT( false );
                     s_csp.intersect( t_csp, 1 );
-                    ATLAS_ASSERT( false );
-                    //jplg.compute_area(1);
                     Log::info() << "* (!!) intersect comm area diff: " << darea << "\n";
                     Log::info() << "* (!!) tgt ^ src      : " << jplg << "\n";
                     Log::info() << "* (!!) tgt ^ src area : " << jplg.area() << "\n";
+                    t_csp.intersect( s_csp, 1 );
+                    ATLAS_ASSERT( false );
                 }
                 Log::info() << "\n";
                 area_ncov -= iplg.area();
@@ -150,7 +162,7 @@ void ConservativeMethod::do_setup( Mesh& src_mesh, const Mesh& tgt_mesh ) {
             Log::info() << "\n=== END DEBUG ===\n\n";
             ATLAS_ASSERT( false );
         }
-//#endif
+        //#endif
     }
     Log::info() << "WARNING " << nonintersect << " source mesh polygons do NOT intersect any other polygon.\n";
     Log::info() << "WARNING " << src_area_notcovered << " area of source mesh NOT covered by target mesh.\n";
@@ -182,9 +194,9 @@ void ConservativeMethod::do_execute( const Field& src_field, Field& tgt_field ) 
         tgt_vals( tcell ) = 0.;
     }
     for ( idx_t scell = 0; scell < src_vals.size(); ++scell ) {
-        if ( halo( scell ) ) {
-            continue;
-        }
+        //if ( halo( scell ) ) {
+        //    continue;
+        //}
         const auto& iparam      = iparam_[scell];
         const PointXYZ& P       = src_centroids_[scell];
         PointXYZ grad           = {0., 0., 0.};
