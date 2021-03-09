@@ -25,8 +25,6 @@ class PartitionPolygon;
 class ConvexSphericalPolygon {
 public:
     static constexpr int MAX_SIZE = 12;
-    static constexpr double eps_  = 1e-7;
-    static constexpr double deps_ = 1e-14;
 
     ConvexSphericalPolygon();
     ConvexSphericalPolygon( const std::vector<PointLonLat>& points );

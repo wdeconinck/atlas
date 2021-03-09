@@ -25,16 +25,16 @@
 namespace atlas {
 namespace util {
 
-bool approx_eq( const double& v1, const double& v2, const double tol = ConvexSphericalPolygon::eps_ ) {
+bool approx_eq( const double& v1, const double& v2, const double& tol ) {
     return eckit::types::is_approximately_equal( v1, v2, tol );
 }
 
-bool approx_eq( const PointXYZ& v1, const PointXYZ& v2, const double tol = ConvexSphericalPolygon::eps_ ) {
+bool approx_eq( const PointXYZ& v1, const PointXYZ& v2, const double& tol ) {
     //return approx_eq( v1[0], v2[0], t ) && approx_eq( v1[1], v2[1], t ) && approx_eq( v1[2], v2[2], t );
     return PointXYZ::norm( v1 - v2 ) < tol;
 }
 
-bool approx_eq_null( const PointXYZ& v1, const double tol = ConvexSphericalPolygon::eps_ ) {
+bool approx_eq_null( const PointXYZ& v1, const double& tol ) {
     //return approx_eq( v1[0], 0., t ) && approx_eq( v1[1], 0., t ) && approx_eq( v1[2], 0., t );
     return PointXYZ::norm( v1 ) < tol;
 }
@@ -61,14 +61,15 @@ ConvexSphericalPolygon::ConvexSphericalPolygon( const std::vector<PointLonLat>& 
     size_t isp = 1;
     for ( size_t i = 1; i < points.size() - 1; ++i ) {
         eckit::geometry::Sphere::convertSphericalToCartesian( 1., points[i], sph_coords_[isp] );
-        if ( approx_eq( sph_coords_[isp], sph_coords_[isp - 1] ) ) {
+        if ( approx_eq( sph_coords_[isp], sph_coords_[isp - 1], 1e-10 ) ) {
             continue;
         }
         centroid_ = centroid_ + sph_coords_[isp];
         ++isp;
     }
     eckit::geometry::Sphere::convertSphericalToCartesian( 1., points[points.size() - 1], sph_coords_[isp] );
-    if ( approx_eq( sph_coords_[isp], sph_coords_[0] ) or approx_eq( sph_coords_[isp], sph_coords_[isp - 1] ) ) {
+    if ( approx_eq( sph_coords_[isp], sph_coords_[0], 1e-10 ) or approx_eq( sph_coords_[isp],
+sph_coords_[isp - 1], 1e-10 ) ) {
     }
     else {
         centroid_ = centroid_ + sph_coords_[isp];
@@ -78,7 +79,7 @@ ConvexSphericalPolygon::ConvexSphericalPolygon( const std::vector<PointLonLat>& 
     valid_ = size_ > 2;
     if ( valid_ ) {
         ATLAS_ASSERT( validate() );
-        ATLAS_ASSERT( not approx_eq_null( centroid_ ) );
+        ATLAS_ASSERT( not approx_eq_null( centroid_, 1e-10 ) );
         centroid_ = PointXYZ::div( centroid_, PointXYZ::norm( centroid_ ) );
         compute_area();
         cell_radius_ = 0.;
@@ -167,7 +168,7 @@ ConvexSphericalPolygon::ConvexSphericalPolygon( const std::vector<PointXYZ>& poi
     size_  = isp;
     valid_ = size_ > 2;
     if ( valid_ ) {
-        ATLAS_ASSERT( not approx_eq_null( centroid_ ) );
+        ATLAS_ASSERT( not approx_eq_null( centroid_, 1e-10 ) );
         centroid_ = PointXYZ::div( centroid_, PointXYZ::norm( centroid_ ) );
         compute_area();
     }
@@ -180,8 +181,8 @@ bool ConvexSphericalPolygon::validate() {
             int nni               = ( ni != size() - 1 ? ni + 1 : 0 );
             const PointXYZ& P     = sph_coords_[i];
             const PointXYZ& nextP = sph_coords_[ni];
-            ATLAS_ASSERT( std::abs( PointXYZ::dot( P, P ) - 1. ) < deps_ );
-            ATLAS_ASSERT( not approx_eq( P, PointXYZ::mul( nextP, -1. ) ) );
+            ATLAS_ASSERT( std::abs( PointXYZ::dot( P, P ) - 1. ) < 1e-14 );
+            ATLAS_ASSERT( not approx_eq( P, PointXYZ::mul( nextP, -1. ), 1e-10 ) );
             valid_ = valid_ && leftOf( sph_coords_[nni], P, nextP );
         }
     }
@@ -206,7 +207,6 @@ bool ConvexSphericalPolygon::equals( const ConvexSphericalPolygon& plg, const do
             .flush();
         return false;
     }
-    ( Log::info() << "offset: " << offset << "\n" ).flush();
 
     for ( int j = 0; j < size_; j++ ) {
         int idx   = ( offset + j ) % size_;
@@ -331,7 +331,7 @@ PointXYZ ConvexSphericalPolygon::common( const PointXYZ& s1, const PointXYZ& s2,
 	Log::info() << " sp = " << sph_to_lonlat(sp) << "\n\n";
 #endif
 
-    double sp_norm = PointXYZ::norm( sp ) - 1e+0 * std::numeric_limits<double>::epsilon();
+    double sp_norm = PointXYZ::norm( sp ) - std::numeric_limits<double>::epsilon();
 #if DEBUG_OUTPUT_DETAIL
     if ( debug ) {
         ( Log::info() << " Parallel: " << sp_norm << " < 0 ?\n" ).flush();
