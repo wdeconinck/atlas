@@ -70,41 +70,35 @@ void compute_geom_errors( const array::ArrayView<double, 1>& src_vals, const arr
         const auto& iparam = conservativeMethod.iparam()[scell];
         for ( idx_t icell = 0; icell < iparam.weights.size(); ++icell ) {
             diff_cell -= iparam.weights[icell];
-            no_iplg += iparam.weights.size();
         }
-        if ( std::abs( diff_cell ) > 1e-8 ) {
-            Log::info() << "diff_cell, scell: " << diff_cell << " " << scell << "\n";
-            for ( idx_t i = 0; i < iparam.weights.size(); ++i ) {
-                Log::info() << iparam.cell_id[i] << " ";
-            }
-            Log::info() << "\n";
-        }
-        err_1 += diff_cell;
+        no_iplg += iparam.weights.size();
+        err_1 += std::abs( diff_cell ) * conservativeMethod.src_area( scell );
         err_max = std::max( err_max, std::abs( diff_cell ) );
     }
-    err_1 = std::abs( err_1 );
     Log::info() << "    Size of src_grid, tgt_grid, supergrid: " << src_vals.size() << " " << tgt_vals.size() << " "
                 << no_iplg << "\n";
-    Log::info() << "    cons err in polygon intersect  : (L2) " << err_1 << " (Lmax) " << err_max << "\n";
+    Log::info() << "    cons err in polygon intersect  : (L1) " << err_1 << " (Lmax) " << err_max << "\n";
     outfile << std::setw( 10 ) << err_1 << std::setw( 10 ) << err_max;
 }
 
 void compute_field_errors( const array::ArrayView<double, 1>& src_vals, const array::ArrayView<double, 1>& tgt_vals,
                            array::ArrayView<double, 1>& diff_vals, ConservativeMethod& conservativeMethod,
                            double func( const PointLonLat& ), std::ofstream& outfile ) {
+    double global_cons_err = 0;
     for ( idx_t scell = 0; scell < src_vals.size(); ++scell ) {
         diff_vals( scell ) = src_vals( scell ) * conservativeMethod.src_area( scell );
+        global_cons_err += diff_vals( scell );
         const auto& iparam = conservativeMethod.iparam()[scell];
         for ( idx_t icell = 0; icell < iparam.weights.size(); ++icell ) {
             diff_vals( scell ) -= tgt_vals( iparam.cell_id[icell] ) * iparam.weights[icell];
         }
         diff_vals( scell ) = std::abs( diff_vals( scell ) );
-        //diff_vals( scell ) = std::abs( diff_vals( scell ) ) / conservativeMethod.src_area( scell );
     }
 
     double err_2   = 0.;
     double err_max = 0.;
     for ( idx_t tcell = 0; tcell < tgt_vals.size(); ++tcell ) {
+        global_cons_err -= tgt_vals( tcell ) * conservativeMethod.tgt_area( tcell );
         auto p = conservativeMethod.tgt_centroid( tcell );
         PointLonLat pll;
         eckit::geometry::Sphere::convertCartesianToSpherical( 1., p, pll );
@@ -115,27 +109,15 @@ void compute_field_errors( const array::ArrayView<double, 1>& src_vals, const ar
     err_2 = std::sqrt( err_2 * 0.25 * M_1_PI );
     Log::info() << "    " << conservativeMethod.order() << "-order remap analytical error : (L2) " << err_2
                 << " (Lmax) " << err_max << "\n";
-    outfile << std::setw( 10 ) << err_2 << std::setw( 10 ) << err_max;
-
-    err_2   = 0.;
-    err_max = 0.;
-    for ( idx_t scell = 0; scell < src_vals.size(); ++scell ) {
-        const auto& iparam = conservativeMethod.iparam()[scell];
-        for ( idx_t icell = 0; icell < iparam.weights.size(); ++icell ) {
-            double err_l = std::abs( src_vals( scell ) - tgt_vals( iparam.cell_id[icell] ) );
-            err_2 += err_l * err_l * iparam.weights[icell];
-            err_max = std::max( err_max, err_l );
-        }
-    }
-    err_2 = std::sqrt( err_2 * 0.25 * M_1_PI );
-    Log::info() << "    " << conservativeMethod.order() << "-order remap mesh2mesh error  : (L2) " << err_2
-                << " (Lmax) " << err_max << "\n";
-    outfile << std::setw( 10 ) << err_2 << std::setw( 10 ) << err_max;
+    Log::info() << "    " << conservativeMethod.order() << "-order global remap error : " << std::abs( global_cons_err )
+                << "\n";
+    outfile << std::setw( 10 ) << err_2 << std::setw( 10 ) << err_max << std::setw( 10 ) << std::abs( global_cons_err );
 }
 
 void do_remapping_test( Grid src_grid, Grid tgt_grid, double func( const PointLonLat& ), std::ofstream& outfile ) {
     util::Config config;
     config.set( "include_pole", true );
+    config.set( "normalise_intersections", 1 );
     //config.set( "triangulate", true );
 
     outfile << std::setw( 10 ) << src_grid.name() << std::setw( 10 ) << tgt_grid.name();
@@ -198,32 +180,34 @@ void do_remapping_test( Grid src_grid, Grid tgt_grid, double func( const PointLo
     compute_field_errors( src_vals, tgt_vals, diff_vals, conservativeMethod, func, outfile );
     output::Gmsh( "cons-remap_dfield-2ord.msh", util::Config( "coordinates", "lonlat" ) ).write( diff_field );
 
-    ( outfile << "\n\n" ).flush();
+    ( outfile << "\n" ).flush();
 }
 
 CASE( "test_interpolation_conservative" ) {
     std::stringstream ss;
     ss << "# (1) s-grid   (2) t-grid   (3) setup [s]   (4) err.polygon.create";
-    ss << "   (5) err.polygon.intrsc.L1   (6) err.polygon.intrsc.Lmax   (7) 1st-rmp [s]\n";
-    ss << "# (8) err.1st.ana.L2   (9) err.1st.ana.Lmax   (10) err.1st.mesh2mesh.err.L2";
-    ss << "   (11) err.1st.mesh2mesh.err.Lmax   (12) 2nd-remap[s]   (13) 2nd-ana-err.L2\n";
-    ss << "# (14) 2nd-ana-err.Lmax   (15) 2nd-mesh2mesh-err.L2   (16) 2nd-mesh2mesh-err.Lmax\n";
-    for ( int i = 1; i < 17; ++i ) {
+    ss << "   (5) err.polygon.intersecting.L1\n#(6) err.polygon.intersecting.Lmax   (7) Time 1st-rmp [sec]";
+    ss << "# (8) err.1st.ana.L2   (9) err.1st.ana.Lmax   (10) err.1st.global.cons\n#";
+    ss << " (11) Time 2nd-remap [sec]   (12) 2nd-ana-err.L2   (13) 2nd-ana-err.Lmax   (14) err.2nd.global.cons\n";
+    for ( int i = 1; i < 15; ++i ) {
         ss << std::setw( 10 ) << i;
     }
     ss << "\n";
 
     SECTION( "analytic constfunc" ) {
+	return;
         auto func = []( const PointLonLat& p ) { return 1.; };
         std::ofstream outfile;
         outfile.open( "cons-remap_constfunc.dat", std::ios_base::app );
         outfile << "# Test -- analytic function = 1\n";
         outfile << std::scientific << std::setprecision( 1 );
         outfile << ss.str();
+
         do_remapping_test( Grid( "F32" ), Grid( "H32" ), func, outfile );
         do_remapping_test( Grid( "H32" ), Grid( "O32" ), func, outfile );
         do_remapping_test( Grid( "O32" ), Grid( "N32" ), func, outfile );
         do_remapping_test( Grid( "N32" ), Grid( "H32" ), func, outfile );
+
         outfile.close();
     }
 
@@ -237,8 +221,10 @@ CASE( "test_interpolation_conservative" ) {
             double cos = std::cos( 0.025 * p[0] );
             return 2. + cos * cos * std::cos( 2 * 0.025 * p[1] );
         };
+
         do_remapping_test( Grid( "O1" ), Grid( "H128" ), func, outfile );
         do_remapping_test( Grid( "O2" ), Grid( "H128" ), func, outfile );
+
         outfile.close();
     }
 
