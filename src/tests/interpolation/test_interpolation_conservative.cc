@@ -195,7 +195,6 @@ CASE( "test_interpolation_conservative" ) {
     ss << "\n";
 
     SECTION( "analytic constfunc" ) {
-	return;
         auto func = []( const PointLonLat& p ) { return 1.; };
         std::ofstream outfile;
         outfile.open( "cons-remap_constfunc.dat", std::ios_base::app );
@@ -203,10 +202,18 @@ CASE( "test_interpolation_conservative" ) {
         outfile << std::scientific << std::setprecision( 1 );
         outfile << ss.str();
 
-        do_remapping_test( Grid( "F32" ), Grid( "H32" ), func, outfile );
-        do_remapping_test( Grid( "H32" ), Grid( "O32" ), func, outfile );
-        do_remapping_test( Grid( "O32" ), Grid( "N32" ), func, outfile );
-        do_remapping_test( Grid( "N32" ), Grid( "H32" ), func, outfile );
+        const int start_res            = 16;
+        const int end_res              = 1 * start_res + 1;
+        std::vector<std::string> grids = {"F", "N", "O", "H"};
+        for ( int i = start_res; i < end_res; i *= 2 ) {
+            for ( int gi = 0; gi < grids.size(); gi++ ) {
+                auto gridA = Grid( grids[gi] + std::to_string( i ) );
+                for ( int gj = 0; gj < grids.size(); gj++ ) {
+                    auto gridB = Grid( grids[gj] + std::to_string( i ) );
+                    do_remapping_test( gridA, gridB, func, outfile );
+                }
+            }
+        }
 
         outfile.close();
     }
@@ -222,8 +229,20 @@ CASE( "test_interpolation_conservative" ) {
             return 2. + cos * cos * std::cos( 2 * 0.025 * p[1] );
         };
 
-        do_remapping_test( Grid( "O1" ), Grid( "H128" ), func, outfile );
-        do_remapping_test( Grid( "O2" ), Grid( "H128" ), func, outfile );
+        const int start_res            = 16;
+        const int end_res              = 1 * start_res + 1;
+        std::vector<std::string> grids = {"F", "N", "O", "H"};
+        for ( int i = start_res; i < end_res; i *= 2 ) {
+            for ( int gi = 0; gi < grids.size(); gi++ ) {
+                auto gridA = Grid( grids[gi] + std::to_string( i ) );
+                for ( int gj = 0; gj < grids.size(); gj++ ) {
+                    for ( int j = start_res; j < end_res; j *= 2 ) {
+                        auto gridB = Grid( grids[gj] + std::to_string( j ) );
+                        do_remapping_test( gridA, gridB, func, outfile );
+                    }
+                }
+            }
+        }
 
         outfile.close();
     }
