@@ -69,8 +69,8 @@ ConvexSphericalPolygon::ConvexSphericalPolygon( const std::vector<PointLonLat>& 
         ++isp;
     }
     eckit::geometry::Sphere::convertSphericalToCartesian( 1., points[points.size() - 1], sph_coords_[isp] );
-    if ( approx_eq( sph_coords_[isp], sph_coords_[0], 1e-10 ) or approx_eq( sph_coords_[isp],
-sph_coords_[isp - 1], 1e-10 ) ) {
+    if ( approx_eq( sph_coords_[isp], sph_coords_[0], 1e-10 ) or
+         approx_eq( sph_coords_[isp], sph_coords_[isp - 1], 1e-10 ) ) {
     }
     else {
         centroid_ = centroid_ + sph_coords_[isp];
