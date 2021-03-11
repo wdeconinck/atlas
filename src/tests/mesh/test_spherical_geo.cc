@@ -18,7 +18,7 @@ ConvexSphericalPolygon getCSPolygon( std::initializer_list<PointLonLat> list ) {
         return ConvexSphericalPolygon();
     }
     std::vector<PointLonLat> pts;
-    pts.reserve( list.size() + 1 );
+    pts.reserve( list.size() );
     for ( auto& p : list ) {
         pts.emplace_back( p );
     }
@@ -35,12 +35,8 @@ CASE( "test default constructor" ) {
 CASE( "test_spherical_polygon_area" ) {
     auto plg1 = getCSPolygon( {{0, 90}, {0, 0}, {90, 0}} );
     EXPECT_APPROX_EQ( plg1.area(), M_PI_2 );
-    Log::info() << "area: " << plg1.area() << "\n";
     auto plg2 = getCSPolygon( {{0, 45}, {0, 0}, {90, 0}, {90, 45}} );
-    Log::info() << "area: " << plg2.area() << "\n";
-
     auto plg3 = getCSPolygon( {{0, 90}, {0, 45}, {90, 45}} );
-    Log::info() << "area: " << plg3.area() << "\n";
     Log::info() << "area diff: " << plg1.area() - plg2.area() - plg3.area() << std::endl;
     EXPECT_APPROX_EQ( std::abs( plg1.area() - plg2.area() - plg3.area() ), 0, 1e-15 );
 }
@@ -85,7 +81,7 @@ CASE( "test_spherical_polygon_intersection" ) {
         getCSPolygon( {{0, 60}, {40, 60}, {20, 65}} ),
         getCSPolygon( {{12.6, 61.3}, {27.4, 61.3}, {30, 63}, {20, 65}, {10, 63}} ),  //12
         getCSPolygon( {{0, 70}, {1.9, 60.3}, {32.9, 60.9}, {40, 70}} ),
-        getCSPolygon( {{0, 50}, {0, 40}, {5, 45}} ),  //14
+        getCSPolygon( {} ),  //14
         getCSPolygon( {{13.7, 61.4}, {26.3, 61.4}, {30, 70.8}, {10, 70.8}} ),
         getCSPolygon( {{0, 65}, {0, 60}, {16.8, 61.5}, {40, 65}, {40, 70}, {15, 71.1}} ),  //16
         getCSPolygon( {{0, 60}, {0, 50}, {40, 60}} ),
@@ -114,44 +110,18 @@ CASE( "test_spherical_polygon_intersection" ) {
             Log::info() << "got polygon\n    ";
             if ( plg_fg ) {
                 Log::info() << plg_fg << std::endl;
+                Log::info() << "	" << plg_gf << std::endl;
                 EXPECT( plg_fg.equals( plg_gf ) );
-                EXPECT( plg_fg.equals( plg_i[i * nplg_g + j], 0.05 ) );
+                EXPECT( plg_fg.equals( plg_i[i * nplg_g + j], 0.1 ) );
+                Log::info() << " instead of polygon\n    ";
+                Log::info() << plg_i[i * nplg_g + j] << std::endl;
             }
             else {
                 Log::info() << "	empty" << std::endl;
+                Log::info() << " instead of polygon\n    ";
+                Log::info() << plg_i[i * nplg_g + j] << std::endl;
             }
         }
-    }
-}
-
-CASE( "test_spherical_polygon_intersection_grid_specific" ) {
-    constexpr int nplg                             = 7;
-    std::array<ConvexSphericalPolygon, nplg> plg_f = {
-        getCSPolygon( {{22.5, 41.8103149}, {0, 19.47122063}, {45, 19.47122063}} ),
-        getCSPolygon( {{22.8358, 2.10115}, {23.8235, 0.700384}, {24.1791, 2.10115}} ),
-        getCSPolygon( {{6.61765, -0.700384}, {6.71642, -2.10115}, {7.94118, -0.700384}} ),
-        getCSPolygon( {{30.2344, -0.350877}, {30.2344, -1.05263}, {30.9375, -1.05263}, {30.9375, -0.350877}} ),
-        getCSPolygon( {{30.2344, -0.350877}, {30.2344, -1.05263}, {30.9375, -1.05263}, {30.9375, -0.350877}} ),
-        getCSPolygon( {{30.234375, -0.350876526343},
-                       {30.234375, -1.052629578828},
-                       {30.9375, -1.052629578828},
-                       {30.9375, -0.350876526343}} ),
-        getCSPolygon( {{37.2414, 46.5718}, {39, 44.9939}, {40.3448, 46.5718}, {38.5714, 48.1412}} )};
-    std::array<ConvexSphericalPolygon, nplg> plg_g = {
-        getCSPolygon( {{33.38931298, 32.81913485}, {33.47560976, 32.73126568}, {33.52671756, 32.81913485}} ),
-        getCSPolygon( {{23.2031, 1.58049}, {23.463, 1.22927}, {23.5547, 1.58049}} ),
-        getCSPolygon( {{6.67969, -1.58049}, {6.70588, -1.93171}, {7.03125, -1.58049}} ),
-        getCSPolygon( {{31.3636, -0.350877}, {30.916, -1.05263}, {31.6031, -1.05263}} ),
-        getCSPolygon( {{31.3636, -0.350877}, {30.916, -1.05263}, {31.6031, -1.05263}} ),
-        getCSPolygon( {{31.363636363636363313, -0.35087652634299998367},
-                       {30.916030534351154557, -1.0526295788280000121},
-                       {31.603053435114510705, -1.0526295788280000121}} ),
-        getCSPolygon( {{38.5714, 45.3892}, {38.7866, 45.1916}, {38.9496, 45.3892}, {38.7342, 45.5867}} )};
-    for ( int i = 0; i < nplg; ++i ) {
-        auto p1 = plg_f[i].intersect( plg_g[i] );
-        auto p2 = plg_g[i].intersect( plg_f[i] );
-        EXPECT( p1.equals( p2 ) );
-        Log::info() << p1 << "\n";
     }
 }
 
@@ -165,6 +135,100 @@ CASE( "Size of ConvexSphericalPolygon" ) {
     expected_size += sizeof( bool );
     expected_size += 2 * sizeof( double );
     EXPECT( sizeof( ConvexSphericalPolygon ) >= expected_size );  // greater because compiler may add some padding
+}
+
+CASE( "analyse intersect" ) {
+    Log::info() << "\n\n";
+
+    double du = 5.;
+    double dv = 1e-14;
+
+    std::vector<PointLonLat> llp1 = {{70 - du, 0}, {70 + du, 0}};
+    std::vector<PointLonLat> llp2 = {{70 - du, -dv}, {70 + du, dv}};
+    std::vector<PointXYZ> p2( 2 ), p1( 2 );
+
+    for ( int i = 0; i < 2; ++i ) {
+        eckit::geometry::Sphere::convertSphericalToCartesian( 1., llp1[i], p1[i] );
+        eckit::geometry::Sphere::convertSphericalToCartesian( 1., llp2[i], p2[i] );
+    }
+
+    PointXYZ Isol;
+    eckit::geometry::Sphere::convertSphericalToCartesian( 1., PointLonLat( {70, dv} ), Isol );
+
+    // BETWEEN
+    auto btw1 = ConvexSphericalPolygon::between( Isol, p1[0], p1[1], 1 );
+    auto btw2 = ConvexSphericalPolygon::between( Isol, p2[0], p2[1], 1 );
+    EXPECT( btw1 && btw2 );
+
+    // INTERSECT SEGMENTS
+    PointXYZ I = ConvexSphericalPolygon::common( p1[0], p1[1], p2[0], p2[1], 1 );
+    Log::info() << " I = " << I << ", |I|-1 = " << PointXYZ::norm( I ) - 1. << "\n";
+    Log::info() << " I - solution = " << std::setprecision( 20 ) << I - Isol << "\n\n";
+
+    // INTERSECT SEGMENT-POLYGON
+    auto plg = getCSPolygon( {{70 - du, 0}, {70 + du, 0}, {70 + du, dv}, {70 - du, dv}} );
+    Log::info() << plg.intersect( p1[0], p1[1], I, 0, 1 );
+}
+
+CASE( "source_covered" ) {
+    const double dd = 0.;
+    const auto csp0 = getCSPolygon( {{0, 90}, {0, 0}, {90, 0}} );
+    double dcov1    = csp0.area();  // optimal coverage
+    double dcov2    = dcov1;        // intersection-based coverage
+    double dcov3    = dcov1;        // normalized intersection-based coverage
+    double darea    = 0;            // commutative area error in intersection: |area(A^B)-area(B^A)|
+
+    double max_tarea = 0.;
+    double min_tarea = 0.;
+    double norm_area = 0.;
+
+    const int n       = 900;
+    const int m       = 900;
+    const double dlat = 90. / n;
+    const double dlon = 90. / m;
+    std::vector<ConvexSphericalPolygon> csp( n * m );
+    std::vector<double> tgt_area( n * m );
+    for ( int j = 0; j < m; j++ ) {
+        csp[j] = getCSPolygon( {{0, 90}, {dlon * j, 90 - dlat}, {dlon * ( j + 1 ), 90 - dlat}} );
+    }
+    for ( int i = 1; i < n; i++ ) {
+        for ( int j = 0; j < m; j++ ) {
+            csp[i * m + j] = getCSPolygon( {{dlon * j, 90 - dlat * i},
+                                            {dlon * j, 90 - dlat * ( i + 1 )},
+                                            {dlon * ( j + 1 ), 90 - dlat * ( i + 1 )},
+                                            {dlon * ( j + 1 ), 90 - dlat * i}} );
+        }
+    }
+    for ( int i = 0; i < n; i++ ) {
+        for ( int j = 0; j < m; j++ ) {
+            auto cspi0     = csp[i * m + j].intersect( csp0 );
+            auto csp0i     = csp0.intersect( csp[i * m + j] );
+            double a_cspi0 = cspi0.area();
+            double a_csp0i = csp0i.area();
+            darea          = std::max( darea, a_cspi0 - a_csp0i );
+            dcov1 -= csp[i * m + j].area();
+            dcov2 -= a_cspi0;
+            tgt_area[i * m + j] = a_cspi0;
+            norm_area += tgt_area[i * m + j];
+        }
+    }
+
+    // normalize weights
+    double norm_fac = csp0.area() / norm_area;
+    for ( int i = 0; i < n; i++ ) {
+        for ( int j = 0; j < m; j++ ) {
+            tgt_area[i * m + j] *= norm_fac;
+            dcov3 -= tgt_area[i * m + j];
+        }
+    }
+
+    Log::info() << " dlat, dlon : " << dlat << ", " << dlon << "\n";
+    Log::info() << " max d(comm_area) : " << darea << "\n";
+    Log::info() << " dcov1 : " << dcov1 << "\n";
+    Log::info() << " dcov2 : " << dcov2 << "\n";
+    Log::info() << " dcov3 : " << dcov3 << "\n";
+    Log::info() << " norm_area : " << norm_area << "\n";
+    Log::info() << " source_area : " << csp0.area() << "\n";
 }
 
 
