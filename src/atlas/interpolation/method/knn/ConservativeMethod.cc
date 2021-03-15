@@ -265,7 +265,7 @@ void ConservativeMethod::do_execute( const Field& src_field, Field& tgt_field ) 
                     auto csp   = CSPolygon( {Pn, Pnn, P} );
                     //auto orientation = ( csp.leftOf( Pnn, P, Pn ) ? -1 : 1 );
                     //ATLAS_ASSERT( orientation == -1 ); // orientation changes !
-                    val *= ( csp.leftOf( Pnn, P, Pn ) ? -1 : 1 );
+                    val *= ( csp.leftOf( Pnn, P, Pn, 1e-14, 0 ) ? -1 : 1 );
                     dual_area += csp.area();
                     grad = grad + PointXYZ::mul( PointXYZ::cross( Pn, Pnn ), val );
                 }
