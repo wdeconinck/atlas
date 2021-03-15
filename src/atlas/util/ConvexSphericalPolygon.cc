@@ -51,7 +51,7 @@ PointLonLat sph_to_lonlat( const PointXYZ& p ) {
 
 //------------------------------------------------------------------------------------------------------
 
-ConvexSphericalPolygon::ConvexSphericalPolygon() : valid_( false ), size_( 0 ), area_( 0 ) {}
+ConvexSphericalPolygon::ConvexSphericalPolygon() : valid_( false ), size_( 0 ), area_( 0 ), cell_radius_( 0 ) {}
 
 ConvexSphericalPolygon::ConvexSphericalPolygon( const std::vector<PointLonLat>& points ) :
     size_( points.size() ), area_( 0 ) {
@@ -81,16 +81,16 @@ ConvexSphericalPolygon::ConvexSphericalPolygon( const std::vector<PointLonLat>& 
         ATLAS_ASSERT( validate() );
         ATLAS_ASSERT( not approx_eq_null( centroid_, 1e-10 ) );
         centroid_ = PointXYZ::div( centroid_, PointXYZ::norm( centroid_ ) );
-        compute_area();
         cell_radius_ = 0.;
         for ( size_t i = 0; i < size_; ++i ) {
             cell_radius_ = std::max( cell_radius_, cart_diff( sph_coords_[i], centroid_ ) );
         }
+        compute_area();
     }
 }
 
 ConvexSphericalPolygon::ConvexSphericalPolygon( const std::vector<PointXYZ>& points, const bool debug ) :
-    size_( points.size() ), area_( 0 ) {
+    size_( points.size() ), area_( 0 ), cell_radius_( 0 ) {
 #if DEBUG_OUTPUT
     if ( debug ) {
         std::cout << " \n\nConvexSphericalPolygon got points: ";
@@ -170,8 +170,17 @@ ConvexSphericalPolygon::ConvexSphericalPolygon( const std::vector<PointXYZ>& poi
     if ( valid_ ) {
         ATLAS_ASSERT( not approx_eq_null( centroid_, 1e-10 ) );
         centroid_ = PointXYZ::div( centroid_, PointXYZ::norm( centroid_ ) );
+        cell_radius_ = 0.;
+        for ( size_t i = 0; i < size_; ++i ) {
+            cell_radius_ = std::max( cell_radius_, cart_diff( sph_coords_[i], centroid_ ) );
+        }
         compute_area();
     }
+#if DEBUG_OUTPUT
+    if ( debug ) {
+		std::cout << " Final polygon. Centroid : " << centroid_ <<", radius : " << cell_radius_ << ", area : " << area_ << "\n";
+	}
+#endif
 }
 
 bool ConvexSphericalPolygon::validate() {
@@ -226,40 +235,56 @@ void ConvexSphericalPolygon::compute_area() {
     if ( size_ < 3 ) {
         return;
     }
-    int valid_angle = 0;
-    for ( int i = 0; i < size_; i++ ) {
-        int im1            = ( i != 0 ) ? i - 1 : size_ - 1;
-        int ip1            = ( i != size_ - 1 ) ? i + 1 : 0;
-        const PointXYZ& pl = sph_coords_[im1];
-        const PointXYZ& p  = sph_coords_[i];
-        const PointXYZ& pr = sph_coords_[ip1];
-        if ( not leftOf( pr, pl, p, -1e-14, 0 ) ) {
-            continue;
-        }
-        PointXYZ ppl          = PointXYZ( PointXYZ::cross( p, pl ) );
-        PointXYZ ppr          = PointXYZ( PointXYZ::cross( p, pr ) );
-        const double ppl_norm = PointXYZ::norm( ppl );
-        const double ppr_norm = PointXYZ::norm( ppr );
-        //ATLAS_ASSERT( ppl_norm > std::numeric_limits<double>::epsilon()
-        //	&& ppr_norm > std::numeric_limits<double>::epsilon() );
-        if ( ppl_norm < std::numeric_limits<double>::epsilon() or ppr_norm < std::numeric_limits<double>::epsilon() ) {
-            continue;
-            Log::info() << " p, pl, pr : " << p << " " << pl << " " << pr << "\n";
-            Log::info() << " ppl, ppr : " << ppl << " " << ppr << "\n";
-            Log::info() << " ppl_norm, ppr_norm : " << ppl_norm << " " << ppr_norm << "\n";
-            Log::info() << " compute_area fails for plg: ";
-            for ( int aa = 0; aa < size_; aa++ ) {
-                Log::info() << " " << sph_to_lonlat( sph_coords_[aa] );
-            }
-            Log::info().flush();
-            ATLAS_ASSERT( false );
-        }
-        valid_angle++;
-        double s1p = PointXYZ::dot( ppl, ppr ) / ( ppl_norm * ppr_norm );
-        s1p        = std::acos( ( s1p < 0. ? -1 : 1 ) * std::min( 1., std::abs( s1p ) ) );
-        area_ += s1p;
-    }
-    area_ = ( valid_angle > 2 ? std::abs( area_ ) + M_PI * ( 2. - valid_angle ) : 0. );
+	if ( cell_radius_ < 1e-6 ) { // plane area
+		for ( int i = 1; i < size_-1; i++ ) {
+			const PointXYZ& pl = sph_coords_[i] - sph_coords_[0];
+			const PointXYZ& pr = sph_coords_[i + 1] - sph_coords_[0];
+			area_ += 0.5 * PointXYZ::norm( PointXYZ::cross( pl, pr ) );
+		}
+	}
+	else { // spherical area
+		const PointXYZ& a = sph_coords_[0];
+		for ( int i = 1; i < size_-1; i++ ) {
+			const PointXYZ& b  = sph_coords_[i];
+			const PointXYZ& c  = sph_coords_[i+1];
+			PointXYZ ab         = PointXYZ( PointXYZ::cross( a, b ) );
+			PointXYZ bc         = PointXYZ( PointXYZ::cross( b, c ) );
+			PointXYZ ca         = PointXYZ( PointXYZ::cross( c, a ) );
+			const double ab_norm = PointXYZ::norm( ab );
+			const double bc_norm = PointXYZ::norm( bc );
+			const double ca_norm = PointXYZ::norm( ca );
+			if ( ab_norm < 1e-16 or bc_norm < 1e-16 or ca_norm < 1e-16 ) {
+				continue;
+				Log::info() << " compute_area fails for plg: ";
+				for ( int aa = 0; aa < size_; aa++ ) {
+					(Log::info() << " " << sph_to_lonlat( sph_coords_[aa] )).flush();
+				}
+				ATLAS_ASSERT( false );
+			}
+			double abc = - PointXYZ::dot( ab, bc ) / ( ab_norm * bc_norm );
+			double bca = - PointXYZ::dot( bc, ca ) / ( bc_norm * ca_norm );
+			double cab = - PointXYZ::dot( ca, ab ) / ( ca_norm * ab_norm );
+			if ( abc > -1. and abc < 1. ) {
+				area_ += std::acos( abc );
+			}
+			else if ( abc < -1. ) {
+				area_ += M_PI;
+			}
+			if ( bca > -1. and bca < 1. ) {
+				area_ += std::acos( bca );
+			}
+			else if ( bca < -1. ) {
+				area_ += M_PI;
+			}
+			if ( cab > -1. and cab < 1. ) {
+				area_ += std::acos( cab );
+			}
+			else if ( cab < -1. ) {
+				area_ += M_PI;
+			}
+		}
+		area_ = area_ + M_PI * ( 2. - size_ );
+	}
 }
 
 // return 0:P_right_of_[p1,p2], -1:overlap_of_[P,p1]_and_[P,p2], 1:P_left_of_[p1,p2]
@@ -556,6 +581,10 @@ ConvexSphericalPolygon ConvexSphericalPolygon::intersect( const ConvexSphericalP
             obj.centroid_ = obj.centroid_ + obj.sph_coords_[i];
         }
         obj.centroid_ = PointXYZ::div( obj.centroid_, PointXYZ::norm( obj.centroid_ ) );
+        obj.cell_radius_ = 0.;
+        for ( size_t i = 0; i < size_; ++i ) {
+            obj.cell_radius_ = std::max( obj.cell_radius_, cart_diff( obj.sph_coords_[i], obj.centroid_ ) );
+        }
         obj.compute_area();
     }
     return obj;
