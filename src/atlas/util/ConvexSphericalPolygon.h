@@ -52,7 +52,7 @@ public:
    * @param[in] P, p1, p2 given point in xyz-coordinates
    * @return 0:P_right_of_[p1,p2], -1:overlap_of_[P,p1]_and_[P,p2], 1:P_left_of_[p1,p2]
    */
-    int leftOf( const PointXYZ& P, const PointXYZ& p1, const PointXYZ& p2, const double tol = 1e-14,
+    int leftOf( const PointXYZ& P, const PointXYZ& p1, const PointXYZ& p2, const double tol,
                 const int debug = 0 ) const;
 
     /*
