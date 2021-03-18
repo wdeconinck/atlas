@@ -101,7 +101,7 @@ public:
 
     //private:
 
-    void compute_area();
+    void compute_area( const int debug = 0 );
 
 private:
     std::array<PointXYZ, MAX_SIZE> sph_coords_;
