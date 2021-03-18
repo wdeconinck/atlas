@@ -306,6 +306,7 @@ void ConvexSphericalPolygon::compute_area( const int debug ) {
             area_ += tarea;
         }
     }
+	// fix centroid to be based on area rather than on vertices of polygon
     centroid_ = PointXYZ{0., 0., 0.};
     if ( area_ > 0. ) {
         for ( int i = 1; i < size_ - 1; i++ ) {
@@ -315,13 +316,9 @@ void ConvexSphericalPolygon::compute_area( const int debug ) {
     }
 }
 
-// return 0:P_right_of_[p1,p2], -1:overlap_of_[P,p1]_and_[P,p2], 1:P_left_of_[p1,p2]
 int ConvexSphericalPolygon::leftOf( const PointXYZ& P, const PointXYZ& p1, const PointXYZ& p2, const double tol,
                                     const int debug ) const {
     const PointXYZ& cp = PointXYZ( PointXYZ::cross( p1, p2 ) );
-    //if ( approx_eq_null( cp, 1e-15 ) ) {
-    //	return true;
-    //}
     double cpP = PointXYZ::dot( cp, P );
 #if DEBUG_OUTPUT
     if ( debug ) {

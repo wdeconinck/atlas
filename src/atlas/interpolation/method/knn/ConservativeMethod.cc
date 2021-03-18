@@ -200,7 +200,7 @@ void ConservativeMethod::do_execute( const Field& src_field, Field& tgt_field ) 
         const PointXYZ& P       = src_centroids_[scell];
         PointXYZ grad           = {0., 0., 0.};
         PointXYZ src_barycenter = {0., 0., 0.};
-        if ( order_ > 1 ) {
+        if ( order_ == 2 ) {
             auto c2e_missval   = src_cell2edge.missing_value();
             auto valid_nb_cell = [scell, c2e_missval]( idx_t cid1, idx_t cid2 ) {
                 if ( cid1 != c2e_missval && cid1 != scell ) {
@@ -262,24 +262,37 @@ void ConservativeMethod::do_execute( const Field& src_field, Field& tgt_field ) 
                 if ( ncell != scell && nncell != scell ) {
                     double val = 0.5 * ( src_vals( ncell ) + src_vals( nncell ) ) - src_vals( scell );
                     auto csp   = CSPolygon( {Pn, Pnn, P} );
+					if ( csp.area() < std::numeric_limits<double>::epsilon() ) {
+						csp = CSPolygon( {Pn, P, Pnn} );
+					}
                     //auto orientation = ( csp.leftOf( Pnn, P, Pn ) ? -1 : 1 );
                     //ATLAS_ASSERT( orientation == -1 ); // orientation changes !
-                    val *= ( csp.leftOf( Pnn, P, Pn, 1e-14, 0 ) ? -1 : 1 );
-                    dual_area += csp.area();
+                    val *= ( csp.leftOf( Pnn, P, Pn, 1e-16, 0 ) ? -1 : 1 );
+                    dual_area += std::abs( csp.area() );
                     grad = grad + PointXYZ::mul( PointXYZ::cross( Pn, Pnn ), val );
                 }
                 else if ( ncell != scell ) {
                     double val = 0.5 * ( src_vals( ncell ) - src_vals( scell ) );
                     val *= -1;
+					ATLAS_NOTIMPLEMENTED;
                     //grad = grad + PointXYZ::mul( PointXYZ::cross( Pn, P ), val );
                 }
                 else if ( nncell != scell ) {
                     double val = 0.5 * ( src_vals( nncell ) - src_vals( scell ) );
                     val *= -1;
+					ATLAS_NOTIMPLEMENTED;
                     //grad = grad + PointXYZ::mul( PointXYZ::cross( P, Pnn ), val );
                 }
             }
-            grad = PointXYZ::div( grad, ( dual_area > 0. ? dual_area : 1. ) );
+			if ( dual_area > std::numeric_limits<double>::epsilon() ) {
+            	grad = PointXYZ::div( grad, dual_area );
+			}
+			else {
+				Log::info() << " dual_area, grad : " << dual_area << " " << grad << "\n";
+				for ( idx_t nb_id = 0; nb_id < src_neighbour_cells.size(); ++nb_id ) {
+					
+				}
+			}
             for ( idx_t icell = 0; icell < iparam.centroids.size(); ++icell ) {
                 src_barycenter = src_barycenter + PointXYZ::mul( iparam.centroids[icell], iparam.weights[icell] );
             }
@@ -290,17 +303,21 @@ void ConservativeMethod::do_execute( const Field& src_field, Field& tgt_field ) 
             else {
                 src_barycenter = PointXYZ::div( src_barycenter, src_brc_norm );
             }
+			//grad = PointXYZ::div( grad, PointXYZ::norm( grad ) );
             grad = grad - PointXYZ::mul( src_barycenter, PointXYZ::dot( grad, src_barycenter ) );
-        }
-        if ( PointXYZ::norm( grad ) > 1e-16 ) {
-            grad = PointXYZ::div( grad, PointXYZ::norm( grad ) );
-        }
-        ATLAS_ASSERT( std::abs( PointXYZ::dot( grad, src_barycenter ) ) < 1e-14 );
-        for ( idx_t icell = 0; icell < iparam.centroids.size(); ++icell ) {
-            tgt_vals( iparam.cell_id[icell] ) +=
-                iparam.weights[icell] *
-                ( src_vals( scell ) + PointXYZ::dot( grad, iparam.centroids[icell] - src_barycenter ) );
-        }
+        	ATLAS_ASSERT( std::abs( PointXYZ::dot( grad, src_barycenter ) ) < 1e-14 );
+			for ( idx_t icell = 0; icell < iparam.centroids.size(); ++icell ) {
+				tgt_vals( iparam.cell_id[icell] ) +=
+					iparam.weights[icell] *
+					( src_vals( scell ) + PointXYZ::dot( grad, iparam.centroids[icell] - src_barycenter ) );
+			}
+		}
+		else {
+			for ( idx_t icell = 0; icell < iparam.centroids.size(); ++icell ) {
+				tgt_vals( iparam.cell_id[icell] ) +=
+					iparam.weights[icell] * src_vals( scell );
+			}
+		}
     }
     for ( idx_t tcell = 0; tcell < tgt_vals.size(); ++tcell ) {
         tgt_vals( tcell ) /= tgt_areas_[tcell];
