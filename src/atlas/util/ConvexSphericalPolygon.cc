@@ -80,7 +80,7 @@ ConvexSphericalPolygon::ConvexSphericalPolygon( const std::vector<PointLonLat>& 
     if ( valid_ ) {
         ATLAS_ASSERT( validate() );
         ATLAS_ASSERT( not approx_eq_null( centroid_, 1e-10 ) );
-        centroid_ = PointXYZ::div( centroid_, PointXYZ::norm( centroid_ ) );
+        centroid_    = PointXYZ::div( centroid_, PointXYZ::norm( centroid_ ) );
         cell_radius_ = 0.;
         for ( size_t i = 0; i < size_; ++i ) {
             cell_radius_ = std::max( cell_radius_, cart_diff( sph_coords_[i], centroid_ ) );
@@ -159,8 +159,8 @@ ConvexSphericalPolygon::ConvexSphericalPolygon( const std::vector<PointXYZ>& poi
     const PointXYZ& Pl1 = sph_coords_[isp - 1];
     const PointXYZ& P0  = sph_coords_[0];
     const PointXYZ& P   = points[size_ - 1];
-    if ( ( not approx_eq( P, P0, 1e-14 ) ) and ( not approx_eq( P, Pl1, 1e-14 ) ) and leftOf( P, Pl2, Pl1, 1e-14, debug ) and
-         leftOf( P0, Pl1, P, 1e-14, debug ) ) {
+    if ( ( not approx_eq( P, P0, 1e-14 ) ) and ( not approx_eq( P, Pl1, 1e-14 ) ) and
+         leftOf( P, Pl2, Pl1, 1e-14, debug ) and leftOf( P0, Pl1, P, 1e-14, debug ) ) {
         sph_coords_[isp] = P;
         centroid_        = centroid_ + P;
         ++isp;
@@ -169,7 +169,7 @@ ConvexSphericalPolygon::ConvexSphericalPolygon( const std::vector<PointXYZ>& poi
     valid_ = size_ > 2;
     if ( valid_ ) {
         ATLAS_ASSERT( not approx_eq_null( centroid_, 1e-10 ) );
-        centroid_ = PointXYZ::div( centroid_, PointXYZ::norm( centroid_ ) );
+        centroid_    = PointXYZ::div( centroid_, PointXYZ::norm( centroid_ ) );
         cell_radius_ = 0.;
         for ( size_t i = 0; i < size_; ++i ) {
             cell_radius_ = std::max( cell_radius_, cart_diff( sph_coords_[i], centroid_ ) );
@@ -178,8 +178,9 @@ ConvexSphericalPolygon::ConvexSphericalPolygon( const std::vector<PointXYZ>& poi
     }
 #if DEBUG_OUTPUT
     if ( debug ) {
-		std::cout << " Final polygon. Centroid : " << centroid_ <<", radius : " << cell_radius_ << ", area : " << area_ << "\n";
-	}
+        std::cout << " Final polygon. Centroid : " << centroid_ << ", radius : " << cell_radius_ << ", area : " << area_
+                  << "\n";
+    }
 #endif
 }
 
@@ -235,83 +236,83 @@ void ConvexSphericalPolygon::compute_area( const int debug ) {
     if ( size_ < 3 ) {
         return;
     }
-	std::vector<double> tri_area;
-	std::vector<PointXYZ> tri_centre;
-	if ( cell_radius_ < 1e-6 ) { // plane area
-		for ( int i = 1; i < size_-1; i++ ) {
-			const PointXYZ& pl = sph_coords_[i] - sph_coords_[0];
-			const PointXYZ& pr = sph_coords_[i + 1] - sph_coords_[0];
-			auto ctr = sph_coords_[0] + sph_coords_[i] + sph_coords_[i + 1];
-			const double tarea = 0.5 * PointXYZ::norm( PointXYZ::cross( pl, pr ) );
-			tri_centre.emplace_back( PointXYZ::div( ctr, PointXYZ::norm( ctr ) ) );
-			tri_area.emplace_back( tarea );
-			area_ += tarea;
-		}
-	}
-	else { // spherical area
-		const PointXYZ& a = sph_coords_[0];
-		for ( int i = 1; i < size_-1; i++ ) {
-			const PointXYZ& b  = sph_coords_[i];
-			const PointXYZ& c  = sph_coords_[i+1];
-			PointXYZ ab         = PointXYZ( PointXYZ::cross( a, b ) );
-			PointXYZ bc         = PointXYZ( PointXYZ::cross( b, c ) );
-			PointXYZ ca         = PointXYZ( PointXYZ::cross( c, a ) );
-			const double ab_norm = PointXYZ::norm( ab );
-			const double bc_norm = PointXYZ::norm( bc );
-			const double ca_norm = PointXYZ::norm( ca );
-			if ( ab_norm < 1e-16 or bc_norm < 1e-16 or ca_norm < 1e-16 ) {
-				continue;
-			}
-			double abc = - PointXYZ::dot( ab, bc ) / ( ab_norm * bc_norm );
-			double bca = - PointXYZ::dot( bc, ca ) / ( bc_norm * ca_norm );
-			double cab = - PointXYZ::dot( ca, ab ) / ( ca_norm * ab_norm );
-			if ( abc <= -1. ) {
-				abc = M_PI;
-			}
-			else if ( abc < 1. ) {
-				abc = std::acos( abc );
-			}
-			else {
-				abc = 0.;
-			}
-			if ( bca <= -1. ) {
-				bca = M_PI;
-			}
-			else if ( bca < 1. ) {
-				bca = std::acos( bca );
-			}
-			else {
-				bca = 0.;
-			}
-			if ( cab <= -1. ) {
-				cab = M_PI;
-			}
-			else if ( cab < 1. ) {
-				cab = std::acos( cab );
-			}
-			else {
-				cab = 0.;
-			}
+    std::vector<double> tri_area;
+    std::vector<PointXYZ> tri_centre;
+    if ( cell_radius_ < 1e-6 ) {  // plane area
+        for ( int i = 1; i < size_ - 1; i++ ) {
+            const PointXYZ& pl = sph_coords_[i] - sph_coords_[0];
+            const PointXYZ& pr = sph_coords_[i + 1] - sph_coords_[0];
+            auto ctr           = sph_coords_[0] + sph_coords_[i] + sph_coords_[i + 1];
+            const double tarea = 0.5 * PointXYZ::norm( PointXYZ::cross( pl, pr ) );
+            tri_centre.emplace_back( PointXYZ::div( ctr, PointXYZ::norm( ctr ) ) );
+            tri_area.emplace_back( tarea );
+            area_ += tarea;
+        }
+    }
+    else {  // spherical area
+        const PointXYZ& a = sph_coords_[0];
+        for ( int i = 1; i < size_ - 1; i++ ) {
+            const PointXYZ& b    = sph_coords_[i];
+            const PointXYZ& c    = sph_coords_[i + 1];
+            PointXYZ ab          = PointXYZ( PointXYZ::cross( a, b ) );
+            PointXYZ bc          = PointXYZ( PointXYZ::cross( b, c ) );
+            PointXYZ ca          = PointXYZ( PointXYZ::cross( c, a ) );
+            const double ab_norm = PointXYZ::norm( ab );
+            const double bc_norm = PointXYZ::norm( bc );
+            const double ca_norm = PointXYZ::norm( ca );
+            if ( ab_norm < 1e-16 or bc_norm < 1e-16 or ca_norm < 1e-16 ) {
+                continue;
+            }
+            double abc = -PointXYZ::dot( ab, bc ) / ( ab_norm * bc_norm );
+            double bca = -PointXYZ::dot( bc, ca ) / ( bc_norm * ca_norm );
+            double cab = -PointXYZ::dot( ca, ab ) / ( ca_norm * ab_norm );
+            if ( abc <= -1. ) {
+                abc = M_PI;
+            }
+            else if ( abc < 1. ) {
+                abc = std::acos( abc );
+            }
+            else {
+                abc = 0.;
+            }
+            if ( bca <= -1. ) {
+                bca = M_PI;
+            }
+            else if ( bca < 1. ) {
+                bca = std::acos( bca );
+            }
+            else {
+                bca = 0.;
+            }
+            if ( cab <= -1. ) {
+                cab = M_PI;
+            }
+            else if ( cab < 1. ) {
+                cab = std::acos( cab );
+            }
+            else {
+                cab = 0.;
+            }
 #if DEBUG_OUTPUT
-			if ( debug ) {
-				Log::info() << "\t\tabc, bca, cab, +area : " << abc << ", " << bca 
-					<< ", " << cab << ", " << abc + bca + cab - M_PI << "\n";
-			}
+            if ( debug ) {
+                Log::info() << "\t\tabc, bca, cab, +area : " << abc << ", " << bca << ", " << cab << ", "
+                            << abc + bca + cab - M_PI << "\n";
+            }
 #endif
-			auto ctr = a + b + c;
-			const double tarea = abc + bca + cab - M_PI;
-			tri_centre.emplace_back( PointXYZ::div( ctr, PointXYZ::norm( ctr ) ) );
-			tri_area.emplace_back( tarea );
-			area_ += tarea;
-		}
-	}
-	centroid_ = PointXYZ{0.,0.,0.};
-	if ( area_ > 0. ) {
-		for ( int i = 1; i < size_ - 1; i++ ) {
-			centroid_ = centroid_ + PointXYZ::mul( tri_centre[i-1], tri_area[i-1] );
-		}
-		centroid_ = PointXYZ::div( centroid_, PointXYZ::norm( centroid_ ) );
-	}
+            auto ctr           = a + b + c;
+            const double tarea = abc + bca + cab - M_PI;
+            tri_centre.emplace_back( PointXYZ::div( ctr, PointXYZ::norm( ctr ) ) );
+            tri_area.emplace_back( tarea );
+            area_ += tarea;
+        }
+    }
+    centroid_ = PointXYZ{0., 0., 0.};
+    if ( area_ > 0. ) {
+        for ( int i = 1; i < size_ - 1; i++ ) {
+            centroid_ = centroid_ + PointXYZ::mul( tri_centre[i - 1], tri_area[i - 1] );
+        }
+        centroid_ = PointXYZ::div( centroid_, PointXYZ::norm( centroid_ ) );
+    }
 }
 
 // return 0:P_right_of_[p1,p2], -1:overlap_of_[P,p1]_and_[P,p2], 1:P_left_of_[p1,p2]
@@ -347,7 +348,7 @@ bool ConvexSphericalPolygon::between( const PointXYZ& p, const PointXYZ& p1, con
         return true;
     }
     p12             = PointXYZ::div( p12, p12n );
-    const double dp = 1e+3*std::numeric_limits<double>::epsilon() - std::abs( PointXYZ::dot( p, p12 ) );
+    const double dp = 1e+3 * std::numeric_limits<double>::epsilon() - std::abs( PointXYZ::dot( p, p12 ) );
     if ( dp < 0. ) {
 #if DEBUG_OUTPUT_DETAIL
         if ( debug ) {
@@ -477,90 +478,91 @@ void ConvexSphericalPolygon::clip( const PointXYZ& s1, const PointXYZ& s2, const
     if ( PointXYZ::norm( s1 - s2 ) < 1e-14 ) {
         return;
     }
-    PointXYZ i1 = PointXYZ( {0, 0, 0} );
-    PointXYZ i2 = PointXYZ( {0, 0, 0} );
-    int f1 = -1;
-    int f2 = -1;
-    f1     = -1 + intersect( s1, s2, i1, 0, debug );
-	int f1n       = ( f1 != size_ - 1 ) ? f1 + 1 : 0;
-	bool i1_is_f1n = ( PointXYZ::norm( i1 - sph_coords_[f1n] ) < 1e-8 );
+    PointXYZ i1    = PointXYZ( {0, 0, 0} );
+    PointXYZ i2    = PointXYZ( {0, 0, 0} );
+    int f1         = -1;
+    int f2         = -1;
+    f1             = -1 + intersect( s1, s2, i1, 0, debug );
+    int f1n        = ( f1 != size_ - 1 ) ? f1 + 1 : 0;
+    bool i1_is_f1n = ( PointXYZ::norm( i1 - sph_coords_[f1n] ) < 1e-8 );
     if ( f1 >= 0 ) {
-        f2 = -1 + intersect( s1, s2, i2, f1 + 1 + (i1_is_f1n ? 1 : 0), debug );
+        f2 = -1 + intersect( s1, s2, i2, f1 + 1 + ( i1_is_f1n ? 1 : 0 ), debug );
     }
-	std::vector<bool> old_pt_in( size_ );
-	for ( int i = 0; i < size_; i++ ) {
-		old_pt_in[i] = false;
+    std::vector<bool> old_pt_in( size_ );
+    for ( int i = 0; i < size_; i++ ) {
+        old_pt_in[i] = false;
 #if DEBUG_OUTPUT
-		if ( debug ) {
-			(Log::info() << " point " << sph_to_lonlat( sph_coords_[i] ) << "\n").flush();
-		}
+        if ( debug ) {
+            ( Log::info() << " point " << sph_to_lonlat( sph_coords_[i] ) << "\n" ).flush();
+        }
 #endif
-		if ( leftOf( sph_coords_[i], s1, s2, 1e-15, debug ) ) {
-			old_pt_in[i] = true;
-		}
-	}
-	bool add_i1   = false;
-	bool add_i2   = false;
-	if ( f1 >= 0 ) {
-		add_i1 = true;
-		if ( PointXYZ::norm( i1 - sph_coords_[f1] ) < 1e-8 ) {
-			add_i1 = add_i1 && ( old_pt_in[f1] ? false : true );
-		} 
-		if ( i1_is_f1n ) {
-			add_i1 = add_i1 && ( old_pt_in[f1n] ? false : true );
-		} 
-		add_i1 = add_i1 && leftOf( i1, sph_coords_[f1], sph_coords_[f1n], 1e-10, debug );
-	}
-	else {
-		f1 = -1;
-	}
-	if ( f2 >= 0 ) {
-		add_i2 = true;
-		int f2n       = ( f2 != size_ - 1 ) ? f2 + 1 : 0;
-		if ( PointXYZ::norm( i2 - sph_coords_[f2] ) < 1e-8 ) {
-			add_i2 = add_i2 && ( old_pt_in[f2] ? false : true );
-		} 
-		if ( PointXYZ::norm( i2 - sph_coords_[f2n] ) < 1e-8 ) {
-			add_i2 = add_i2 && ( old_pt_in[f2n] ? false : true );
-		} 
-		add_i2 = add_i2 && leftOf( i2, sph_coords_[f2], sph_coords_[f2n], 1e-10, debug );
-	}
-	else {
-		f2 = -1;
-	}
+        if ( leftOf( sph_coords_[i], s1, s2, 1e-15, debug ) ) {
+            old_pt_in[i] = true;
+        }
+    }
+    bool add_i1 = false;
+    bool add_i2 = false;
+    if ( f1 >= 0 ) {
+        add_i1 = true;
+        if ( PointXYZ::norm( i1 - sph_coords_[f1] ) < 1e-8 ) {
+            add_i1 = add_i1 && ( old_pt_in[f1] ? false : true );
+        }
+        if ( i1_is_f1n ) {
+            add_i1 = add_i1 && ( old_pt_in[f1n] ? false : true );
+        }
+        add_i1 = add_i1 && leftOf( i1, sph_coords_[f1], sph_coords_[f1n], 1e-10, debug );
+    }
+    else {
+        f1 = -1;
+    }
+    if ( f2 >= 0 ) {
+        add_i2  = true;
+        int f2n = ( f2 != size_ - 1 ) ? f2 + 1 : 0;
+        if ( PointXYZ::norm( i2 - sph_coords_[f2] ) < 1e-8 ) {
+            add_i2 = add_i2 && ( old_pt_in[f2] ? false : true );
+        }
+        if ( PointXYZ::norm( i2 - sph_coords_[f2n] ) < 1e-8 ) {
+            add_i2 = add_i2 && ( old_pt_in[f2n] ? false : true );
+        }
+        add_i2 = add_i2 && leftOf( i2, sph_coords_[f2], sph_coords_[f2n], 1e-10, debug );
+    }
+    else {
+        f2 = -1;
+    }
 #if DEBUG_OUTPUT
     if ( debug ) {
         ( Log::info() << "f1, f2, i1, i2: " << f1 << " " << f2 << " " << sph_to_lonlat( i1 ) << ", "
-                      << sph_to_lonlat( i2 ) << "\n" ).flush();
+                      << sph_to_lonlat( i2 ) << "\n" )
+            .flush();
         ( Log::info() << "add_i1, add_i2: " << add_i1 << " " << add_i2 << "\n" ).flush();
     }
 #endif
-	int f2_end = f2;
-	if ( f1 >= 0 && f2 == -1 ) {
-		f2 = f1 + 1;
-	}
+    int f2_end = f2;
+    if ( f1 >= 0 && f2 == -1 ) {
+        f2 = f1 + 1;
+    }
     std::vector<PointXYZ> cp_sph_coords;
-	cp_sph_coords.reserve( size_ + 2 );
+    cp_sph_coords.reserve( size_ + 2 );
     for ( int i = 0; i <= f1; i++ ) {
         if ( old_pt_in[i] ) {
-       		cp_sph_coords.emplace_back( sph_coords_[i] );
-		}
+            cp_sph_coords.emplace_back( sph_coords_[i] );
+        }
     }
     if ( add_i1 ) {
         cp_sph_coords.emplace_back( i1 );
     }
     for ( int i = f1 + 1; i <= f2; i++ ) {
         if ( old_pt_in[i] ) {
-       		cp_sph_coords.emplace_back( sph_coords_[i] );
-		}
+            cp_sph_coords.emplace_back( sph_coords_[i] );
+        }
     }
     if ( add_i2 ) {
         cp_sph_coords.emplace_back( i2 );
     }
     for ( int i = f2 + 1; i < size_; i++ ) {
         if ( old_pt_in[i] ) {
-        	cp_sph_coords.emplace_back( sph_coords_[i] );
-		}
+            cp_sph_coords.emplace_back( sph_coords_[i] );
+        }
     }
 
     size_ = cp_sph_coords.size();
@@ -568,10 +570,10 @@ void ConvexSphericalPolygon::clip( const PointXYZ& s1, const PointXYZ& s2, const
         sph_coords_[i] = cp_sph_coords[i];
     }
 
-	if ( size_ < 3 ) {
-		valid_ = false;
-		area_ = 0.;
-	}
+    if ( size_ < 3 ) {
+        valid_ = false;
+        area_  = 0.;
+    }
 
 #if DEBUG_OUTPUT
     if ( debug ) {
@@ -601,10 +603,10 @@ ConvexSphericalPolygon ConvexSphericalPolygon::intersect( const ConvexSphericalP
 #endif
         obj.clip( s1, s2, debug );
     }
-	std::vector<PointXYZ> pts;
-	for ( int i = 0; i < obj.size_; i++ ) {
-		pts.emplace_back( obj.sph_coords_[i] );
-	}
+    std::vector<PointXYZ> pts;
+    for ( int i = 0; i < obj.size_; i++ ) {
+        pts.emplace_back( obj.sph_coords_[i] );
+    }
     return ConvexSphericalPolygon( pts, debug );
 }
 
