@@ -235,11 +235,17 @@ void ConvexSphericalPolygon::compute_area( const int debug ) {
     if ( size_ < 3 ) {
         return;
     }
+	std::vector<double> tri_area;
+	std::vector<PointXYZ> tri_centre;
 	if ( cell_radius_ < 1e-6 ) { // plane area
 		for ( int i = 1; i < size_-1; i++ ) {
 			const PointXYZ& pl = sph_coords_[i] - sph_coords_[0];
 			const PointXYZ& pr = sph_coords_[i + 1] - sph_coords_[0];
-			area_ += 0.5 * PointXYZ::norm( PointXYZ::cross( pl, pr ) );
+			auto ctr = sph_coords_[0] + sph_coords_[i] + sph_coords_[i + 1];
+			const double tarea = 0.5 * PointXYZ::norm( PointXYZ::cross( pl, pr ) );
+			tri_centre.emplace_back( PointXYZ::div( ctr, PointXYZ::norm( ctr ) ) );
+			tri_area.emplace_back( tarea );
+			area_ += tarea;
 		}
 	}
 	else { // spherical area
@@ -292,8 +298,19 @@ void ConvexSphericalPolygon::compute_area( const int debug ) {
 					<< ", " << cab << ", " << abc + bca + cab - M_PI << "\n";
 			}
 #endif
-			area_ += abc + bca + cab - M_PI;
+			auto ctr = a + b + c;
+			const double tarea = abc + bca + cab - M_PI;
+			tri_centre.emplace_back( PointXYZ::div( ctr, PointXYZ::norm( ctr ) ) );
+			tri_area.emplace_back( tarea );
+			area_ += tarea;
 		}
+	}
+	centroid_ = PointXYZ{0.,0.,0.};
+	if ( area_ > 0. ) {
+		for ( int i = 1; i < size_ - 1; i++ ) {
+			centroid_ = centroid_ + PointXYZ::mul( tri_centre[i-1], tri_area[i-1] );
+		}
+		centroid_ = PointXYZ::div( centroid_, PointXYZ::norm( centroid_ ) );
 	}
 }
 
@@ -340,7 +357,7 @@ bool ConvexSphericalPolygon::between( const PointXYZ& p, const PointXYZ& p1, con
         return false;
     }
     double pp = PointXYZ::norm( p1 - p2 );
-    pp        = std::min( pp - pp1n, pp - pp2n );
+    pp        = std::min( pp - pp1n, pp - pp2n ) + 5e-15;
 #if DEBUG_OUTPUT_DETAIL
     if ( debug ) {
         ( Log::info() << "  between pp, pp2n = " << pp << ", " << pp2n << "\n" ).flush();
@@ -478,7 +495,7 @@ void ConvexSphericalPolygon::clip( const PointXYZ& s1, const PointXYZ& s2, const
 			(Log::info() << " point " << sph_to_lonlat( sph_coords_[i] ) << "\n").flush();
 		}
 #endif
-		if ( leftOf( sph_coords_[i], s1, s2, 1e-8, debug ) ) {
+		if ( leftOf( sph_coords_[i], s1, s2, 1e-15, debug ) ) {
 			old_pt_in[i] = true;
 		}
 	}
