@@ -130,11 +130,11 @@ void ConservativeMethod::do_setup( Mesh& src_mesh, const Mesh& tgt_mesh ) {
         }
 
         //#ifndef NDEBUG
-        if ( false && loc_csp_error > 1e-7 ) {
+        if ( false && loc_csp_error > 1e-8 ) {
             Log::info().flush();
             Log::info() << "\n === DEBUG ===\n\n";
             Log::info() << "* src cell area NOT covered: " << loc_csp_error << "\n";
-            Log::info() << "* src cell: " << std::setprecision( 30 ) << s_csp << "\n";
+            Log::info() << "* src cell: " << std::setprecision( 15 ) << s_csp << "\n";
             Log::info() << "* src area: " << s_csp.area() << "\n\n";
             double area_ncov = s_csp.area();
             for ( int i = 0; i < tgt_cells.size(); ++i ) {
@@ -292,10 +292,10 @@ void ConservativeMethod::do_execute( const Field& src_field, Field& tgt_field ) 
             }
             grad = grad - PointXYZ::mul( src_barycenter, PointXYZ::dot( grad, src_barycenter ) );
         }
-		if ( PointXYZ::norm( grad ) > 1e-16 ) {
-			grad = PointXYZ::div( grad, PointXYZ::norm( grad ) );
-		}
-        ATLAS_ASSERT( std::abs( PointXYZ::dot(grad, src_barycenter) ) < 1e-14 );
+        if ( PointXYZ::norm( grad ) > 1e-16 ) {
+            grad = PointXYZ::div( grad, PointXYZ::norm( grad ) );
+        }
+        ATLAS_ASSERT( std::abs( PointXYZ::dot( grad, src_barycenter ) ) < 1e-14 );
         for ( idx_t icell = 0; icell < iparam.centroids.size(); ++icell ) {
             tgt_vals( iparam.cell_id[icell] ) +=
                 iparam.weights[icell] *
