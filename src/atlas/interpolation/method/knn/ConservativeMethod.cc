@@ -130,7 +130,7 @@ void ConservativeMethod::do_setup( Mesh& src_mesh, const Mesh& tgt_mesh ) {
         }
 
         //#ifndef NDEBUG
-        if ( false && loc_csp_error > 1e-5 ) {
+        if ( false && loc_csp_error > 1e-7 ) {
             Log::info().flush();
             Log::info() << "\n === DEBUG ===\n\n";
             Log::info() << "* src cell area NOT covered: " << loc_csp_error << "\n";
@@ -147,8 +147,7 @@ void ConservativeMethod::do_setup( Mesh& src_mesh, const Mesh& tgt_mesh ) {
                 const double darea = std::abs( iplg.area() - jplg.area() );
                 Log::info() << "* src ^ tgt      : " << iplg << "\n";
                 Log::info() << "* src ^ tgt area : " << iplg.area() << "\n";
-                if ( darea > 1e-9 or iplg.area() > 0.1 ) {
-                    //ATLAS_ASSERT( false );
+                if ( darea > 5e-8 ) {
                     s_csp.intersect( t_csp, 1 );
                     Log::info() << "* (!!) intersect comm area diff: " << darea << "\n";
                     Log::info() << "* (!!) tgt ^ src      : " << jplg << "\n";
@@ -285,8 +284,7 @@ void ConservativeMethod::do_execute( const Field& src_field, Field& tgt_field ) 
                 src_barycenter = src_barycenter + PointXYZ::mul( iparam.centroids[icell], iparam.weights[icell] );
             }
             const double src_brc_norm = PointXYZ::norm( src_barycenter );
-            //ATLAS_ASSERT( src_brc_norm > 1e-7 );
-            if ( src_brc_norm < 1e-7 ) {
+            if ( src_brc_norm < 1e-14 ) {
                 src_barycenter = src_centroids_[scell];
             }
             else {
@@ -294,7 +292,10 @@ void ConservativeMethod::do_execute( const Field& src_field, Field& tgt_field ) 
             }
             grad = grad - PointXYZ::mul( src_barycenter, PointXYZ::dot( grad, src_barycenter ) );
         }
-        //ATLAS_ASSERT( std::abs( PointXYZ::dot(grad, src_barycenter) ) < 1e-14 );
+		if ( PointXYZ::norm( grad ) > 1e-16 ) {
+			grad = PointXYZ::div( grad, PointXYZ::norm( grad ) );
+		}
+        ATLAS_ASSERT( std::abs( PointXYZ::dot(grad, src_barycenter) ) < 1e-14 );
         for ( idx_t icell = 0; icell < iparam.centroids.size(); ++icell ) {
             tgt_vals( iparam.cell_id[icell] ) +=
                 iparam.weights[icell] *
