@@ -68,6 +68,9 @@ MeshGenerator make_meshgenerator( const Grid& grid, const AtlasTool::Args& args 
 
     config.set( "include_pole", args.getBool( "include-pole", false ) );
     config.set( "patch_pole", args.getBool( "patch-pole", false ) );
+    if ( args.has( "fixup" ) ) {
+        config.set( "fixup", args.getBool( "fixup" ) );
+    }
 
     return MeshGenerator{config};
 }
@@ -157,6 +160,7 @@ Meshgen2Gmsh::Meshgen2Gmsh( int argc, char** argv ) : AtlasTool( argc, argv ) {
         "water", "Output elements containing water points (not specifying --water or --land enables both)" ) );
     add_option( new SimpleOption<bool>(
         "land", "Output elements containing land points (not specifying --water or --land enables both)" ) );
+    add_option( new SimpleOption<bool>( "fixup", "Apply custom fixes to the mesh where it applies" ) );
 }
 
 //-----------------------------------------------------------------------------
@@ -282,12 +286,12 @@ int Meshgen2Gmsh::execute( const Args& args ) {
                        << std::endl;
         Log::warning() << "units: " << grid.projection().units() << std::endl;
     }
+    if ( brick ) {
+        build_brick_dual_mesh( grid, mesh );
+    }
     if ( edges && grid.projection().units() == "degrees" ) {
         functionspace::EdgeColumns edges_fs( mesh, option::halo( halo ) );
-        if ( brick ) {
-            build_brick_dual_mesh( grid, mesh );
-        }
-        else {
+        if ( not brick ) {
             build_median_dual_mesh( mesh );
         }
     }
