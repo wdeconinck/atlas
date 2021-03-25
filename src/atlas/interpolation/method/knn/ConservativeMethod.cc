@@ -40,11 +40,11 @@ ConservativeMethod::ConservativeMethod( const util::Config& config ) {
 
 void ConservativeMethod::do_setup( Mesh& src_mesh, const Mesh& tgt_mesh ) {
     ATLAS_TRACE( "ConservativeMethod::do_setup()" );
-
+    ATLAS_ASSERT( src_mesh );
+    ATLAS_ASSERT( tgt_mesh );
     if ( mpi::size() > 1 ) {
         ATLAS_NOTIMPLEMENTED;
     }
-
     src_centroids_.resize( src_mesh.cells().size() );
     tgt_centroids_.resize( tgt_mesh.cells().size() );
     src_areas_.resize( src_mesh.cells().size() );
@@ -52,10 +52,6 @@ void ConservativeMethod::do_setup( Mesh& src_mesh, const Mesh& tgt_mesh ) {
     util::KDTree<idx_t> kdt_search;
     kdt_search.reserve( tgt_mesh.cells().size() );
     double max_tgtcell_rad = 0.;
-
-    ATLAS_ASSERT( src_mesh );
-    ATLAS_ASSERT( tgt_mesh );
-
     std::vector<PointLonLat> pts_ll;
     const idx_t src_nb_cells          = src_mesh.cells().size();
     const auto& src_node_connectivity = src_mesh.cells().node_connectivity();
@@ -72,7 +68,6 @@ void ConservativeMethod::do_setup( Mesh& src_mesh, const Mesh& tgt_mesh ) {
         }
         src_csp[jcell] = CSPolygon( pts_ll );
     }
-
     const idx_t tgt_nb_cells          = tgt_mesh.cells().size();
     const auto& tgt_node_connectivity = tgt_mesh.cells().node_connectivity();
     std::vector<CSPolygon> tgt_csp;
@@ -90,7 +85,6 @@ void ConservativeMethod::do_setup( Mesh& src_mesh, const Mesh& tgt_mesh ) {
         kdt_search.insert( tgt_csp[jcell].centroid(), jcell );
         max_tgtcell_rad = std::max( max_tgtcell_rad, tgt_csp[jcell].cell_radius() );
     }
-
     kdt_search.build();
 
     size_t nonintersect        = 0;
@@ -128,8 +122,6 @@ void ConservativeMethod::do_setup( Mesh& src_mesh, const Mesh& tgt_mesh ) {
                 iparam_[scell].weights[i] *= wfactor;
             }
         }
-
-        //#ifndef NDEBUG
         if ( false && loc_csp_error > 1e-8 ) {
             Log::info().flush();
             Log::info() << "\n === DEBUG ===\n\n";
@@ -161,16 +153,13 @@ void ConservativeMethod::do_setup( Mesh& src_mesh, const Mesh& tgt_mesh ) {
             Log::info() << "\n=== END DEBUG ===\n\n";
             ATLAS_ASSERT( false );
         }
-        //#endif
     }
     Log::info() << "WARNING " << nonintersect << " source mesh polygons do NOT intersect any other polygon.\n";
     Log::info() << "WARNING " << src_area_notcovered << " area of source mesh NOT covered by target mesh.\n";
-
     for ( idx_t tcell = 0; tcell < tgt_nb_cells; ++tcell ) {
         tgt_centroids_[tcell] = tgt_csp[tcell].centroid();
         tgt_areas_[tcell]     = tgt_csp[tcell].area();
     }
-
     if ( order_ > 1 ) {
         mesh::actions::build_halo( src_mesh, 0 );
         mesh::actions::build_edges( src_mesh, util::Config( "pole_edges", false ) );
@@ -181,9 +170,9 @@ void ConservativeMethod::do_setup( Mesh& src_mesh, const Mesh& tgt_mesh ) {
 void ConservativeMethod::do_execute( const Field& src_field, Field& tgt_field ) const {
     ATLAS_TRACE( "ConservativeMethod::do_execute()" );
 
-    auto src_vals = array::make_view<double, 1>( src_field );
-    auto tgt_vals = array::make_view<double, 1>( tgt_field );
-    auto halo     = array::make_view<int, 1>( src_mesh_.cells().halo() );
+    const auto src_vals = array::make_view<double, 1>( src_field );
+    auto tgt_vals       = array::make_view<double, 1>( tgt_field );
+    const auto halo     = array::make_view<int, 1>( src_mesh_.cells().halo() );
 
     const auto& src_cell2edge = src_mesh_.cells().edge_connectivity();
     const auto& src_edge2cell = src_mesh_.edges().cell_connectivity();
@@ -193,9 +182,9 @@ void ConservativeMethod::do_execute( const Field& src_field, Field& tgt_field ) 
         tgt_vals( tcell ) = 0.;
     }
     for ( idx_t scell = 0; scell < src_vals.size(); ++scell ) {
-        //if ( halo( scell ) ) {
-        //    continue;
-        //}
+        if ( halo( scell ) ) {
+            continue;
+        }
         const auto& iparam      = iparam_[scell];
         const PointXYZ& P       = src_centroids_[scell];
         PointXYZ grad           = {0., 0., 0.};
@@ -262,9 +251,9 @@ void ConservativeMethod::do_execute( const Field& src_field, Field& tgt_field ) 
                 if ( ncell != scell && nncell != scell ) {
                     double val = 0.5 * ( src_vals( ncell ) + src_vals( nncell ) ) - src_vals( scell );
                     auto csp   = CSPolygon( {Pn, Pnn, P} );
-					if ( csp.area() < std::numeric_limits<double>::epsilon() ) {
-						csp = CSPolygon( {Pn, P, Pnn} );
-					}
+                    if ( csp.area() < std::numeric_limits<double>::epsilon() ) {
+                        csp = CSPolygon( {Pn, P, Pnn} );
+                    }
                     //auto orientation = ( csp.leftOf( Pnn, P, Pn ) ? -1 : 1 );
                     //ATLAS_ASSERT( orientation == -1 ); // orientation changes !
                     val *= ( csp.leftOf( Pnn, P, Pn, 1e-16, 0 ) ? -1 : 1 );
@@ -274,25 +263,19 @@ void ConservativeMethod::do_execute( const Field& src_field, Field& tgt_field ) 
                 else if ( ncell != scell ) {
                     double val = 0.5 * ( src_vals( ncell ) - src_vals( scell ) );
                     val *= -1;
-					ATLAS_NOTIMPLEMENTED;
+                    ATLAS_NOTIMPLEMENTED;
                     //grad = grad + PointXYZ::mul( PointXYZ::cross( Pn, P ), val );
                 }
                 else if ( nncell != scell ) {
                     double val = 0.5 * ( src_vals( nncell ) - src_vals( scell ) );
                     val *= -1;
-					ATLAS_NOTIMPLEMENTED;
+                    ATLAS_NOTIMPLEMENTED;
                     //grad = grad + PointXYZ::mul( PointXYZ::cross( P, Pnn ), val );
                 }
             }
-			if ( dual_area > std::numeric_limits<double>::epsilon() ) {
-            	grad = PointXYZ::div( grad, dual_area );
-			}
-			else {
-				Log::info() << " dual_area, grad : " << dual_area << " " << grad << "\n";
-				for ( idx_t nb_id = 0; nb_id < src_neighbour_cells.size(); ++nb_id ) {
-					
-				}
-			}
+            if ( dual_area > std::numeric_limits<double>::epsilon() ) {
+                grad = PointXYZ::div( grad, dual_area );
+            }
             for ( idx_t icell = 0; icell < iparam.centroids.size(); ++icell ) {
                 src_barycenter = src_barycenter + PointXYZ::mul( iparam.centroids[icell], iparam.weights[icell] );
             }
@@ -303,21 +286,20 @@ void ConservativeMethod::do_execute( const Field& src_field, Field& tgt_field ) 
             else {
                 src_barycenter = PointXYZ::div( src_barycenter, src_brc_norm );
             }
-			//grad = PointXYZ::div( grad, PointXYZ::norm( grad ) );
+            //grad = PointXYZ::div( grad, PointXYZ::norm( grad ) );
             grad = grad - PointXYZ::mul( src_barycenter, PointXYZ::dot( grad, src_barycenter ) );
-        	ATLAS_ASSERT( std::abs( PointXYZ::dot( grad, src_barycenter ) ) < 1e-14 );
-			for ( idx_t icell = 0; icell < iparam.centroids.size(); ++icell ) {
-				tgt_vals( iparam.cell_id[icell] ) +=
-					iparam.weights[icell] *
-					( src_vals( scell ) + PointXYZ::dot( grad, iparam.centroids[icell] - src_barycenter ) );
-			}
-		}
-		else {
-			for ( idx_t icell = 0; icell < iparam.centroids.size(); ++icell ) {
-				tgt_vals( iparam.cell_id[icell] ) +=
-					iparam.weights[icell] * src_vals( scell );
-			}
-		}
+            ATLAS_ASSERT( std::abs( PointXYZ::dot( grad, src_barycenter ) ) < 1e-14 );
+            for ( idx_t icell = 0; icell < iparam.centroids.size(); ++icell ) {
+                tgt_vals( iparam.cell_id[icell] ) +=
+                    iparam.weights[icell] *
+                    ( src_vals( scell ) + PointXYZ::dot( grad, iparam.centroids[icell] - src_barycenter ) );
+            }
+        }
+        else {
+            for ( idx_t icell = 0; icell < iparam.centroids.size(); ++icell ) {
+                tgt_vals( iparam.cell_id[icell] ) += iparam.weights[icell] * src_vals( scell );
+            }
+        }
     }
     for ( idx_t tcell = 0; tcell < tgt_vals.size(); ++tcell ) {
         tgt_vals( tcell ) /= tgt_areas_[tcell];

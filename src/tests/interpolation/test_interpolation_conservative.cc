@@ -121,10 +121,8 @@ void do_remapping_test( Grid src_grid, Grid tgt_grid, double func( const PointLo
     //config.set( "triangulate", true );
 
     outfile << std::setw( 10 ) << src_grid.name() << std::setw( 10 ) << tgt_grid.name();
-    bool src_healpix = ( src_grid.name()[0] == 'H' ) or ( src_grid.name()[0] == 'h' );
-    bool tgt_healpix = ( tgt_grid.name()[0] == 'H' ) or ( tgt_grid.name()[0] == 'h' );
-    auto src_meshgen = ( src_healpix ? MeshGenerator{"healpix"} : MeshGenerator{"structured", config} );
-    auto tgt_meshgen = ( tgt_healpix ? MeshGenerator{"healpix"} : MeshGenerator{"structured", config} );
+    auto src_meshgen = MeshGenerator( src_grid.meshgenerator() );
+    auto tgt_meshgen = MeshGenerator( tgt_grid.meshgenerator() );
     Mesh src_mesh    = src_meshgen.generate( src_grid );
     Mesh tgt_mesh    = tgt_meshgen.generate( tgt_grid );
 
@@ -203,7 +201,7 @@ CASE( "test_interpolation_conservative" ) {
         outfile << ss.str();
 
         const int start_res            = 16;
-        const int end_res              = 1 * start_res + 1;
+        const int end_res              = start_res << 0 + 1;
         std::vector<std::string> grids = {"F", "N", "O", "H"};
         for ( int i = start_res; i < end_res; i *= 2 ) {
             for ( int gi = 0; gi < grids.size(); gi++ ) {
@@ -230,7 +228,7 @@ CASE( "test_interpolation_conservative" ) {
         };
 
         const int start_res            = 16;
-        const int end_res              = 1 * start_res + 1;
+        const int end_res              = start_res << 0 + 1;
         std::vector<std::string> grids = {"F", "N", "O", "H"};
         for ( int i = start_res; i < end_res; i *= 2 ) {
             for ( int gi = 0; gi < grids.size(); gi++ ) {
