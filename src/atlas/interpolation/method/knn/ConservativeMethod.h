@@ -38,6 +38,7 @@ public:
         std::ostream& print( std::ostream& os ) {
             os << "centroids         : " << centroids << "\n"
                << "area              : " << weights << "\n";
+			return os;
         }
     };
 
