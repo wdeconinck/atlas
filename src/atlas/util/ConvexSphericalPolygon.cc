@@ -260,12 +260,23 @@ void ConvexSphericalPolygon::compute_area( const int debug ) {
             const double ab_norm = PointXYZ::norm( ab );
             const double bc_norm = PointXYZ::norm( bc );
             const double ca_norm = PointXYZ::norm( ca );
-            if ( ab_norm < 1e-16 or bc_norm < 1e-16 or ca_norm < 1e-16 ) {
+            if ( ab_norm < 1e-15 or bc_norm < 1e-15 or ca_norm < 1e-15 ) {
                 continue;
             }
             double abc = -PointXYZ::dot( ab, bc ) / ( ab_norm * bc_norm );
             double bca = -PointXYZ::dot( bc, ca ) / ( bc_norm * ca_norm );
             double cab = -PointXYZ::dot( ca, ab ) / ( ca_norm * ab_norm );
+#if DEBUG_OUTPUT_DETAIL
+            if ( debug ) {
+                ( Log::info() << " === compute_area:: a, b, c: " << a << " " << b << " " << c << "\n" ).flush();
+                ( Log::info() << " === compute_area:: ab, bc, ca: " << ab << " " << bc << " " << ca << "\n" ).flush();
+                ( Log::info() << " === compute_area:: abc, bca, cab: " << std::abs( abc ) - 1. << " "
+                              << std::abs( bca ) - 1. << " " << std::abs( cab ) - 1. << "\n" )
+                    .flush();
+                ( Log::info() << " === compute_area::norms: " << ab_norm << " " << bc_norm << " " << ca_norm << "\n" )
+                    .flush();
+            }
+#endif
             if ( abc <= -1. ) {
                 abc = M_PI;
             }
@@ -306,7 +317,7 @@ void ConvexSphericalPolygon::compute_area( const int debug ) {
             area_ += tarea;
         }
     }
-	// fix centroid to be based on area rather than on vertices of polygon
+    // fix centroid to be based on area rather than on vertices of polygon
     centroid_ = PointXYZ{0., 0., 0.};
     if ( area_ > 0. ) {
         for ( int i = 1; i < size_ - 1; i++ ) {
@@ -319,7 +330,7 @@ void ConvexSphericalPolygon::compute_area( const int debug ) {
 int ConvexSphericalPolygon::leftOf( const PointXYZ& P, const PointXYZ& p1, const PointXYZ& p2, const double tol,
                                     const int debug ) const {
     const PointXYZ& cp = PointXYZ( PointXYZ::cross( p1, p2 ) );
-    double cpP = PointXYZ::dot( cp, P );
+    double cpP         = PointXYZ::dot( cp, P );
 #if DEBUG_OUTPUT
     if ( debug ) {
         ( Log::info() << "\tp, p1, p2: " << sph_to_lonlat( P ) << ", " << sph_to_lonlat( p1 ) << ", "
