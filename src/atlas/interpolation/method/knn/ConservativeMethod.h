@@ -27,8 +27,6 @@ namespace method {
 
 class ConservativeMethod {
 public:
-    static constexpr double tol = 1e-14;
-
     ConservativeMethod( const util::Config& = util::NoConfig() );
 
     struct InterpolationParameters {
@@ -69,6 +67,10 @@ protected:
     std::vector<double> src_areas_;
     std::vector<double> tgt_areas_;
     int order_;
+    idx_t n_weights_;
+    std::vector<double> weights_;
+    std::vector<idx_t> scell_id_;
+    std::vector<idx_t> tcell_id_;
     std::vector<InterpolationParameters> iparam_;
     int normalise_intersections_;
 };
