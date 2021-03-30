@@ -125,34 +125,8 @@ void ConservativeMethod::do_setup( Mesh& src_mesh, const Mesh& tgt_mesh ) {
             }
         }
         if ( false && loc_csp_error > 1e-8 ) {
-            Log::info().flush();
-            Log::info() << "\n === DEBUG ===\n\n";
             Log::info() << "* src cell area NOT covered: " << loc_csp_error << "\n";
-            Log::info() << "* src cell: " << std::setprecision( 15 ) << s_csp << "\n";
-            Log::info() << "* src area: " << s_csp.area() << "\n\n";
-            double area_ncov = s_csp.area();
-            for ( int i = 0; i < tgt_cells.size(); ++i ) {
-                const auto tcell  = tgt_cells[i].payload();
-                const auto& t_csp = tgt_csp[tcell];
-                Log::info() << "* src cell: " << s_csp << "\n";
-                Log::info() << "* tgt cell: " << t_csp << "\n";
-                auto iplg          = s_csp.intersect( t_csp );
-                auto jplg          = t_csp.intersect( s_csp );
-                const double darea = std::abs( iplg.area() - jplg.area() );
-                Log::info() << "* src ^ tgt      : " << iplg << "\n";
-                Log::info() << "* src ^ tgt area : " << iplg.area() << "\n";
-                if ( darea > 5e-8 ) {
-                    s_csp.intersect( t_csp, 1 );
-                    Log::info() << "* (!!) intersect comm area diff: " << darea << "\n";
-                    Log::info() << "* (!!) tgt ^ src      : " << jplg << "\n";
-                    Log::info() << "* (!!) tgt ^ src area : " << jplg.area() << "\n";
-                    t_csp.intersect( s_csp, 1 );
-                    ATLAS_ASSERT( false );
-                }
-                Log::info() << "\n";
-                area_ncov -= iplg.area();
-            }
-            Log::info() << "\n=== END DEBUG ===\n\n";
+            dump_intersection( src_csp[scell], tgt_csp, tgt_cells );
             ATLAS_ASSERT( false );
         }
     }
@@ -322,6 +296,38 @@ void ConservativeMethod::do_execute( const Field& src_field, Field& tgt_field ) 
             tgt_vals( tcell ) /= tgt_areas_[tcell];
         }
     }
+}
+
+template <class TargetCellsIDs>
+void ConservativeMethod::dump_intersection( const CSPolygon& s_csp, const std::vector<CSPolygon>& tgt_csp,
+                                            const TargetCellsIDs& tgt_cells ) const {
+    Log::info().flush();
+    Log::info() << "\n === DEBUG ===\n\n";
+    Log::info() << "* src cell: " << std::setprecision( 15 ) << s_csp << "\n";
+    Log::info() << "* src area: " << s_csp.area() << "\n\n";
+    double area_ncov = s_csp.area();
+    for ( int i = 0; i < tgt_cells.size(); ++i ) {
+        const auto tcell  = tgt_cells[i].payload();
+        const auto& t_csp = tgt_csp[tcell];
+        Log::info() << "* src cell: " << s_csp << "\n";
+        Log::info() << "* tgt cell: " << t_csp << "\n";
+        auto iplg          = s_csp.intersect( t_csp );
+        auto jplg          = t_csp.intersect( s_csp );
+        const double darea = std::abs( iplg.area() - jplg.area() );
+        Log::info() << "* src ^ tgt      : " << iplg << "\n";
+        Log::info() << "* src ^ tgt area : " << iplg.area() << "\n";
+        if ( darea > 5e-8 ) {
+            s_csp.intersect( t_csp, 1 );
+            Log::info() << "* (!!) intersect comm area diff: " << darea << "\n";
+            Log::info() << "* (!!) tgt ^ src      : " << jplg << "\n";
+            Log::info() << "* (!!) tgt ^ src area : " << jplg.area() << "\n";
+            t_csp.intersect( s_csp, 1 );
+            ATLAS_ASSERT( false );
+        }
+        Log::info() << "\n";
+        area_ncov -= iplg.area();
+    }
+    Log::info() << "\n=== END DEBUG ===\n\n";
 }
 
 
