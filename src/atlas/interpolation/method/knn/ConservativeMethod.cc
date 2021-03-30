@@ -36,6 +36,32 @@ using CSPolygon = util::ConvexSphericalPolygon;
 ConservativeMethod::ConservativeMethod( const util::Config& config ) {
     config.get( "order", order_ = 2 );
     config.get( "normalise_intersections", normalise_intersections_ = 1 );
+    config.get( "field_value_type", fvtype_ = 0 );
+}
+
+std::vector<CSPolygon> ConservativeMethod::get_polygons( const Mesh& mesh ) {
+    std::vector<CSPolygon> src_csp;
+    if ( fvtype_ == 0 ) {  // CellColumns
+        const idx_t n_cells = mesh.cells().size();
+        src_csp.resize( n_cells );
+        const auto& node_connectivity = mesh.cells().node_connectivity();
+        const auto lonlat             = array::make_view<double, 2>( mesh.nodes().lonlat() );
+        std::vector<PointLonLat> pts_ll;
+        for ( idx_t icell = 0; icell < n_cells; ++icell ) {
+            const idx_t n_nodes = node_connectivity.cols( icell );
+            pts_ll.clear();
+            pts_ll.resize( n_nodes );
+            for ( idx_t jnode = 0; jnode < n_nodes; ++jnode ) {
+                idx_t inode   = node_connectivity( icell, jnode );
+                pts_ll[jnode] = PointLonLat{lonlat( inode, 0 ), lonlat( inode, 1 )};
+            }
+            src_csp[icell] = CSPolygon( pts_ll );
+        }
+    }
+    else {  // NodeColumns
+        ATLAS_NOTIMPLEMENTED;
+    }
+    return src_csp;
 }
 
 void ConservativeMethod::do_setup( Mesh& src_mesh, const Mesh& tgt_mesh ) {
@@ -51,37 +77,14 @@ void ConservativeMethod::do_setup( Mesh& src_mesh, const Mesh& tgt_mesh ) {
     tgt_areas_.resize( tgt_mesh.cells().size() );
     util::KDTree<idx_t> kdt_search;
     kdt_search.reserve( tgt_mesh.cells().size() );
+
+    const idx_t src_nb_cells = src_mesh.cells().size();
+    const auto& src_csp      = get_polygons( src_mesh );
+    const idx_t tgt_nb_cells = tgt_mesh.cells().size();
+    const auto& tgt_csp      = get_polygons( tgt_mesh );
+
     double max_tgtcell_rad = 0.;
-    std::vector<PointLonLat> pts_ll;
-    const idx_t src_nb_cells          = src_mesh.cells().size();
-    const auto& src_node_connectivity = src_mesh.cells().node_connectivity();
-    std::vector<CSPolygon> src_csp;
-    src_csp.resize( src_nb_cells );
-    const auto src_lonlat = array::make_view<double, 2>( src_mesh.nodes().lonlat() );
-    for ( idx_t jcell = 0; jcell < src_nb_cells; ++jcell ) {
-        const idx_t nb_nodes = src_node_connectivity.cols( jcell );
-        pts_ll.clear();
-        pts_ll.resize( nb_nodes );
-        for ( idx_t jnode = 0; jnode < nb_nodes; ++jnode ) {
-            idx_t inode   = src_node_connectivity( jcell, jnode );
-            pts_ll[jnode] = PointLonLat{src_lonlat( inode, 0 ), src_lonlat( inode, 1 )};
-        }
-        src_csp[jcell] = CSPolygon( pts_ll );
-    }
-    const idx_t tgt_nb_cells          = tgt_mesh.cells().size();
-    const auto& tgt_node_connectivity = tgt_mesh.cells().node_connectivity();
-    std::vector<CSPolygon> tgt_csp;
-    tgt_csp.resize( tgt_nb_cells );
-    const auto tgt_lonlat = array::make_view<double, 2>( tgt_mesh.nodes().lonlat() );
     for ( idx_t jcell = 0; jcell < tgt_nb_cells; ++jcell ) {
-        const idx_t nb_nodes = tgt_node_connectivity.cols( jcell );
-        pts_ll.clear();
-        pts_ll.resize( nb_nodes );
-        for ( idx_t jnode = 0; jnode < nb_nodes; ++jnode ) {
-            idx_t inode   = tgt_node_connectivity( jcell, jnode );
-            pts_ll[jnode] = PointLonLat{tgt_lonlat( inode, 0 ), tgt_lonlat( inode, 1 )};
-        }
-        tgt_csp[jcell] = CSPolygon( pts_ll );
         kdt_search.insert( tgt_csp[jcell].centroid(), jcell );
         max_tgtcell_rad = std::max( max_tgtcell_rad, tgt_csp[jcell].cell_radius() );
     }
@@ -257,15 +260,15 @@ void ConservativeMethod::do_execute( const Field& src_field, Field& tgt_field ) 
                         grad = grad + PointXYZ::mul( PointXYZ::cross( Pn, Pnn ), val );
                     }
                     else if ( ncell != scell ) {
-                        double val = 0.5 * ( src_vals( ncell ) - src_vals( scell ) );
-                        val *= -1;
                         ATLAS_NOTIMPLEMENTED;
+                        //double val = 0.5 * ( src_vals( ncell ) - src_vals( scell ) );
+                        //val *= -1;
                         //grad = grad + PointXYZ::mul( PointXYZ::cross( Pn, P ), val );
                     }
                     else if ( nncell != scell ) {
-                        double val = 0.5 * ( src_vals( nncell ) - src_vals( scell ) );
-                        val *= -1;
                         ATLAS_NOTIMPLEMENTED;
+                        //double val = 0.5 * ( src_vals( nncell ) - src_vals( scell ) );
+                        //val *= -1;
                         //grad = grad + PointXYZ::mul( PointXYZ::cross( P, Pnn ), val );
                     }
                 }
