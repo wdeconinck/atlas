@@ -27,6 +27,8 @@ namespace method {
 
 class ConservativeMethod {
 public:
+    typedef util::ConvexSphericalPolygon CSPolygon;
+
     ConservativeMethod( const util::Config& = util::NoConfig() );
 
     struct InterpolationParameters {
@@ -66,8 +68,11 @@ private:
                             const std::vector<util::ConvexSphericalPolygon>& tgt_csp,
                             const TargetCellsIDs& tgt_cells ) const;
 
+    std::vector<CSPolygon> get_polygons( const Mesh& mesh );
+
 protected:
     Mesh src_mesh_;
+    int fvtype_;
     std::vector<PointXYZ> src_centroids_;
     std::vector<PointXYZ> tgt_centroids_;
     std::vector<double> src_areas_;
