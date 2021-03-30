@@ -60,6 +60,12 @@ public:
     void set_order( int order ) { order_ = order; }
     const int order() const { return order_; }
 
+private:
+    template <class TargetCellsIDs>
+    void dump_intersection( const util::ConvexSphericalPolygon& s_csp,
+                            const std::vector<util::ConvexSphericalPolygon>& tgt_csp,
+                            const TargetCellsIDs& tgt_cells ) const;
+
 protected:
     Mesh src_mesh_;
     std::vector<PointXYZ> src_centroids_;
