@@ -54,6 +54,8 @@ void build_centroid_dual_mesh( Mesh& mesh );
  */
 void build_brick_dual_mesh( const Grid& grid, Mesh& mesh );
 
+array::Array* build_centroids_xy( const mesh::HybridElements& elements, const Field& field_xy );
+
 // ------------------------------------------------------------------
 // C wrapper interfaces to C++ routines
 extern "C" {
