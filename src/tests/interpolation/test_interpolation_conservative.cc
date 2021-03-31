@@ -117,8 +117,9 @@ void compute_field_errors( const array::ArrayView<double, 1>& src_vals, const ar
 void do_remapping_test( Grid src_grid, Grid tgt_grid, double func( const PointLonLat& ), std::ofstream& outfile ) {
     util::Config config;
     config.set( "include_pole", true );
+	config.set( "matrix_free", false );
     config.set( "normalise_intersections", 1 );
-    //config.set( "triangulate", true );
+    config.set( "triangulate", false );
 
     outfile << std::setw( 10 ) << src_grid.name() << std::setw( 10 ) << tgt_grid.name();
     auto src_meshgen = MeshGenerator( src_grid.meshgenerator() );
