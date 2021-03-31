@@ -38,6 +38,7 @@ ConservativeMethod::ConservativeMethod( const util::Config& config ) {
     config.get( "order", order_ = 2 );
     config.get( "normalise_intersections", normalise_intersections_ = 1 );
     config.get( "field_value_type", fvtype_ = 0 );
+    config.get( "matrix_free", matrix_free_ = true );
 }
 
 // get cell neighbours
@@ -173,6 +174,7 @@ void ConservativeMethod::do_setup( Mesh& src_mesh, Mesh& tgt_mesh ) {
     if ( mpi::size() > 1 ) {
         ATLAS_NOTIMPLEMENTED;
     }
+    src_mesh_ = src_mesh;
     src_centroids_.resize( src_mesh.cells().size() );
     tgt_centroids_.resize( tgt_mesh.cells().size() );
     src_areas_.resize( src_mesh.cells().size() );
@@ -235,20 +237,21 @@ void ConservativeMethod::do_setup( Mesh& src_mesh, Mesh& tgt_mesh ) {
             ATLAS_ASSERT( false );
         }
     }
-    // copy consecutive in memory
-    weights_.resize( n_weights_ );
-    scell_id_.resize( n_weights_ );
-    tcell_id_.resize( n_weights_ );
-    int cnt = 0;
-    for ( idx_t scell = 0; scell < src_nb_cells; ++scell ) {
-        const auto& iparam = iparam_[scell];
-        for ( idx_t icell = 0; icell < iparam.centroids.size(); ++icell ) {
-            scell_id_[cnt] = scell;
-            tcell_id_[cnt] = iparam.cell_id[icell];
-            weights_[cnt]  = iparam.weights[icell] / tgt_csp[tcell_id_[cnt]].area();
-            cnt++;
-        }
-    }
+	if ( not matrix_free_ ) {
+		weights_.resize( n_weights_ );
+		scell_id_.resize( n_weights_ );
+		tcell_id_.resize( n_weights_ );
+		int cnt = 0;
+		for ( idx_t scell = 0; scell < src_nb_cells; ++scell ) {
+			const auto& iparam = iparam_[scell];
+			for ( idx_t icell = 0; icell < iparam.centroids.size(); ++icell ) {
+				scell_id_[cnt] = scell;
+				tcell_id_[cnt] = iparam.cell_id[icell];
+				weights_[cnt]  = iparam.weights[icell] / tgt_csp[tcell_id_[cnt]].area();
+				cnt++;
+			}
+		}
+	}
     Log::info() << "WARNING " << nonintersect << " source mesh polygons do NOT intersect any other polygon.\n";
     Log::info() << "WARNING " << src_area_notcovered << " area of source mesh NOT covered by target mesh.\n";
     for ( idx_t tcell = 0; tcell < tgt_nb_cells; ++tcell ) {
@@ -259,7 +262,6 @@ void ConservativeMethod::do_setup( Mesh& src_mesh, Mesh& tgt_mesh ) {
         mesh::actions::build_halo( src_mesh, 0 );
         mesh::actions::build_edges( src_mesh, util::Config( "pole_edges", false ) );
     }
-    src_mesh_ = src_mesh;
 }
 
 void ConservativeMethod::do_execute( const Field& src_field, Field& tgt_field ) {
@@ -277,9 +279,23 @@ void ConservativeMethod::do_execute( const Field& src_field, Field& tgt_field ) 
         tgt_vals( tcell ) = 0.;
     }
     if ( order_ == 1 ) {
-        for ( idx_t i = 0; i < n_weights_; ++i ) {
-            tgt_vals( tcell_id_[i] ) += weights_[i] * src_vals( scell_id_[i] );
-        }
+		if ( not matrix_free_ ) {
+			for ( idx_t i = 0; i < n_weights_; ++i ) {
+				tgt_vals( tcell_id_[i] ) += weights_[i] * src_vals( scell_id_[i] );
+			}
+		}
+		else {
+        	for ( idx_t scell = 0; scell < src_vals.size(); ++scell ) {
+            	const auto& iparam      = iparam_[scell];
+                for ( idx_t icell = 0; icell < iparam.centroids.size(); ++icell ) {
+                    tgt_vals( iparam.cell_id[icell] ) +=
+                        iparam.weights[icell] * src_vals( scell );
+                }
+            }
+			for ( idx_t tcell = 0; tcell < tgt_vals.size(); ++tcell ) {
+				tgt_vals( tcell ) /= tgt_areas_[tcell];
+			}
+		}
     }
     else if ( order_ == 2 ) {
         for ( idx_t scell = 0; scell < src_vals.size(); ++scell ) {

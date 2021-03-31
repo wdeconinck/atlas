@@ -79,6 +79,7 @@ protected:
     std::vector<double> src_areas_;
     std::vector<double> tgt_areas_;
     int order_;
+    bool matrix_free_;
     idx_t n_weights_;
     std::vector<double> weights_;
     std::vector<idx_t> scell_id_;
