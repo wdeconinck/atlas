@@ -48,10 +48,10 @@ public:
      * @param target functionspace containing target points
      */
     //virtual void do_setup( const FunctionSpace& source, const FunctionSpace& target ) override;
-    void do_setup( Mesh& source, const Mesh& target );
+    void do_setup( Mesh& source, Mesh& target );
 
     //void do_execute( const FieldSet& source, FieldSet& target ) const override;
-    void do_execute( const Field& src_field, Field& tgt_field ) const;
+    void do_execute( const Field& src_field, Field& tgt_field );
 
     inline const std::vector<InterpolationParameters>& iparam() const { return iparam_; }
     inline const PointXYZ& src_centroid( size_t id ) const { return src_centroids_[id]; }
@@ -68,7 +68,8 @@ private:
                             const std::vector<util::ConvexSphericalPolygon>& tgt_csp,
                             const TargetCellsIDs& tgt_cells ) const;
 
-    std::vector<CSPolygon> get_polygons( const Mesh& mesh );
+    std::vector<CSPolygon> get_polygons( Mesh& mesh );
+    std::vector<idx_t> get_neighbours( Mesh& mesh, idx_t jcell );
 
 protected:
     Mesh src_mesh_;

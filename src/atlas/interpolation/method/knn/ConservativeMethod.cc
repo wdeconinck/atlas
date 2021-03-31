@@ -15,6 +15,7 @@
 
 #include "atlas/grid.h"
 #include "atlas/interpolation/method/knn/ConservativeMethod.h"
+#include "atlas/mesh/actions/BuildDualMesh.h"
 #include "atlas/mesh/actions/BuildEdges.h"
 #include "atlas/mesh/actions/BuildHalo.h"
 #include "atlas/parallel/mpi/mpi.h"
@@ -39,7 +40,63 @@ ConservativeMethod::ConservativeMethod( const util::Config& config ) {
     config.get( "field_value_type", fvtype_ = 0 );
 }
 
-std::vector<CSPolygon> ConservativeMethod::get_polygons( const Mesh& mesh ) {
+// get cell neighbours
+std::vector<idx_t> ConservativeMethod::get_neighbours( Mesh& mesh, idx_t jcell ) {
+    const auto& cell2edge = mesh.cells().edge_connectivity();
+    const auto& edge2cell = mesh.edges().cell_connectivity();
+    const auto& edge2node = mesh.edges().node_connectivity();
+    auto c2e_missval      = cell2edge.missing_value();
+    auto valid_nb_cell    = [jcell, c2e_missval]( idx_t cid1, idx_t cid2 ) {
+        if ( cid1 != c2e_missval && cid1 != jcell ) {
+            return cid1;
+        }
+        else if ( cid2 != c2e_missval && cid2 != jcell ) {
+            return cid2;
+        }
+        return -1;
+    };
+    std::vector<idx_t> nb_cells;
+    idx_t n_edges = cell2edge.cols( jcell );
+    nb_cells.reserve( n_edges );
+    std::vector<bool> edge_done;
+    edge_done.resize( n_edges );
+    std::vector<idx_t> loc_edge_id( n_edges );
+    for ( int ledge = 0; ledge < n_edges; ++ledge ) {
+        loc_edge_id[ledge] = cell2edge( jcell, ledge );
+    }
+    idx_t ledge = 0;
+    idx_t iedge = cell2edge( jcell, ledge );
+    idx_t nbid  = valid_nb_cell( edge2cell( iedge, 0 ), edge2cell( iedge, 1 ) );
+    if ( nbid != -1 ) {
+        nb_cells.emplace_back( nbid );
+    }
+    edge_done[ledge] = true;
+    idx_t nedge_done = 1;
+    auto last_node   = edge2node( iedge, 1 );  // take any end point
+
+    for ( ledge = 0; nedge_done < n_edges; ++ledge ) {
+        if ( edge_done[ledge] ) {
+            ledge = ( ledge == n_edges - 1 ? -1 : ledge );
+            continue;
+        }
+        idx_t node0 = edge2node( cell2edge( jcell, ledge ), 0 );
+        idx_t node1 = edge2node( cell2edge( jcell, ledge ), 1 );
+        if ( last_node == node0 or last_node == node1 ) {
+            nbid =
+                valid_nb_cell( edge2cell( cell2edge( jcell, ledge ), 0 ), edge2cell( cell2edge( jcell, ledge ), 1 ) );
+            if ( nbid != -1 ) {
+                nb_cells.emplace_back( nbid );
+            }
+            last_node        = ( last_node == node0 ? node1 : node0 );
+            edge_done[ledge] = true;
+            ++nedge_done;
+        }
+        ledge = ( ledge == n_edges - 1 ? -1 : ledge );
+    }
+    return nb_cells;
+}
+
+std::vector<CSPolygon> ConservativeMethod::get_polygons( Mesh& mesh ) {
     std::vector<CSPolygon> src_csp;
     if ( fvtype_ == 0 ) {  // CellColumns
         const idx_t n_cells = mesh.cells().size();
@@ -59,12 +116,57 @@ std::vector<CSPolygon> ConservativeMethod::get_polygons( const Mesh& mesh ) {
         }
     }
     else {  // NodeColumns
-        ATLAS_NOTIMPLEMENTED;
+        if ( !mesh.cells().has_field( "centroids_xy" ) ) {
+            mesh.cells().add(
+                Field( "centroids_xy", mesh::actions::build_centroids_xy( mesh.cells(), mesh.nodes().xy() ) ) );
+        }
+        if ( !mesh.edges().has_field( "centroids_xy" ) ) {
+            mesh.edges().add(
+                Field( "centroids_xy", mesh::actions::build_centroids_xy( mesh.edges(), mesh.nodes().xy() ) ) );
+        }
+        /*
+		auto xy             = array::make_view<double, 2>( nodes.xy() );
+		auto cell_centroids = array::make_view<double, 2>( cells.field( "centroids_xy" ) );
+		auto edge_centroids = array::make_view<double, 2>( edges.field( "centroids_xy" ) );
+		const mesh::HybridElements::Connectivity& cell_edge_connectivity = cells.edge_connectivity();
+		const mesh::HybridElements::Connectivity& edge_node_connectivity = edges.node_connectivity();
+		auto field_flags                                                 = array::make_view<int, 1>( cells.flags() );
+
+		auto patch = [&field_flags]( idx_t e ) {
+        	using Topology = atlas::mesh::Nodes::Topology;
+        	return Topology::check( field_flags( e ), Topology::PATCH );
+    	};
+
+		// special ordering for bit-identical results
+		idx_t nb_cells = cells.size();
+		std::vector<Node> ordering( nb_cells );
+		for ( idx_t jcell = 0; jcell < nb_cells; ++jcell ) {
+			ordering[jcell] =
+				Node( util::unique_lonlat( cell_centroids( jcell, XX ), cell_centroids( jcell, YY ) ), jcell );
+		}
+		std::sort( ordering.data(), ordering.data() + nb_cells );
+        const idx_t n_nodes = mesh.nodes().size();
+        src_csp.resize( n_nodes );
+        const auto& node_edge_connectivity = mesh.nodes().edge_connectivity();
+        const auto lonlat             = array::make_view<double, 2>( mesh.nodes().lonlat() );
+        std::vector<PointLonLat> pts_ll;
+        for ( idx_t inode = 0; inode < n_nodes; ++inode ) {
+            const idx_t n_nodes = node_connectivity.cols( inode );
+            pts_ll.clear();
+            pts_ll.resize( n_nodes );
+            for ( idx_t jnode = 0; jnode < n_nodes; ++jnode ) {
+                idx_t inode   = node_connectivity( icell, jnode );
+                pts_ll[jnode] = PointLonLat{lonlat( inode, 0 ), lonlat( inode, 1 )};
+            }
+            src_csp[icell] = CSPolygon( pts_ll );
+        }
+*/
+        ATLAS_ASSERT( false );
     }
     return src_csp;
 }
 
-void ConservativeMethod::do_setup( Mesh& src_mesh, const Mesh& tgt_mesh ) {
+void ConservativeMethod::do_setup( Mesh& src_mesh, Mesh& tgt_mesh ) {
     ATLAS_TRACE( "ConservativeMethod::do_setup()" );
     ATLAS_ASSERT( src_mesh );
     ATLAS_ASSERT( tgt_mesh );
@@ -160,7 +262,7 @@ void ConservativeMethod::do_setup( Mesh& src_mesh, const Mesh& tgt_mesh ) {
     src_mesh_ = src_mesh;
 }
 
-void ConservativeMethod::do_execute( const Field& src_field, Field& tgt_field ) const {
+void ConservativeMethod::do_execute( const Field& src_field, Field& tgt_field ) {
     ATLAS_TRACE( "ConservativeMethod::do_execute()" );
 
     const auto src_vals = array::make_view<double, 1>( src_field );
@@ -200,45 +302,7 @@ void ConservativeMethod::do_execute( const Field& src_field, Field& tgt_field ) 
                     return -1;
                 };
                 // get cell neighbours
-                idx_t src_nb_edges = src_cell2edge.cols( scell );
-                std::vector<idx_t> src_neighbour_cells;
-                src_neighbour_cells.reserve( src_nb_edges );
-                std::vector<bool> edge_done;
-                edge_done.resize( src_nb_edges );
-                std::vector<idx_t> loc_edge_id( src_nb_edges );
-                for ( int ledge = 0; ledge < src_nb_edges; ++ledge ) {
-                    loc_edge_id[ledge] = src_cell2edge( scell, ledge );
-                }
-                idx_t ledge = 0;
-                idx_t iedge = src_cell2edge( scell, ledge );
-                idx_t nbid  = valid_nb_cell( src_edge2cell( iedge, 0 ), src_edge2cell( iedge, 1 ) );
-                if ( nbid != -1 ) {
-                    src_neighbour_cells.emplace_back( nbid );
-                }
-                edge_done[ledge] = true;
-                idx_t nedge_done = 1;
-                auto last_node   = src_edge2node( iedge, 1 );  // take any end point
-
-                for ( ledge = 0; nedge_done < src_nb_edges; ++ledge ) {
-                    if ( edge_done[ledge] ) {
-                        ledge = ( ledge == src_nb_edges - 1 ? -1 : ledge );
-                        continue;
-                    }
-                    idx_t node0 = src_edge2node( src_cell2edge( scell, ledge ), 0 );
-                    idx_t node1 = src_edge2node( src_cell2edge( scell, ledge ), 1 );
-                    if ( last_node == node0 or last_node == node1 ) {
-                        nbid = valid_nb_cell( src_edge2cell( src_cell2edge( scell, ledge ), 0 ),
-                                              src_edge2cell( src_cell2edge( scell, ledge ), 1 ) );
-                        if ( nbid != -1 ) {
-                            src_neighbour_cells.emplace_back( nbid );
-                        }
-                        last_node        = ( last_node == node0 ? node1 : node0 );
-                        edge_done[ledge] = true;
-                        ++nedge_done;
-                    }
-                    ledge = ( ledge == src_nb_edges - 1 ? -1 : ledge );
-                }
-
+                auto src_neighbour_cells = get_neighbours( src_mesh_, scell );
                 // calculate gradient
                 double dual_area = 0.;
                 for ( idx_t nb_id = 0; nb_id < src_neighbour_cells.size(); ++nb_id ) {
