@@ -353,24 +353,13 @@ void ConservativeMethod::do_execute( const Field& src_field, Field& tgt_field ) 
                     if ( dual_area > std::numeric_limits<double>::epsilon() ) {
                         grad = PointXYZ::div( grad, dual_area );
                     }
-                    for ( idx_t icell = 0; icell < iparam.centroids.size(); ++icell ) {
-                        src_barycenter =
-                            src_barycenter + PointXYZ::mul( iparam.centroids[icell], iparam.weights[icell] );
-                    }
-                    const double src_brc_norm = PointXYZ::norm( src_barycenter );
-                    if ( src_brc_norm < 1e-14 ) {
-                        src_barycenter = src_centroids_[scell];
-                    }
-                    else {
-                        src_barycenter = PointXYZ::div( src_barycenter, src_brc_norm );
-                    }
-                    //grad = PointXYZ::div( grad, PointXYZ::norm( grad ) );
-                    grad = grad - PointXYZ::mul( src_barycenter, PointXYZ::dot( grad, src_barycenter ) );
+                    grad = grad - PointXYZ::mul( src_barycenter, PointXYZ::dot( grad, src_centroids_[scell] ) );
                     ATLAS_ASSERT( std::abs( PointXYZ::dot( grad, src_barycenter ) ) < 1e-14 );
                     for ( idx_t icell = 0; icell < iparam.centroids.size(); ++icell ) {
                         tgt_vals( iparam.cell_id[icell] ) +=
                             iparam.weights[icell] *
-                            ( src_vals( scell ) + PointXYZ::dot( grad, iparam.centroids[icell] - src_barycenter ) );
+                            ( src_vals( scell ) +
+                              PointXYZ::dot( grad, iparam.centroids[icell] - src_centroids_[scell] ) );
                     }
                 }
             }
