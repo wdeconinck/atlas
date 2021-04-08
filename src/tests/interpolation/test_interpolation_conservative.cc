@@ -117,7 +117,7 @@ void compute_field_errors( const array::ArrayView<double, 1>& src_vals, const ar
 void do_remapping_test( Grid src_grid, Grid tgt_grid, double func( const PointLonLat& ), std::ofstream& outfile ) {
     util::Config config;
     config.set( "include_pole", true );
-    config.set( "matrix_free", true );
+    config.set( "matrix_free", false );
     config.set( "normalise_intersections", 1 );
     config.set( "triangulate", false );
 
