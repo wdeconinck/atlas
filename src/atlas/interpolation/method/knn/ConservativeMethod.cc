@@ -38,11 +38,11 @@ ConservativeMethod::ConservativeMethod( const util::Config& config ) {
     config.get( "order", order_ = 2 );
     config.get( "normalise_intersections", normalise_intersections_ = 1 );
     config.get( "field_value_type", fvtype_ = 0 );
-    config.get( "matrix_free", matrix_free_ = true );
+    config.get( "matrix_free", matrix_free_ = false );
 }
 
 // get cell neighbours
-const std::vector<idx_t> ConservativeMethod::get_neighbours( Mesh& mesh, idx_t jcell ) const {
+std::vector<idx_t> ConservativeMethod::get_neighbours( Mesh& mesh, idx_t jcell ) const {
     const auto& cell2edge = mesh.cells().edge_connectivity();
     const auto& edge2cell = mesh.edges().cell_connectivity();
     const auto& edge2node = mesh.edges().node_connectivity();
@@ -97,7 +97,7 @@ const std::vector<idx_t> ConservativeMethod::get_neighbours( Mesh& mesh, idx_t j
     return nb_cells;
 }
 
-const std::vector<CSPolygon> ConservativeMethod::get_polygons( Mesh& mesh ) const {
+std::vector<CSPolygon> ConservativeMethod::get_polygons( Mesh& mesh ) const {
     std::vector<CSPolygon> src_csp;
     if ( fvtype_ == 0 ) {  // CellColumns
         const idx_t n_cells = mesh.cells().size();
