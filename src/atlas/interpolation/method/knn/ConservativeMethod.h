@@ -35,11 +35,6 @@ public:
         std::vector<int> cell_id;
         std::vector<PointXYZ> centroids;
         std::vector<double> weights;
-        std::ostream& print( std::ostream& os ) {
-            os << "centroids         : " << centroids << "\n"
-               << "area              : " << weights << "\n";
-            return os;
-        }
     };
 
     /**
@@ -68,24 +63,31 @@ private:
                             const std::vector<util::ConvexSphericalPolygon>& tgt_csp,
                             const TargetCellsIDs& tgt_cells ) const;
 
-    std::vector<CSPolygon> get_polygons( Mesh& mesh );
-    std::vector<idx_t> get_neighbours( Mesh& mesh, idx_t jcell );
+    const std::vector<CSPolygon> get_polygons( Mesh& mesh ) const;
+    const std::vector<idx_t> get_neighbours( Mesh& mesh, idx_t jcell ) const;
+    void do_setup_2nd_order( const std::vector<CSPolygon>& );
 
 protected:
     Mesh src_mesh_;
+    int normalise_intersections_;
+    int order_;
     int fvtype_;
+    bool matrix_free_;
+    bool order2_setup_;
+    // matrix_free
     std::vector<PointXYZ> src_centroids_;
     std::vector<PointXYZ> tgt_centroids_;
     std::vector<double> src_areas_;
     std::vector<double> tgt_areas_;
-    int order_;
-    bool matrix_free_;
+    std::vector<InterpolationParameters> iparam_;
+    // non matrix_free
     idx_t n_weights_;
     std::vector<double> weights_;
     std::vector<idx_t> scell_id_;
     std::vector<idx_t> tcell_id_;
-    std::vector<InterpolationParameters> iparam_;
-    int normalise_intersections_;
+    std::vector<double> dual_grad_area_;
+    std::vector<std::vector<idx_t> > neighbours_;
+    std::vector<PointXYZ> src_dbary_;
 };
 
 

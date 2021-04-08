@@ -42,7 +42,7 @@ ConservativeMethod::ConservativeMethod( const util::Config& config ) {
 }
 
 // get cell neighbours
-std::vector<idx_t> ConservativeMethod::get_neighbours( Mesh& mesh, idx_t jcell ) {
+const std::vector<idx_t> ConservativeMethod::get_neighbours( Mesh& mesh, idx_t jcell ) const {
     const auto& cell2edge = mesh.cells().edge_connectivity();
     const auto& edge2cell = mesh.edges().cell_connectivity();
     const auto& edge2node = mesh.edges().node_connectivity();
@@ -97,7 +97,7 @@ std::vector<idx_t> ConservativeMethod::get_neighbours( Mesh& mesh, idx_t jcell )
     return nb_cells;
 }
 
-std::vector<CSPolygon> ConservativeMethod::get_polygons( Mesh& mesh ) {
+const std::vector<CSPolygon> ConservativeMethod::get_polygons( Mesh& mesh ) const {
     std::vector<CSPolygon> src_csp;
     if ( fvtype_ == 0 ) {  // CellColumns
         const idx_t n_cells = mesh.cells().size();
@@ -262,6 +262,55 @@ void ConservativeMethod::do_setup( Mesh& src_mesh, Mesh& tgt_mesh ) {
         mesh::actions::build_halo( src_mesh, 0 );
         mesh::actions::build_edges( src_mesh, util::Config( "pole_edges", false ) );
     }
+    do_setup_2nd_order( src_csp );
+}
+
+void ConservativeMethod::do_setup_2nd_order( const std::vector<CSPolygon>& src_csp ) {
+    if ( order_ != 2 || matrix_free_ ) {
+        return;
+    }
+    //const auto halo     = array::make_view<int, 1>( src_mesh_.cells().halo() );
+    const auto& src_cell2edge = src_mesh_.cells().edge_connectivity();
+    const auto& src_edge2cell = src_mesh_.edges().cell_connectivity();
+    const auto& src_edge2node = src_mesh_.edges().node_connectivity();
+    const idx_t src_nb_cells  = src_mesh_.cells().size();
+    neighbours_.resize( src_nb_cells );
+    dual_grad_area_.resize( src_nb_cells );
+    src_dbary_.resize( n_weights_ );
+
+    for ( idx_t scell = 0; scell < src_nb_cells; ++scell ) {
+        //	if ( halo( scell ) ) {
+        //		continue;
+        //	}
+        const auto nb_cells = get_neighbours( src_mesh_, scell );
+        neighbours_[scell].resize( nb_cells.size() );
+        for ( int i = 0; i < nb_cells.size(); i++ ) {
+            neighbours_[scell][i] = nb_cells[i];
+        }
+        dual_grad_area_[scell] = 0.;
+        const auto& P          = src_centroids_[scell];
+        for ( idx_t nb_id = 0; nb_id < nb_cells.size(); ++nb_id ) {
+            idx_t nnb_id    = ( nb_id != nb_cells.size() - 1 ) ? nb_id + 1 : 0;
+            idx_t ncell     = nb_cells[nb_id];
+            idx_t nncell    = nb_cells[nnb_id];
+            const auto& Pn  = src_centroids_[ncell];
+            const auto& Pnn = src_centroids_[nncell];
+            auto csp        = CSPolygon( {Pn, Pnn, P} );
+            if ( csp.area() < std::numeric_limits<double>::epsilon() ) {
+                csp = CSPolygon( {Pn, P, Pnn} );
+            }
+            if ( ncell != scell && nncell != scell ) {
+                dual_grad_area_[scell] += std::abs( csp.area() );
+            }
+        }
+    }
+    int cnt = 0;
+    for ( idx_t scell = 0; scell < src_nb_cells; ++scell ) {
+        const auto& iparam = iparam_[scell];
+        for ( idx_t icell = 0; icell < iparam.centroids.size(); ++icell ) {
+            src_dbary_[cnt++] = iparam.centroids[icell] - src_csp[scell].centroid();
+        }
+    }
 }
 
 void ConservativeMethod::do_execute( const Field& src_field, Field& tgt_field ) {
@@ -269,7 +318,7 @@ void ConservativeMethod::do_execute( const Field& src_field, Field& tgt_field ) 
 
     const auto src_vals = array::make_view<double, 1>( src_field );
     auto tgt_vals       = array::make_view<double, 1>( tgt_field );
-    const auto halo     = array::make_view<int, 1>( src_mesh_.cells().halo() );
+    //const auto halo     = array::make_view<int, 1>( src_mesh_.cells().halo() );
 
     const auto& src_cell2edge = src_mesh_.cells().edge_connectivity();
     const auto& src_edge2cell = src_mesh_.edges().cell_connectivity();
@@ -299,9 +348,9 @@ void ConservativeMethod::do_execute( const Field& src_field, Field& tgt_field ) 
     else if ( order_ == 2 ) {
         if ( matrix_free_ ) {
             for ( idx_t scell = 0; scell < src_vals.size(); ++scell ) {
-                if ( halo( scell ) ) {
-                    continue;
-                }
+                //if ( halo( scell ) ) {
+                //    continue;
+                //}
                 const auto& iparam      = iparam_[scell];
                 const PointXYZ& P       = src_centroids_[scell];
                 PointXYZ grad           = {0., 0., 0.};
@@ -368,7 +417,42 @@ void ConservativeMethod::do_execute( const Field& src_field, Field& tgt_field ) 
             }
         }
         else {
-            ATLAS_NOTIMPLEMENTED;
+            if ( not order2_setup_ ) {
+                Log::info() << " 2nd order method not set up. order2_setup_ == false\n";
+                ATLAS_ASSERT( false );
+            }
+            std::vector<PointXYZ> grad;
+            grad.resize( src_vals.size() );
+            for ( idx_t scell = 0; scell < grad.size(); ++scell ) {
+                grad[scell] = {0., 0., 0.};
+            }
+            for ( idx_t scell = 0; scell < grad.size(); ++scell ) {
+                //if ( halo( scell ) ) {
+                //		continue;
+                //	}
+                const auto& nb_scell = neighbours_[scell];
+                for ( idx_t nb_id = 0; nb_id < nb_scell.size(); ++nb_id ) {
+                    idx_t nnb_id      = ( nb_id != nb_scell.size() - 1 ) ? nb_id + 1 : 0;
+                    idx_t ncell       = nb_scell[nb_id];
+                    idx_t nncell      = nb_scell[nnb_id];
+                    const PointXYZ& P = src_centroids_[scell];
+                    const auto& Pn    = src_centroids_[ncell];
+                    const auto& Pnn   = src_centroids_[nncell];
+                    if ( ncell != scell && nncell != scell ) {
+                        double val = 0.5 * ( src_vals( ncell ) + src_vals( nncell ) ) - src_vals( scell );
+                        val *= ( CSPolygon::leftOf( Pnn, P, Pn, 1e-16, 0 ) ? -1 : 1 );
+                        grad[scell] = grad[scell] + PointXYZ::mul( PointXYZ::cross( Pn, Pnn ), val );
+                    }
+                }
+                if ( dual_grad_area_[scell] > 0. ) {
+                    grad[scell] = PointXYZ::div( grad[scell], dual_grad_area_[scell] );
+                }
+            }
+            for ( idx_t i = 0; i < n_weights_; ++i ) {
+                const idx_t scell = scell_id_[i];
+                tgt_vals( tcell_id_[i] ) +=
+                    weights_[i] * ( src_vals( scell ) + PointXYZ::dot( grad[scell], src_dbary_[i] ) );
+            }
         }
     }
 }

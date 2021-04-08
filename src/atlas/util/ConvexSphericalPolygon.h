@@ -24,7 +24,8 @@ class PartitionPolygon;
 
 class ConvexSphericalPolygon {
 public:
-    static constexpr int MAX_SIZE = 12;
+    static constexpr int MAX_GRIDCELL_EDGES = 4;
+    static constexpr int MAX_SIZE           = 2 * MAX_GRIDCELL_EDGES + 1;
 
     ConvexSphericalPolygon();
     ConvexSphericalPolygon( const std::vector<PointLonLat>& points );
@@ -52,8 +53,8 @@ public:
    * @param[in] P, p1, p2 given point in xyz-coordinates
    * @return 0:P_right_of_[p1,p2], -1:overlap_of_[P,p1]_and_[P,p2], 1:P_left_of_[p1,p2]
    */
-    int leftOf( const PointXYZ& P, const PointXYZ& p1, const PointXYZ& p2, const double tol,
-                const int debug = 0 ) const;
+    static int leftOf( const PointXYZ& P, const PointXYZ& p1, const PointXYZ& p2, const double tol,
+                       const int debug = 0 );
 
     /*
    * @brief Segment-sph_polygon intersection
