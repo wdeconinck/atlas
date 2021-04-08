@@ -328,7 +328,7 @@ void ConvexSphericalPolygon::compute_area( const int debug ) {
 }
 
 int ConvexSphericalPolygon::leftOf( const PointXYZ& P, const PointXYZ& p1, const PointXYZ& p2, const double tol,
-                                    const int debug ) const {
+                                    const int debug ) {
     const PointXYZ& cp = PointXYZ( PointXYZ::cross( p1, p2 ) );
     double cpP         = PointXYZ::dot( cp, P );
 #if DEBUG_OUTPUT
