@@ -63,9 +63,9 @@ private:
                             const std::vector<util::ConvexSphericalPolygon>& tgt_csp,
                             const TargetCellsIDs& tgt_cells ) const;
 
-    const std::vector<CSPolygon> get_polygons( Mesh& mesh ) const;
-    const std::vector<idx_t> get_neighbours( Mesh& mesh, idx_t jcell ) const;
-    void do_setup_2nd_order( const std::vector<CSPolygon>& );
+    std::vector<CSPolygon> get_polygons( Mesh& mesh ) const;
+    std::vector<idx_t> get_neighbours( Mesh& mesh, idx_t jcell ) const;
+    void do_setup_2nd_order();
 
 protected:
     Mesh src_mesh_;
@@ -80,14 +80,18 @@ protected:
     std::vector<double> src_areas_;
     std::vector<double> tgt_areas_;
     std::vector<InterpolationParameters> iparam_;
-    // non matrix_free
+    // non matrix_free for 1st and 2nd order
     idx_t n_weights_;
     std::vector<double> weights_;
+    std::vector<double> grad_area_;
     std::vector<idx_t> scell_id_;
     std::vector<idx_t> tcell_id_;
-    std::vector<double> dual_grad_area_;
+    // non matrix_free for 2nd order
     std::vector<std::vector<idx_t> > neighbours_;
+    std::vector<std::array<idx_t, 3> > nb_idx_;
     std::vector<PointXYZ> src_dbary_;
+    std::vector<PointXYZ> src_bary_;
+    std::vector<PointXYZ> grad_nb_prod_;
 };
 
 
