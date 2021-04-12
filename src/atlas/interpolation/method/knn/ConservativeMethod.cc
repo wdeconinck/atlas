@@ -278,7 +278,6 @@ void ConservativeMethod::do_setup_2nd_order() {
     neighbours_.resize( src_nb_cells );
     std::vector<double> grad_area;
     grad_area.resize( src_nb_cells );
-    grad_area_.resize( src_nb_cells );
 
     int cnt = 0;
     std::vector<std::array<idx_t, 3>> nb_idx_h;
@@ -311,7 +310,6 @@ void ConservativeMethod::do_setup_2nd_order() {
             nb_idx_h.emplace_back( std::array<idx_t, 3>( {scell, ncell, nncell} ) );
             val_h.emplace_back( ( CSPolygon::leftOf( Pnn, P, Pn, 1e-16, 0 ) ? -1 : 1 ) );
         }
-        grad_area_[scell] = grad_area[scell];
     }
     nb_idx_.resize( cnt );
     grad_nb_prod_.resize( cnt );

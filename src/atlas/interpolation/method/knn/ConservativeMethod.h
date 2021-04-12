@@ -83,7 +83,6 @@ protected:
     // non matrix_free for 1st and 2nd order
     idx_t n_weights_;
     std::vector<double> weights_;
-    std::vector<double> grad_area_;
     std::vector<idx_t> scell_id_;
     std::vector<idx_t> tcell_id_;
     // non matrix_free for 2nd order
