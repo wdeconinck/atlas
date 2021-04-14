@@ -122,30 +122,28 @@ void do_remapping_test( Grid src_grid, Grid tgt_grid, double func( const PointLo
     config.set( "triangulate", false );
 
     outfile << std::setw( 10 ) << src_grid.name() << std::setw( 10 ) << tgt_grid.name();
-    auto src_meshgen = MeshGenerator( src_grid.meshgenerator() );
-    auto tgt_meshgen = MeshGenerator( tgt_grid.meshgenerator() );
-    Mesh src_mesh    = src_meshgen.generate( src_grid );
-    Mesh tgt_mesh    = tgt_meshgen.generate( tgt_grid );
 
     ConservativeMethod conservativeMethod( config );
 
-    functionspace::CellColumns src_fs( src_mesh );
-    functionspace::CellColumns tgt_fs( tgt_mesh );
-    auto src_field = src_fs.createField<double>();
-    auto tgt_field = tgt_fs.createField<double>();
-    auto src_vals  = array::make_view<double, 1>( src_field );
-    auto tgt_vals  = array::make_view<double, 1>( tgt_field );
-
     auto start = std::chrono::system_clock::now();
-    conservativeMethod.do_setup( src_mesh, tgt_mesh );
+    conservativeMethod.do_setup( src_grid, tgt_grid );
     std::chrono::duration<double> elapsed_seconds = std::chrono::system_clock::now() - start;
     Log::info() << "REMAPPING: " << src_grid.name() << " --> " << tgt_grid.name() << "\n";
     Log::info() << "  Setup (computing supermesh) took " << elapsed_seconds.count() << " seconds.\n";
     outfile << std::setw( 10 ) << elapsed_seconds.count();
 
+    const auto& src_fs = conservativeMethod.source();
+    const auto& tgt_fs = conservativeMethod.target();
+    auto src_field     = src_fs.createField<double>();
+    auto tgt_field     = tgt_fs.createField<double>();
+    auto src_vals      = array::make_view<double, 1>( src_field );
+    auto tgt_vals      = array::make_view<double, 1>( tgt_field );
+
     compute_geom_errors( src_vals, tgt_vals, conservativeMethod, func, outfile );
-    output::Gmsh( "cons-remap_smesh.msh", util::Config( "coordinates", "lonlat" ) ).write( src_mesh );
-    output::Gmsh( "cons-remap_tmesh.msh", util::Config( "coordinates", "lonlat" ) ).write( tgt_mesh );
+    output::Gmsh( "cons-remap_smesh.msh", util::Config( "coordinates", "lonlat" ) )
+        .write( conservativeMethod.src_mesh() );
+    output::Gmsh( "cons-remap_tmesh.msh", util::Config( "coordinates", "lonlat" ) )
+        .write( conservativeMethod.tgt_mesh() );
 
     for ( idx_t scell = 0; scell < src_vals.size(); ++scell ) {
         auto p = conservativeMethod.src_centroid( scell );
