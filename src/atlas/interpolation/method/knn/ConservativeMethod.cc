@@ -376,11 +376,11 @@ void ConservativeMethod::do_execute( const Field& src_field, Field& tgt_field ) 
     const auto& src_edge2cell = src_mesh_.edges().cell_connectivity();
     const auto& src_edge2node = src_mesh_.edges().node_connectivity();
 
-    for ( idx_t tcell = 0; tcell < tgt_vals.size(); ++tcell ) {
-        tgt_vals( tcell ) = 0.;
-    }
     if ( order_ == 1 ) {
         if ( matrix_free_ ) {
+            for ( idx_t tcell = 0; tcell < tgt_vals.size(); ++tcell ) {
+                tgt_vals( tcell ) = 0.;
+            }
             for ( idx_t scell = 0; scell < src_vals.size(); ++scell ) {
                 const auto& iparam = iparam_[scell];
                 for ( idx_t icell = 0; icell < iparam.centroids.size(); ++icell ) {
@@ -400,6 +400,9 @@ void ConservativeMethod::do_execute( const Field& src_field, Field& tgt_field ) 
     }
     else if ( order_ == 2 ) {
         if ( matrix_free_ ) {
+            for ( idx_t tcell = 0; tcell < tgt_vals.size(); ++tcell ) {
+                tgt_vals( tcell ) = 0.;
+            }
             for ( idx_t scell = 0; scell < src_vals.size(); ++scell ) {
                 //if ( halo( scell ) ) {
                 //    continue;
@@ -477,6 +480,9 @@ void ConservativeMethod::do_execute( const Field& src_field, Field& tgt_field ) 
             if ( not order2_setup_ ) {
                 Log::info() << " 2nd order method not set up. order2_setup_ == false\n";
                 ATLAS_ASSERT( false );
+            }
+            for ( idx_t tcell = 0; tcell < tgt_vals.size(); ++tcell ) {
+                tgt_vals( tcell ) = 0.;
             }
             std::vector<PointXYZ> grad;
             grad.resize( src_vals.size() );
