@@ -18,6 +18,7 @@
 #include "atlas/mesh/actions/BuildDualMesh.h"
 #include "atlas/mesh/actions/BuildEdges.h"
 #include "atlas/mesh/actions/BuildHalo.h"
+#include "atlas/meshgenerator.h"
 #include "atlas/parallel/mpi/mpi.h"
 #include "atlas/runtime/Exception.h"
 #include "atlas/runtime/Log.h"
@@ -34,7 +35,7 @@ namespace method {
 
 using CSPolygon = util::ConvexSphericalPolygon;
 
-ConservativeMethod::ConservativeMethod( const util::Config& config ) {
+ConservativeMethod::ConservativeMethod( const util::Config& config ) : Method( config ) {
     config.get( "order", order_ = 2 );
     config.get( "normalise_intersections", normalise_intersections_ = 1 );
     config.get( "field_value_type", fvtype_ = 0 );
@@ -167,26 +168,32 @@ std::vector<CSPolygon> ConservativeMethod::get_polygons( Mesh& mesh ) const {
     return src_csp;
 }
 
-void ConservativeMethod::do_setup( Mesh& src_mesh, Mesh& tgt_mesh ) {
+void ConservativeMethod::do_setup( const Grid& src_grid, const Grid& tgt_grid ) {
     ATLAS_TRACE( "ConservativeMethod::do_setup()" );
-    ATLAS_ASSERT( src_mesh );
-    ATLAS_ASSERT( tgt_mesh );
+    ATLAS_ASSERT( src_grid );
+    ATLAS_ASSERT( tgt_grid );
     if ( mpi::size() > 1 ) {
         ATLAS_NOTIMPLEMENTED;
     }
     order2_setup_ = false;
-    src_mesh_     = src_mesh;
-    src_centroids_.resize( src_mesh.cells().size() );
-    tgt_centroids_.resize( tgt_mesh.cells().size() );
-    src_areas_.resize( src_mesh.cells().size() );
-    tgt_areas_.resize( tgt_mesh.cells().size() );
-    util::KDTree<idx_t> kdt_search;
-    kdt_search.reserve( tgt_mesh.cells().size() );
+    src_mesh_     = MeshGenerator( src_grid.meshgenerator() ).generate( src_grid );
+    tgt_mesh_     = MeshGenerator( tgt_grid.meshgenerator() ).generate( tgt_grid );
+    functionspace::CellColumns src_fs( src_mesh_ );
+    functionspace::CellColumns tgt_fs( tgt_mesh_ );
+    source_ = src_fs;
+    target_ = tgt_fs;
 
-    const idx_t src_nb_cells = src_mesh.cells().size();
-    const auto& src_csp      = get_polygons( src_mesh );
-    const idx_t tgt_nb_cells = tgt_mesh.cells().size();
-    const auto& tgt_csp      = get_polygons( tgt_mesh );
+    src_centroids_.resize( src_mesh_.cells().size() );
+    tgt_centroids_.resize( tgt_mesh_.cells().size() );
+    src_areas_.resize( src_mesh_.cells().size() );
+    tgt_areas_.resize( tgt_mesh_.cells().size() );
+    util::KDTree<idx_t> kdt_search;
+    kdt_search.reserve( tgt_mesh_.cells().size() );
+
+    const idx_t src_nb_cells = src_mesh_.cells().size();
+    const auto& src_csp      = get_polygons( src_mesh_ );
+    const idx_t tgt_nb_cells = tgt_mesh_.cells().size();
+    const auto& tgt_csp      = get_polygons( tgt_mesh_ );
 
     double max_tgtcell_rad = 0.;
     for ( idx_t jcell = 0; jcell < tgt_nb_cells; ++jcell ) {
@@ -252,6 +259,17 @@ void ConservativeMethod::do_setup( Mesh& src_mesh, Mesh& tgt_mesh ) {
                 cnt++;
             }
         }
+        ATLAS_TRACE( "ConservativeMethod::setup: build interpolant matrix" );
+        Triplets triplets;
+        triplets.resize( n_weights_ );
+        for ( idx_t i = 0; i < n_weights_; i++ ) {
+            triplets[i] = Triplet( tcell_id_[i], scell_id_[i], weights_[i] );
+        }
+        std::sort( std::begin( triplets ), std::end( triplets ), []( const Triplet& t1, const Triplet& t2 ) {
+            return ( t1.row() < t2.row() or ( t1.row() == t2.row() and ( t1.col() > t2.col() ) ) );
+        } );
+        Matrix A( tgt_nb_cells, src_nb_cells, triplets );
+        matrix_shared_->swap( A );
     }
     Log::info() << "WARNING " << nonintersect << " source mesh polygons do NOT intersect any other polygon.\n";
     Log::info() << "WARNING " << src_area_notcovered << " area of source mesh NOT covered by target mesh.\n";
@@ -260,8 +278,8 @@ void ConservativeMethod::do_setup( Mesh& src_mesh, Mesh& tgt_mesh ) {
         tgt_areas_[tcell]     = tgt_csp[tcell].area();
     }
     if ( order_ > 1 ) {
-        mesh::actions::build_halo( src_mesh, 0 );
-        mesh::actions::build_edges( src_mesh, util::Config( "pole_edges", false ) );
+        mesh::actions::build_halo( src_mesh_, 0 );
+        mesh::actions::build_edges( src_mesh_, util::Config( "pole_edges", false ) );
     }
     do_setup_2nd_order();
 }
@@ -374,9 +392,10 @@ void ConservativeMethod::do_execute( const Field& src_field, Field& tgt_field ) 
             }
         }
         else {
-            for ( idx_t i = 0; i < n_weights_; ++i ) {
-                tgt_vals( tcell_id_[i] ) += weights_[i] * src_vals( scell_id_[i] );
-            }
+            //            for ( idx_t i = 0; i < n_weights_; ++i ) {
+            //              tgt_vals( tcell_id_[i] ) += weights_[i] * src_vals( scell_id_[i] );
+            //        }
+            Method::do_execute( src_field, tgt_field );
         }
     }
     else if ( order_ == 2 ) {
