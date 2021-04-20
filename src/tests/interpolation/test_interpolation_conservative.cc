@@ -90,7 +90,7 @@ void compute_field_errors( const array::ArrayView<double, 1>& src_vals, const ar
         global_cons_err += diff_vals( scell );
         const auto& iparam = conservativeMethod.iparam()[scell];
         for ( idx_t icell = 0; icell < iparam.weights.size(); ++icell ) {
-            diff_vals( scell ) -= tgt_vals( iparam.cell_id[icell] ) * iparam.weights[icell];
+            diff_vals( scell ) -= tgt_vals( iparam.tcell_id[icell] ) * iparam.weights[icell];
         }
         diff_vals( scell ) = std::abs( diff_vals( scell ) );
     }

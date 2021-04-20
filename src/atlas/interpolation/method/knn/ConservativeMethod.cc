@@ -27,8 +27,6 @@
 #include "atlas/util/KDTree.h"
 
 
-#define DEBUG_OUTPUT_DETAIL 1
-
 namespace atlas {
 namespace interpolation {
 namespace method {
@@ -36,7 +34,7 @@ namespace method {
 using CSPolygon = util::ConvexSphericalPolygon;
 
 ConservativeMethod::ConservativeMethod( const util::Config& config ) : Method( config ) {
-    config.get( "order", order_ = 2 );
+    config.get( "order", order_ = 1 );
     config.get( "normalise_intersections", normalise_intersections_ = 1 );
     config.get( "field_value_type", fvtype_ = 0 );
     config.get( "matrix_free", matrix_free_ = true );
@@ -175,28 +173,27 @@ void ConservativeMethod::do_setup( const Grid& src_grid, const Grid& tgt_grid ) 
     if ( mpi::size() > 1 ) {
         ATLAS_NOTIMPLEMENTED;
     }
-    order2_setup_ = false;
-    src_mesh_     = MeshGenerator( src_grid.meshgenerator() ).generate( src_grid );
-    tgt_mesh_     = MeshGenerator( tgt_grid.meshgenerator() ).generate( tgt_grid );
+    src_mesh_ = MeshGenerator( src_grid.meshgenerator() ).generate( src_grid );
+    tgt_mesh_ = MeshGenerator( tgt_grid.meshgenerator() ).generate( tgt_grid );
     functionspace::CellColumns src_fs( src_mesh_ );
     functionspace::CellColumns tgt_fs( tgt_mesh_ );
     source_ = src_fs;
     target_ = tgt_fs;
 
-    src_centroids_.resize( src_mesh_.cells().size() );
-    tgt_centroids_.resize( tgt_mesh_.cells().size() );
-    src_areas_.resize( src_mesh_.cells().size() );
-    tgt_areas_.resize( tgt_mesh_.cells().size() );
-    util::KDTree<idx_t> kdt_search;
-    kdt_search.reserve( tgt_mesh_.cells().size() );
+    const auto& src_csp = get_polygons( src_mesh_ );
+    const auto& tgt_csp = get_polygons( tgt_mesh_ );
+    n_scells_           = src_csp.size();
+    n_tcells_           = tgt_csp.size();
 
-    const idx_t src_nb_cells = src_mesh_.cells().size();
-    const auto& src_csp      = get_polygons( src_mesh_ );
-    const idx_t tgt_nb_cells = tgt_mesh_.cells().size();
-    const auto& tgt_csp      = get_polygons( tgt_mesh_ );
+    src_centroids_.resize( n_scells_ );
+    tgt_centroids_.resize( n_tcells_ );
+    src_areas_.resize( n_scells_ );
+    tgt_areas_.resize( n_tcells_ );
+    util::KDTree<idx_t> kdt_search;
+    kdt_search.reserve( n_tcells_ );
 
     double max_tgtcell_rad = 0.;
-    for ( idx_t jcell = 0; jcell < tgt_nb_cells; ++jcell ) {
+    for ( idx_t jcell = 0; jcell < n_tcells_; ++jcell ) {
         kdt_search.insert( tgt_csp[jcell].centroid(), jcell );
         max_tgtcell_rad = std::max( max_tgtcell_rad, tgt_csp[jcell].cell_radius() );
     }
@@ -204,12 +201,11 @@ void ConservativeMethod::do_setup( const Grid& src_grid, const Grid& tgt_grid ) 
 
     size_t nonintersect        = 0;
     double src_area_notcovered = 0.;
-    iparam_.resize( src_nb_cells );
+    iparam_.resize( n_scells_ );
     eckit::Channel blackhole;
-    eckit::ProgressTimer progress( "Intersecting polygons ", src_nb_cells, " cell", double( 10 ),
-                                   src_nb_cells > 50 ? Log::info() : blackhole );
-    n_weights_ = 0;
-    for ( idx_t scell = 0; scell < src_nb_cells; ++scell, ++progress ) {
+    eckit::ProgressTimer progress( "Intersecting polygons ", n_scells_, " cell", double( 10 ),
+                                   n_scells_ > 50 ? Log::info() : blackhole );
+    for ( idx_t scell = 0; scell < n_scells_; ++scell, ++progress ) {
         const auto& s_csp     = src_csp[scell];
         src_centroids_[scell] = s_csp.centroid();
         src_areas_[scell]     = s_csp.area();
@@ -220,23 +216,23 @@ void ConservativeMethod::do_setup( const Grid& src_grid, const Grid& tgt_grid ) 
             auto tcell      = tgt_cells[ttcell].payload();
             CSPolygon csp_i = s_csp.intersect( tgt_csp[tcell] );
             if ( csp_i.area() > 0. ) {
-                iparam_[scell].cell_id.emplace_back( tcell );
+                iparam_[scell].tcell_id.emplace_back( tcell );
                 iparam_[scell].weights.emplace_back( csp_i.area() );
+                iparam_[scell].sweights.emplace_back( csp_i.area() / tgt_csp[tcell].area() );
                 iparam_[scell].centroids.emplace_back( csp_i.centroid() );
                 covered_area += csp_i.area();
-                n_weights_++;
             }
         }
         const double loc_csp_error = std::abs( src_csp[scell].area() - covered_area );
         src_area_notcovered += loc_csp_error;
-        if ( iparam_[scell].cell_id.size() == 0. ) {
+        if ( iparam_[scell].tcell_id.size() == 0. ) {
             ++nonintersect;
         }
-        // normalise
         if ( normalise_intersections_ ) {
             double wfactor = src_csp[scell].area() / ( covered_area > 1e-10 ? covered_area : 1. );
             for ( idx_t i = 0; i < iparam_[scell].weights.size(); i++ ) {
                 iparam_[scell].weights[i] *= wfactor;
+                iparam_[scell].sweights[i] *= wfactor;
             }
         }
         if ( false && loc_csp_error > 1e-8 ) {
@@ -245,124 +241,152 @@ void ConservativeMethod::do_setup( const Grid& src_grid, const Grid& tgt_grid ) 
             ATLAS_ASSERT( false );
         }
     }
-    if ( not matrix_free_ ) {
-        weights_.resize( n_weights_ );
-        scell_id_.resize( n_weights_ );
-        tcell_id_.resize( n_weights_ );
-        int cnt = 0;
-        for ( idx_t scell = 0; scell < src_nb_cells; ++scell ) {
-            const auto& iparam = iparam_[scell];
-            for ( idx_t icell = 0; icell < iparam.centroids.size(); ++icell ) {
-                scell_id_[cnt] = scell;
-                tcell_id_[cnt] = iparam.cell_id[icell];
-                weights_[cnt]  = iparam.weights[icell] / tgt_csp[tcell_id_[cnt]].area();
-                cnt++;
-            }
-        }
-        ATLAS_TRACE( "ConservativeMethod::setup: build interpolant matrix" );
-        Triplets triplets;
-        triplets.resize( n_weights_ );
-        for ( idx_t i = 0; i < n_weights_; i++ ) {
-            triplets[i] = Triplet( tcell_id_[i], scell_id_[i], weights_[i] );
-        }
-        std::sort( std::begin( triplets ), std::end( triplets ), []( const Triplet& t1, const Triplet& t2 ) {
-            return ( t1.row() < t2.row() or ( t1.row() == t2.row() and ( t1.col() > t2.col() ) ) );
-        } );
-        Matrix A( tgt_nb_cells, src_nb_cells, triplets );
-        matrix_shared_->swap( A );
-    }
     Log::info() << "WARNING " << nonintersect << " source mesh polygons do NOT intersect any other polygon.\n";
     Log::info() << "WARNING " << src_area_notcovered << " area of source mesh NOT covered by target mesh.\n";
-    for ( idx_t tcell = 0; tcell < tgt_nb_cells; ++tcell ) {
+    for ( idx_t tcell = 0; tcell < n_tcells_; ++tcell ) {
         tgt_centroids_[tcell] = tgt_csp[tcell].centroid();
         tgt_areas_[tcell]     = tgt_csp[tcell].area();
     }
-    if ( order_ > 1 ) {
-        mesh::actions::build_halo( src_mesh_, 0 );
-        mesh::actions::build_edges( src_mesh_, util::Config( "pole_edges", false ) );
-    }
-    do_setup_2nd_order();
+    mesh::actions::build_halo( src_mesh_, 0 );
+    setup_1st_order_matrix();
+    setup_2nd_order_matrix();
 }
 
-void ConservativeMethod::do_setup_2nd_order() {
-    if ( order_ != 2 || matrix_free_ ) {
+void ConservativeMethod::setup_1st_order_matrix() {
+    if ( order_ != 1 or matrix_free_ ) {
+        return;
+    }
+    ATLAS_TRACE( "ConservativeMethod::setup: build cons-1 interpolant matrix" );
+    Triplets triplets;
+    size_t triplets_size = 0;
+    for ( idx_t scell = 0; scell < n_scells_; ++scell ) {
+        const auto& iparam = iparam_[scell];
+        for ( idx_t icell = 0; icell < iparam.centroids.size(); ++icell ) {
+            triplets_size++;
+        }
+    }
+    triplets.reserve( triplets_size );
+    for ( idx_t scell = 0; scell < n_scells_; ++scell ) {
+        const auto& iparam = iparam_[scell];
+        for ( idx_t icell = 0; icell < iparam.centroids.size(); ++icell ) {
+            idx_t tcell = iparam.tcell_id[icell];
+            triplets.emplace_back( tcell, scell, iparam.sweights[icell] );
+        }
+    }
+    std::sort( std::begin( triplets ), std::end( triplets ), []( const Triplet& t1, const Triplet& t2 ) {
+        return ( t1.row() < t2.row() or ( t1.row() == t2.row() and ( t1.col() < t2.col() ) ) );
+    } );
+    Matrix A( n_tcells_, n_scells_, triplets );
+    matrix_shared_->swap( A );
+}
+
+void ConservativeMethod::setup_2nd_order_matrix() {
+    if ( order_ != 2 ) {
+        return;
+    }
+    mesh::actions::build_edges( src_mesh_, util::Config( "pole_edges", false ) );
+    if ( matrix_free_ ) {
         return;
     }
     //const auto halo     = array::make_view<int, 1>( src_mesh_.cells().halo() );
-    const auto& src_cell2edge = src_mesh_.cells().edge_connectivity();
-    const auto& src_edge2cell = src_mesh_.edges().cell_connectivity();
-    const auto& src_edge2node = src_mesh_.edges().node_connectivity();
-    const idx_t src_nb_cells  = src_mesh_.cells().size();
-    neighbours_.resize( src_nb_cells );
-    std::vector<double> grad_area;
-    grad_area.resize( src_nb_cells );
-
-    int cnt = 0;
-    std::vector<std::array<idx_t, 3>> nb_idx_h;
-    std::vector<int> val_h;
-    for ( idx_t scell = 0; scell < src_nb_cells; ++scell ) {
-        //	if ( halo( scell ) ) {
-        //		continue;
-        //	}
+    ATLAS_TRACE( "ConservativeMethod::setup: build cons-2 interpolant matrix" );
+    Triplets triplets;
+    size_t triplets_size = 0;
+    for ( idx_t scell = 0; scell < n_scells_; ++scell ) {
         const auto nb_cells = get_neighbours( src_mesh_, scell );
-        neighbours_[scell].resize( nb_cells.size() );
-        for ( int i = 0; i < nb_cells.size(); i++ ) {
-            neighbours_[scell][i] = nb_cells[i];
+        //triplets_size += ( 2 * nb_cells.size() + 1 ) * iparam_[scell].centroids.size();
+        const auto& iparam = iparam_[scell];
+        for ( idx_t icell = 0; icell < iparam.centroids.size(); ++icell ) {
+            for ( idx_t nb_id = 0; nb_id < nb_cells.size(); ++nb_id ) {
+                triplets_size += 2;
+            }
+            triplets_size++;
         }
-        grad_area[scell] = 0.;
-        const auto& P    = src_centroids_[scell];
+    }
+    triplets.reserve( triplets_size );
+    for ( idx_t scell = 0; scell < n_scells_; ++scell ) {
+        const auto& iparam = iparam_[scell];
+        if ( iparam.centroids.size() == 0 ) {
+            Log::info() << " WARNING source cell " << scell << " not covered "
+                        << "\n";
+            continue;
+        }
+        PointXYZ Ci = {0., 0., 0.};
+        for ( idx_t icell = 0; icell < iparam.centroids.size(); ++icell ) {
+            Ci = Ci + PointXYZ::mul( iparam.centroids[icell], iparam.weights[icell] );
+        }
+        const double Ci_norm = PointXYZ::norm( Ci );
+        ATLAS_ASSERT( Ci_norm > 0. );
+        Ci                   = PointXYZ::div( Ci, Ci_norm );
+        double dual_area_inv = 0.;
+        const auto nb_cells  = get_neighbours( src_mesh_, scell );
+        std::vector<PointXYZ> Rij;
+        Rij.resize( nb_cells.size() );
         for ( idx_t nb_id = 0; nb_id < nb_cells.size(); ++nb_id ) {
-            idx_t nnb_id    = ( nb_id != nb_cells.size() - 1 ) ? nb_id + 1 : 0;
-            idx_t ncell     = nb_cells[nb_id];
-            idx_t nncell    = nb_cells[nnb_id];
-            const auto& Pn  = src_centroids_[ncell];
-            const auto& Pnn = src_centroids_[nncell];
-            auto csp        = CSPolygon( {Pn, Pnn, P} );
-            if ( csp.area() < std::numeric_limits<double>::epsilon() ) {
-                csp = CSPolygon( {Pn, P, Pnn} );
-            }
+            idx_t nnb_id = ( nb_id != nb_cells.size() - 1 ) ? nb_id + 1 : 0;
+            idx_t ncell  = nb_cells[nb_id];
+            idx_t nncell = nb_cells[nnb_id];
             if ( ncell != scell && nncell != scell ) {
-                grad_area[scell] += std::abs( csp.area() );
+                const auto& Cij1 = src_centroids_[ncell];
+                const auto& Cij2 = src_centroids_[nncell];
+                auto csp         = CSPolygon( {Cij1, Cij2, Ci} );
+                if ( csp.area() < std::numeric_limits<double>::epsilon() ) {
+                    csp = CSPolygon( {Cij1, Ci, Cij2} );
+                }
+                dual_area_inv += csp.area();
+                if ( CSPolygon::leftOf( Cij2, Ci, Cij1, 1e-16, 0 ) ) {
+                    Rij[nb_id] = PointXYZ::cross( Cij2, Cij1 );
+                }
+                else {
+                    Rij[nb_id] = PointXYZ::cross( Cij1, Cij2 );
+                }
             }
-            cnt++;
-            nb_idx_h.emplace_back( std::array<idx_t, 3>( {scell, ncell, nncell} ) );
-            val_h.emplace_back( ( CSPolygon::leftOf( Pnn, P, Pn, 1e-16, 0 ) ? -1 : 1 ) );
+            else {
+                Rij[nb_id] = {0., 0., 0.};
+            }
         }
-    }
-    nb_idx_.resize( cnt );
-    grad_nb_prod_.resize( cnt );
-    cnt = 0;
-    for ( idx_t scell = 0; scell < src_nb_cells; ++scell ) {
-        const double grad_area_inv = 1. / ( grad_area[scell] > 0. ? grad_area[scell] : 1. );
-        for ( idx_t nb_id = 0; nb_id < neighbours_[scell].size(); ++nb_id ) {
-            nb_idx_[cnt][0]    = nb_idx_h[cnt][0];
-            nb_idx_[cnt][1]    = nb_idx_h[cnt][1];
-            nb_idx_[cnt][2]    = nb_idx_h[cnt][2];
-            double fct         = 0.5 * double( val_h[cnt] ) * grad_area_inv;
-            grad_nb_prod_[cnt] = PointXYZ::mul(
-                PointXYZ::cross( src_centroids_[nb_idx_[cnt][1]], src_centroids_[nb_idx_[cnt][2]] ), fct );
-            cnt++;
-        }
-    }
-    src_bary_.resize( src_nb_cells );
-    src_dbary_.resize( n_weights_ );
-    cnt = 0;
-    for ( idx_t scell = 0; scell < src_nb_cells; ++scell ) {
-        const auto& iparam      = iparam_[scell];
-        PointXYZ src_barycenter = {0., 0., 0.};
+        dual_area_inv = ( dual_area_inv > 0. ) ? 1. / dual_area_inv : 1.;
+        std::vector<PointXYZ> Aik;
+        Aik.resize( iparam.centroids.size() );
         for ( idx_t icell = 0; icell < iparam.centroids.size(); ++icell ) {
-            src_barycenter = src_barycenter + PointXYZ::mul( iparam.centroids[icell], iparam.weights[icell] );
+            const PointXYZ& Cik   = iparam.centroids[icell];
+            const PointXYZ Cik_Ci = Cik - Ci;
+            Aik[icell]            = Cik_Ci - PointXYZ::mul( Ci, PointXYZ::dot( Ci, Cik_Ci ) );
+            Aik[icell]            = PointXYZ::mul( Aik[icell], iparam.sweights[icell] * dual_area_inv );
         }
-        double b_norm = PointXYZ::norm( src_barycenter );
-        if ( b_norm > 0. ) {
-            src_barycenter = PointXYZ::div( src_barycenter, b_norm );
+        PointXYZ Rij_sum = {0., 0., 0.};
+        for ( idx_t nb_id = 0; nb_id < nb_cells.size(); ++nb_id ) {
+            Rij_sum = Rij_sum + Rij[nb_id];
         }
-        src_bary_[scell] = src_barycenter;
         for ( idx_t icell = 0; icell < iparam.centroids.size(); ++icell ) {
-            src_dbary_[cnt++] = iparam.centroids[icell] - src_barycenter;
+            for ( idx_t nb_id = 0; nb_id < nb_cells.size(); ++nb_id ) {
+                idx_t nnb_id = ( nb_id != nb_cells.size() - 1 ) ? nb_id + 1 : 0;
+                idx_t ij1    = nb_cells[nb_id];
+                idx_t ij2    = nb_cells[nnb_id];
+                triplets.emplace_back( iparam.tcell_id[icell], ij1, 0.5 * PointXYZ::dot( Rij[nb_id], Aik[icell] ) );
+                triplets.emplace_back( iparam.tcell_id[icell], ij2, 0.5 * PointXYZ::dot( Rij[nb_id], Aik[icell] ) );
+            }
+            triplets.emplace_back( iparam.tcell_id[icell], scell,
+                                   iparam.sweights[icell] - PointXYZ::dot( Rij_sum, Aik[icell] ) );
         }
     }
-    order2_setup_ = true;
+    std::sort( std::begin( triplets ), std::end( triplets ), []( const Triplet& t1, const Triplet& t2 ) {
+        return ( t1.row() < t2.row() or ( t1.row() == t2.row() and t1.col() < t2.col() ) );
+    } );
+    Triplets ntrip;
+    ntrip.reserve( triplets.size() );
+    for ( idx_t i = 0; i < triplets.size(); ) {
+        double val = triplets[i].value();
+        int j      = i + 1;
+        for ( ; j < triplets.size() && triplets[i].col() == triplets[j].col(); ++j ) {
+            val += triplets[j].value();
+        }
+        ntrip.emplace_back( triplets[i].row(), triplets[i].col(), val );
+        i = j;
+    }
+    Matrix A( n_tcells_, n_scells_, ntrip );
+    //Matrix A( n_tcells_, n_scells_, triplets );
+    matrix_shared_->swap( A );
 }
 
 void ConservativeMethod::do_execute( const Field& src_field, Field& tgt_field ) {
@@ -384,7 +408,7 @@ void ConservativeMethod::do_execute( const Field& src_field, Field& tgt_field ) 
             for ( idx_t scell = 0; scell < src_vals.size(); ++scell ) {
                 const auto& iparam = iparam_[scell];
                 for ( idx_t icell = 0; icell < iparam.centroids.size(); ++icell ) {
-                    tgt_vals( iparam.cell_id[icell] ) += iparam.weights[icell] * src_vals( scell );
+                    tgt_vals( iparam.tcell_id[icell] ) += iparam.weights[icell] * src_vals( scell );
                 }
             }
             for ( idx_t tcell = 0; tcell < tgt_vals.size(); ++tcell ) {
@@ -392,9 +416,6 @@ void ConservativeMethod::do_execute( const Field& src_field, Field& tgt_field ) 
             }
         }
         else {
-            //            for ( idx_t i = 0; i < n_weights_; ++i ) {
-            //              tgt_vals( tcell_id_[i] ) += weights_[i] * src_vals( scell_id_[i] );
-            //        }
             Method::do_execute( src_field, tgt_field );
         }
     }
@@ -407,69 +428,54 @@ void ConservativeMethod::do_execute( const Field& src_field, Field& tgt_field ) 
                 //if ( halo( scell ) ) {
                 //    continue;
                 //}
-                const auto& iparam      = iparam_[scell];
-                const PointXYZ& P       = src_centroids_[scell];
-                PointXYZ grad           = {0., 0., 0.};
-                PointXYZ src_barycenter = {0., 0., 0.};
-                if ( order_ == 2 ) {
-                    auto c2e_missval   = src_cell2edge.missing_value();
-                    auto valid_nb_cell = [scell, c2e_missval]( idx_t cid1, idx_t cid2 ) {
-                        if ( cid1 != c2e_missval && cid1 != scell ) {
-                            return cid1;
+                const auto& iparam       = iparam_[scell];
+                const PointXYZ& P        = src_centroids_[scell];
+                PointXYZ grad            = {0., 0., 0.};
+                PointXYZ src_barycenter  = {0., 0., 0.};
+                auto src_neighbour_cells = get_neighbours( src_mesh_, scell );
+                double dual_area         = 0.;
+                for ( idx_t nb_id = 0; nb_id < src_neighbour_cells.size(); ++nb_id ) {
+                    idx_t nnb_id    = ( nb_id != src_neighbour_cells.size() - 1 ) ? nb_id + 1 : 0;
+                    idx_t ncell     = src_neighbour_cells[nb_id];
+                    idx_t nncell    = src_neighbour_cells[nnb_id];
+                    const auto& Pn  = src_centroids_[ncell];
+                    const auto& Pnn = src_centroids_[nncell];
+                    if ( ncell != scell && nncell != scell ) {
+                        double val = 0.5 * ( src_vals( ncell ) + src_vals( nncell ) ) - src_vals( scell );
+                        auto csp   = CSPolygon( {Pn, Pnn, P} );
+                        if ( csp.area() < std::numeric_limits<double>::epsilon() ) {
+                            csp = CSPolygon( {Pn, P, Pnn} );
                         }
-                        else if ( cid2 != c2e_missval && cid2 != scell ) {
-                            return cid2;
-                        }
-                        return -1;
-                    };
-                    // get cell neighbours
-                    auto src_neighbour_cells = get_neighbours( src_mesh_, scell );
-                    // calculate gradient
-                    double dual_area = 0.;
-                    for ( idx_t nb_id = 0; nb_id < src_neighbour_cells.size(); ++nb_id ) {
-                        idx_t nnb_id    = ( nb_id != src_neighbour_cells.size() - 1 ) ? nb_id + 1 : 0;
-                        idx_t ncell     = src_neighbour_cells[nb_id];
-                        idx_t nncell    = src_neighbour_cells[nnb_id];
-                        const auto& Pn  = src_centroids_[ncell];
-                        const auto& Pnn = src_centroids_[nncell];
-                        if ( ncell != scell && nncell != scell ) {
-                            double val = 0.5 * ( src_vals( ncell ) + src_vals( nncell ) ) - src_vals( scell );
-                            auto csp   = CSPolygon( {Pn, Pnn, P} );
-                            if ( csp.area() < std::numeric_limits<double>::epsilon() ) {
-                                csp = CSPolygon( {Pn, P, Pnn} );
-                            }
-                            //auto orientation = ( csp.leftOf( Pnn, P, Pn ) ? -1 : 1 );
-                            //ATLAS_ASSERT( orientation == -1 ); // orientation changes !
-                            val *= ( csp.leftOf( Pnn, P, Pn, 1e-16, 0 ) ? -1 : 1 );
-                            dual_area += std::abs( csp.area() );
-                            grad = grad + PointXYZ::mul( PointXYZ::cross( Pn, Pnn ), val );
-                        }
-                        else if ( ncell != scell ) {
-                            ATLAS_NOTIMPLEMENTED;
-                            //double val = 0.5 * ( src_vals( ncell ) - src_vals( scell ) );
-                            //grad = grad + PointXYZ::mul( PointXYZ::cross( Pn, P ), val );
-                        }
-                        else if ( nncell != scell ) {
-                            ATLAS_NOTIMPLEMENTED;
-                            //double val = 0.5 * ( src_vals( nncell ) - src_vals( scell ) );
-                            //grad = grad + PointXYZ::mul( PointXYZ::cross( P, Pnn ), val );
-                        }
+                        //auto orientation = ( csp.leftOf( Pnn, P, Pn ) ? -1 : 1 );
+                        //ATLAS_ASSERT( orientation == -1 ); // orientation changes !
+                        val *= ( csp.leftOf( Pnn, P, Pn, 1e-16, 0 ) ? -1 : 1 );
+                        dual_area += std::abs( csp.area() );
+                        grad = grad + PointXYZ::mul( PointXYZ::cross( Pn, Pnn ), val );
                     }
-                    if ( dual_area > std::numeric_limits<double>::epsilon() ) {
-                        grad = PointXYZ::div( grad, dual_area );
+                    else if ( ncell != scell ) {
+                        ATLAS_NOTIMPLEMENTED;
+                        //double val = 0.5 * ( src_vals( ncell ) - src_vals( scell ) );
+                        //grad = grad + PointXYZ::mul( PointXYZ::cross( Pn, P ), val );
                     }
-                    for ( idx_t icell = 0; icell < iparam.centroids.size(); ++icell ) {
-                        src_barycenter =
-                            src_barycenter + PointXYZ::mul( iparam.centroids[icell], iparam.weights[icell] );
+                    else if ( nncell != scell ) {
+                        ATLAS_NOTIMPLEMENTED;
+                        //double val = 0.5 * ( src_vals( nncell ) - src_vals( scell ) );
+                        //grad = grad + PointXYZ::mul( PointXYZ::cross( P, Pnn ), val );
                     }
-                    src_barycenter = PointXYZ::div( src_barycenter, PointXYZ::norm( src_barycenter ) );
-                    grad           = grad - PointXYZ::mul( src_barycenter, PointXYZ::dot( grad, src_barycenter ) );
-                    ATLAS_ASSERT( std::abs( PointXYZ::dot( grad, src_barycenter ) ) < 1e-14 );
-                    for ( idx_t icell = 0; icell < iparam.centroids.size(); ++icell ) {
-                        tgt_vals( iparam.cell_id[icell] ) +=
-                            iparam.weights[icell] *
-                            ( src_vals( scell ) + PointXYZ::dot( grad, iparam.centroids[icell] - src_barycenter ) );
-                    }
+                }
+                if ( dual_area > std::numeric_limits<double>::epsilon() ) {
+                    grad = PointXYZ::div( grad, dual_area );
+                }
+                for ( idx_t icell = 0; icell < iparam.centroids.size(); ++icell ) {
+                    src_barycenter = src_barycenter + PointXYZ::mul( iparam.centroids[icell], iparam.weights[icell] );
+                }
+                src_barycenter = PointXYZ::div( src_barycenter, PointXYZ::norm( src_barycenter ) );
+                grad           = grad - PointXYZ::mul( src_barycenter, PointXYZ::dot( grad, src_barycenter ) );
+                ATLAS_ASSERT( std::abs( PointXYZ::dot( grad, src_barycenter ) ) < 1e-14 );
+                for ( idx_t icell = 0; icell < iparam.centroids.size(); ++icell ) {
+                    tgt_vals( iparam.tcell_id[icell] ) +=
+                        iparam.weights[icell] *
+                        ( src_vals( scell ) + PointXYZ::dot( grad, iparam.centroids[icell] - src_barycenter ) );
                 }
             }
             for ( idx_t tcell = 0; tcell < tgt_vals.size(); ++tcell ) {
@@ -477,42 +483,7 @@ void ConservativeMethod::do_execute( const Field& src_field, Field& tgt_field ) 
             }
         }
         else {
-            if ( not order2_setup_ ) {
-                Log::info() << " 2nd order method not set up. order2_setup_ == false\n";
-                ATLAS_ASSERT( false );
-            }
-            for ( idx_t tcell = 0; tcell < tgt_vals.size(); ++tcell ) {
-                tgt_vals( tcell ) = 0.;
-            }
-            std::vector<PointXYZ> grad;
-            grad.resize( src_vals.size() );
-            for ( idx_t scell = 0; scell < grad.size(); ++scell ) {
-                grad[scell] = {0., 0., 0.};
-            }
-            for ( idx_t cnt = 0; cnt < nb_idx_.size(); ++cnt ) {
-                const auto& nbidx = nb_idx_[cnt];
-                const auto& g     = grad_nb_prod_[cnt];
-                auto& gr          = grad[nbidx[0]];
-                double val        = src_vals( nbidx[1] ) + src_vals( nbidx[2] ) - 2 * src_vals( nbidx[0] );
-                gr[0] += g[0] * val;
-                gr[1] += g[1] * val;
-                gr[2] += g[2] * val;
-            }
-            for ( idx_t scell = 0; scell < grad.size(); ++scell ) {
-                const PointXYZ& b = src_bary_[scell];
-                PointXYZ& g       = grad[scell];
-                const double gb   = g[0] * b[0] + g[1] * b[1] + g[2] * b[2];
-                g[0] -= gb * b[0];
-                g[1] -= gb * b[1];
-                g[2] -= gb * b[2];
-            }
-            for ( idx_t i = 0; i < n_weights_; ++i ) {
-                const idx_t scell = scell_id_[i];
-                const auto& g     = grad[scell];
-                const auto& db    = src_dbary_[i];
-                tgt_vals( tcell_id_[i] ) +=
-                    weights_[i] * ( src_vals( scell ) + g[0] * db[0] + g[1] * db[1] + g[2] * db[2] );
-            }
+            Method::do_execute( src_field, tgt_field );
         }
     }
 }

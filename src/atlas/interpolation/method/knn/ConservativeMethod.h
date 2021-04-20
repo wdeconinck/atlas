@@ -29,9 +29,10 @@ class ConservativeMethod : public Method {
 public:
     typedef util::ConvexSphericalPolygon CSPolygon;
     struct InterpolationParameters {
-        std::vector<int> cell_id;
+        std::vector<idx_t> tcell_id;
         std::vector<PointXYZ> centroids;
         std::vector<double> weights;
+        std::vector<double> sweights;
     };
 
     ConservativeMethod( const util::Config& = util::NoConfig() );
@@ -52,10 +53,16 @@ public:
     inline const PointXYZ& tgt_centroid( size_t id ) const { return tgt_centroids_[id]; }
     inline const double& src_area( size_t id ) const { return src_areas_[id]; }
     inline const double& tgt_area( size_t id ) const { return tgt_areas_[id]; }
-    void set_order( int order ) { order_ = order; }
+    void set_order( int order ) {
+        order_ = order;
+        setup_1st_order_matrix();
+        setup_2nd_order_matrix();
+    }
     int order() const { return order_; }
     Mesh src_mesh() const { return src_mesh_; }
     Mesh tgt_mesh() const { return tgt_mesh_; }
+    void setup_1st_order_matrix();
+    void setup_2nd_order_matrix();
 
 private:
     template <class TargetCellsIDs>
@@ -65,7 +72,6 @@ private:
 
     std::vector<CSPolygon> get_polygons( Mesh& mesh ) const;
     std::vector<idx_t> get_neighbours( Mesh& mesh, idx_t jcell ) const;
-    void do_setup_2nd_order();
 
 protected:
     FunctionSpace source_;
@@ -75,25 +81,14 @@ protected:
     int normalise_intersections_;
     int order_;
     int fvtype_;
+    idx_t n_scells_;
+    idx_t n_tcells_;
     bool matrix_free_;
-    bool order2_setup_;
-    // matrix_free
     std::vector<PointXYZ> src_centroids_;
     std::vector<PointXYZ> tgt_centroids_;
     std::vector<double> src_areas_;
     std::vector<double> tgt_areas_;
     std::vector<InterpolationParameters> iparam_;
-    // non matrix_free for 1st and 2nd order
-    idx_t n_weights_;
-    std::vector<double> weights_;
-    std::vector<idx_t> scell_id_;
-    std::vector<idx_t> tcell_id_;
-    // non matrix_free for 2nd order
-    std::vector<std::vector<idx_t> > neighbours_;
-    std::vector<std::array<idx_t, 3> > nb_idx_;
-    std::vector<PointXYZ> src_dbary_;
-    std::vector<PointXYZ> src_bary_;
-    std::vector<PointXYZ> grad_nb_prod_;
 };
 
 
