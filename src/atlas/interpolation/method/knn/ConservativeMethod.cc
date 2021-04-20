@@ -366,19 +366,7 @@ void ConservativeMethod::setup_2nd_order_matrix() {
     std::sort( std::begin( triplets ), std::end( triplets ), []( const Triplet& t1, const Triplet& t2 ) {
         return ( t1.row() < t2.row() or ( t1.row() == t2.row() and t1.col() < t2.col() ) );
     } );
-    Triplets ntrip;
-    ntrip.reserve( triplets.size() );
-    for ( idx_t i = 0; i < triplets.size(); ) {
-        double val = triplets[i].value();
-        int j      = i + 1;
-        for ( ; j < triplets.size() && triplets[i].col() == triplets[j].col(); ++j ) {
-            val += triplets[j].value();
-        }
-        ntrip.emplace_back( triplets[i].row(), triplets[i].col(), val );
-        i = j;
-    }
-    Matrix A( n_tcells_, n_scells_, ntrip );
-    //Matrix A( n_tcells_, n_scells_, triplets );
+    Matrix A( n_tcells_, n_scells_, triplets );
     matrix_shared_->swap( A );
 }
 
