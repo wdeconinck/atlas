@@ -294,14 +294,7 @@ void ConservativeMethod::setup_2nd_order_matrix() {
     size_t triplets_size = 0;
     for ( idx_t scell = 0; scell < n_scells_; ++scell ) {
         const auto nb_cells = get_neighbours( src_mesh_, scell );
-        //triplets_size += ( 2 * nb_cells.size() + 1 ) * iparam_[scell].centroids.size();
-        const auto& iparam = iparam_[scell];
-        for ( idx_t icell = 0; icell < iparam.centroids.size(); ++icell ) {
-            for ( idx_t nb_id = 0; nb_id < nb_cells.size(); ++nb_id ) {
-                triplets_size += 2;
-            }
-            triplets_size++;
-        }
+        triplets_size += ( 2 * nb_cells.size() + 1 ) * iparam_[scell].centroids.size();
     }
     triplets.reserve( triplets_size );
     for ( idx_t scell = 0; scell < n_scells_; ++scell ) {
