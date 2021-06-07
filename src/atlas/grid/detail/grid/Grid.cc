@@ -16,6 +16,7 @@
 
 #include "atlas/domain/detail/Domain.h"
 #include "atlas/grid.h"
+#include "atlas/grid/detail/grid/CubedSphere.h"
 #include "atlas/grid/detail/grid/GridBuilder.h"
 #include "atlas/grid/detail/grid/Structured.h"
 #include "atlas/grid/detail/grid/Unstructured.h"
@@ -90,7 +91,10 @@ const Grid* Grid::create( const std::string& name, const Grid::Config& config ) 
 }
 
 const Grid* Grid::create( const Grid& grid, const Domain& domain ) {
-    if ( grid.type() == "structured" ) {
+    if ( grid.type() == "cubedsphere" ) {
+        const CubedSphere& cs = dynamic_cast<const CubedSphere&>( grid );
+        return new CubedSphere( cs.name(), cs.N(), cs.projection() );
+    } else if ( grid.type() == "structured" ) {
         const Structured& g = dynamic_cast<const Structured&>( grid );
         return new Structured( g.name(), g.xspace(), g.yspace(), g.projection(), domain );
     }
@@ -162,9 +166,9 @@ void atlas__grid__Grid__uid( const Grid* This, char*& uid, int& size ) {
     eckit::MD5 md5;
     This->hash( md5 );
     std::string s = This->uid();
-    size          = static_cast<int>( s.size() + 1 );
-    uid           = new char[size];
-    strcpy( uid, s.c_str() );
+    size          = static_cast<int>( s.size() );
+    uid           = new char[size + 1];
+    std::strncpy( uid, s.c_str(), size + 1 );
 }
 
 Grid::Domain::Implementation* atlas__grid__Grid__lonlat_bounding_box( const Grid* This ) {

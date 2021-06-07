@@ -72,6 +72,12 @@ option/TransOptions.cc
 projection.h
 projection/Projection.cc
 projection/Projection.h
+projection/detail/CubedSphereEquiAnglProjection.cc
+projection/detail/CubedSphereEquiAnglProjection.h
+projection/detail/CubedSphereEquiDistProjection.cc
+projection/detail/CubedSphereEquiDistProjection.h
+projection/detail/CubedSphereProjectionBase.cc
+projection/detail/CubedSphereProjectionBase.h
 projection/detail/LambertAzimuthalEqualAreaProjection.cc
 projection/detail/LambertAzimuthalEqualAreaProjection.h
 projection/detail/LambertConformalConicProjection.cc
@@ -84,6 +90,7 @@ projection/detail/ProjectionFactory.cc
 projection/detail/ProjectionFactory.h
 projection/detail/ProjectionImpl.cc
 projection/detail/ProjectionImpl.h
+projection/detail/ProjectionUtilities.h
 projection/detail/SchmidtProjection.cc
 projection/detail/SchmidtProjection.h
 
@@ -104,8 +111,12 @@ domain/detail/DomainFactory.h
 domain/detail/DomainFactory.cc
 
 grid.h
+grid/CubedSphereGrid.cc
+grid/CubedSphereGrid.h
 grid/Grid.cc
 grid/Grid.h
+grid/SpecRegistry.cc
+grid/SpecRegistry.h
 grid/StructuredGrid.cc
 grid/StructuredGrid.h
 grid/UnstructuredGrid.cc
@@ -127,6 +138,8 @@ grid/StencilComputer.cc
 grid/StructuredPartitionPolygon.h
 grid/StructuredPartitionPolygon.cc
 
+grid/detail/grid/CubedSphere.cc
+grid/detail/grid/CubedSphere.h
 grid/detail/grid/GridBuilder.h
 grid/detail/grid/GridBuilder.cc
 grid/detail/grid/GridFactory.h
@@ -189,6 +202,7 @@ grid/detail/partitioner/RegularBandsPartitioner.cc
 grid/detail/partitioner/RegularBandsPartitioner.h
 grid/detail/partitioner/SerialPartitioner.cc
 grid/detail/partitioner/SerialPartitioner.h
+
 
 
 grid/detail/spacing/Spacing.cc
@@ -340,6 +354,8 @@ mesh/actions/ReorderReverseCuthillMckee.cc
 meshgenerator.h
 meshgenerator/MeshGenerator.cc
 meshgenerator/MeshGenerator.h
+meshgenerator/detail/CubedSphereMeshGenerator.h
+meshgenerator/detail/CubedSphereMeshGenerator.cc
 meshgenerator/detail/DelaunayMeshGenerator.h
 meshgenerator/detail/DelaunayMeshGenerator.cc
 meshgenerator/detail/StructuredMeshGenerator.h
@@ -569,6 +585,17 @@ linalg/sparse/SparseMatrixMultiply_OpenMP.cc
 )
 
 
+list (APPEND atlas_redistribution_srcs
+redistribution/Redistribution.h
+redistribution/Redistribution.cc
+redistribution/detail/RedistributionImpl.h
+redistribution/detail/RedistributionImpl.cc
+redistribution/detail/RedistributionImplFactory.h
+redistribution/detail/RedistributionImplFactory.cc
+redistribution/detail/RedistributionUtils.h
+redistribution/detail/StructuredColumnsToStructuredColumns.h
+redistribution/detail/StructuredColumnsToStructuredColumns.cc
+)
 
 list( APPEND atlas_array_srcs
 array.h
@@ -661,7 +688,7 @@ util/Polygon.cc
 util/Polygon.h
 util/Rotation.cc
 util/Rotation.h
-util/Spec.h
+util/Registry.h
 util/SphericalPolygon.cc
 util/SphericalPolygon.h
 util/ConvexSphericalPolygon.cc
@@ -784,6 +811,7 @@ if( SHORTCUT_COMPILATION )
   unset( atlas_field_srcs )
   unset( atlas_functionspace_srcs )
   unset( atlas_interpolation_srcs )
+  unset( atlas_redistribution_srcs )
   unset( atlas_numerics_srcs )
   unset( atlas_output_srcs )
   unset( atlas_util_srcs )
@@ -798,6 +826,7 @@ list( APPEND source_list
   ${atlas_field_srcs}
   ${atlas_functionspace_srcs}
   ${atlas_interpolation_srcs}
+  ${atlas_redistribution_srcs}
   ${atlas_numerics_srcs}
   ${atlas_output_srcs}
   ${atlas_util_srcs}
