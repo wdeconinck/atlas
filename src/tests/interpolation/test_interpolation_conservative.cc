@@ -72,10 +72,11 @@ void compute_geom_errors( const array::ArrayView<double, 1>& src_vals, const arr
             diff_cell -= iparam.weights[icell];
         }
         no_iplg += iparam.weights.size();
-        err_1 += std::abs( diff_cell ) * conservativeMethod.src_area( scell );
+        err_1 += std::abs( diff_cell );
         err_max = std::max( err_max, std::abs( diff_cell ) );
     }
-    Log::info() << "    Size of src_grid, tgt_grid, supergrid: " << src_vals.size() << " " << tgt_vals.size() << " "
+    err_1 *= 0.25 * M_1_PI;
+    Log::info() << "    size of src_grid, tgt_grid, supergrid: " << src_vals.size() << " " << tgt_vals.size() << " "
                 << no_iplg << "\n";
     Log::info() << "    cons err in polygon intersect  : (L1) " << err_1 << " (Lmax) " << err_max << "\n";
     outfile << std::setw( 10 ) << err_1 << std::setw( 10 ) << err_max;
@@ -106,7 +107,8 @@ void compute_field_errors( const array::ArrayView<double, 1>& src_vals, const ar
         err_2 += err_l * err_l * conservativeMethod.tgt_area( tcell );
         err_max = std::max( err_max, err_l );
     }
-    err_2 = std::sqrt( err_2 * 0.25 * M_1_PI );
+    err_2           = std::sqrt( err_2 * 0.25 * M_1_PI );
+    global_cons_err = std::sqrt( global_cons_err * 0.25 * M_1_PI );
     Log::info() << "    " << conservativeMethod.order() << "-order remap analytical error : (L2) " << err_2
                 << " (Lmax) " << err_max << "\n";
     Log::info() << "    " << conservativeMethod.order() << "-order global remap error : " << std::abs( global_cons_err )
@@ -199,10 +201,10 @@ CASE( "test_interpolation_conservative" ) {
         outfile << std::scientific << std::setprecision( 1 );
         outfile << ss.str();
 
-        const int start_res            = 16;
-        const int end_res              = start_res << 0 + 1;
+        const int start_res            = 32;
+        const int end_res              = start_res << 0;
         std::vector<std::string> grids = {"F", "N", "O", "H"};
-        for ( int i = start_res; i < end_res; i *= 2 ) {
+        for ( int i = start_res; i <= end_res; i *= 2 ) {
             for ( int gi = 0; gi < grids.size(); gi++ ) {
                 auto gridA = Grid( grids[gi] + std::to_string( i ) );
                 for ( int gj = 0; gj < grids.size(); gj++ ) {
@@ -215,9 +217,9 @@ CASE( "test_interpolation_conservative" ) {
         outfile.close();
     }
 
-    SECTION( "analytic Y_2^2 as in Jones" ) {
+    SECTION( "analytic Y_2^2 as in Jones - scaling" ) {
         std::ofstream outfile;
-        outfile.open( "cons-remap_JonesY22.dat", std::ios_base::app );
+        outfile.open( "cons-remap_JonesY22_scaling.dat", std::ios_base::app );
         outfile << "# Test -- analytic Y_2^2 as in Jones\n";
         outfile << std::scientific << std::setprecision( 1 );
         outfile << ss.str();
@@ -226,14 +228,43 @@ CASE( "test_interpolation_conservative" ) {
             return 2. + cos * cos * std::cos( 2 * 0.025 * p[1] );
         };
 
-        const int start_res            = 16;
-        const int end_res              = start_res << 0 + 1;
-        std::vector<std::string> grids = {"F", "N", "O", "H"};
-        for ( int i = start_res; i < end_res; i *= 2 ) {
+        const int start_res            = 32;
+        const int end_res              = start_res << 0;
+        std::vector<std::string> grids = {"N", "O", "H", "F"};
+        for ( int gi = 0; gi < grids.size(); gi++ ) {
+            for ( int gj = 0; gj < grids.size(); gj++ ) {
+                for ( int i = start_res; i <= end_res; i *= 2 ) {
+                    for ( int j = end_res; j <= end_res; j *= 2 ) {
+                        auto gridA = Grid( grids[gi] + std::to_string( i ) );
+                        auto gridB = Grid( grids[gj] + std::to_string( j ) );
+                        do_remapping_test( gridA, gridB, func, outfile );
+                    }
+                }
+            }
+        }
+
+        outfile.close();
+    }
+
+    SECTION( "analytic Y_2^2 as in Jones - all2all" ) {
+        std::ofstream outfile;
+        outfile.open( "cons-remap_JonesY22_all2all.dat", std::ios_base::app );
+        outfile << "# Test -- analytic Y_2^2 as in Jones\n";
+        outfile << std::scientific << std::setprecision( 1 );
+        outfile << ss.str();
+        auto func = []( const PointLonLat& p ) {
+            double cos = std::cos( 0.025 * p[0] );
+            return 2. + cos * cos * std::cos( 2 * 0.025 * p[1] );
+        };
+
+        const int start_res            = 32;
+        const int end_res              = start_res << 0;
+        std::vector<std::string> grids = {"N", "O", "H"};
+        for ( int i = start_res; i <= end_res; i *= 2 ) {
             for ( int gi = 0; gi < grids.size(); gi++ ) {
                 auto gridA = Grid( grids[gi] + std::to_string( i ) );
                 for ( int gj = 0; gj < grids.size(); gj++ ) {
-                    for ( int j = start_res; j < end_res; j *= 2 ) {
+                    for ( int j = start_res; j <= end_res; j *= 2 ) {
                         auto gridB = Grid( grids[gj] + std::to_string( j ) );
                         do_remapping_test( gridA, gridB, func, outfile );
                     }
