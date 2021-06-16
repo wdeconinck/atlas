@@ -33,6 +33,7 @@ namespace atlas {
 namespace projection {
 namespace detail {
 
+static constexpr bool debug = false;  // constexpr so compiler can optimize `if ( debug ) { ... }` out
 
 // -------------------------------------------------------------------------------------------------
 
@@ -54,8 +55,8 @@ void CubedSphereEquiAnglProjection::lonlat2xy( double crd[] ) const {
 
     // should be between -45.0 and 45.0
     // now calculate (alpha, beta) in radians.
-    ab[0] = std::atan2( xyz[YY], xyz[XX] ) * rad2deg;
-    ab[1] = std::atan2( -xyz[ZZ], xyz[XX] ) * rad2deg;  // I think the minus is here due to the
+    ab[0] = std::atan2( xyz[YY], xyz[XX] );
+    ab[1] = std::atan2( -xyz[ZZ], xyz[XX] );  // I think the minus is here due to the
     // left coordinate system
 
     if ( debug ) {
@@ -92,8 +93,8 @@ void CubedSphereEquiAnglProjection::xy2lonlat( double crd[] ) const {
     }
 
     xyz[0] = -rsq3;
-    xyz[1] = -rsq3 * std::tan( ab[0] * deg2rad );
-    xyz[2] = -rsq3 * std::tan( ab[1] * deg2rad );
+    xyz[1] = -rsq3 * std::tan( ab[0] );
+    xyz[2] = -rsq3 * std::tan( ab[1] );
 
     CubedSphereProjectionBase::xy2lonlat_post( xyz, t, crd );
 

@@ -296,11 +296,15 @@ public:
     inline int N() const { return grid_->N(); }
 
     // Return the number of tiles
-    inline atlas::grid::CubedSphereTiles tiles() const { return grid_->tiles(); }
+    inline int GetNTiles() const { return grid_->GetNTiles(); }
+
+    // Transform from xy space to xyt space that is a function of resolution.
+    void xy2xyt( const double xy[], double xyt[] ) const { return grid_->xy2xyt( xy, xyt ); }
+
+    // Transform from xyt space to xy space
+    void xyt2xy( const double xyt[], double xy[] ) const { return grid_->xyt2xy( xyt, xy ); }
 
     temporary::IterateTIJ tij() const { return temporary::IterateTIJ( *grid_ ); }
-
-    const std::string& stagger() const { return grid_->stagger(); }
 
 private:
     const grid_t* grid_;
