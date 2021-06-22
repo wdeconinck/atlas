@@ -108,7 +108,7 @@ void compute_field_errors( const array::ArrayView<double, 1>& src_vals, const ar
         err_max = std::max( err_max, err_l );
     }
     err_2           = std::sqrt( err_2 * 0.25 * M_1_PI );
-    global_cons_err = std::sqrt( global_cons_err * 0.25 * M_1_PI );
+    global_cons_err = std::sqrt( std::abs(global_cons_err) * 0.25 * M_1_PI );
     Log::info() << "    " << conservativeMethod.order() << "-order remap analytical error : (L2) " << err_2
                 << " (Lmax) " << err_max << "\n";
     Log::info() << "    " << conservativeMethod.order() << "-order global remap error : " << std::abs( global_cons_err )
