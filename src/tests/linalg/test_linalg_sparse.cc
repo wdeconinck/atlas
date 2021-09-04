@@ -76,7 +76,28 @@ struct ArrayMatrix {
             }
         }
     }
+    ArrayMatrix( const std::initializer_list<std::vector<Value>>& m ) : ArrayMatrix( Matrix( m ) ) {}
+
     ArrayMatrix( int r, int c ) : array( make_shape( r, c ) ), view_( array::make_view<Value, 2>( array ) ) {}
+
+    friend std::ostream& operator<<( std::ostream& out, const ArrayMatrix& m ) {
+        out << "{";
+        for ( int r = 0; r < m.array.shape( 0 ); ++r ) {
+            out << "{";
+            for ( int c = 0; c < m.array.shape( 1 ); ++c ) {
+                out << m.view_( r, c );
+                if ( c != m.array.shape( 1 ) - 1 ) {
+                    out << ",";
+                }
+            }
+            out << "}";
+            if ( r != m.array.shape( 0 ) - 1 ) {
+                out << ",";
+            }
+        }
+        out << "}";
+        return out;
+    }
 
 private:
     static constexpr bool layout_left = ( indexing == Indexing::layout_left );
@@ -331,6 +352,38 @@ CASE( "sparse_matrix matrix multiply (spmm)" ) {
 }
 
 //----------------------------------------------------------------------------------------------------------------------
+
+CASE( "sparse matrix multiply of transpose" ) {
+    // "square" matrix
+    // A =  2  . -3
+    //      .  2  .
+    //      .  .  2
+    // x = 1 2 3
+    // y = 1 2 3
+    SparseMatrix A{3, 3, {{0, 0, 2.}, {0, 2, -3.}, {1, 1, 2.}, {2, 2, 2.}}};
+    ArrayVector<double> x( Vector{1., 2., 3.} );
+    ArrayVector<double> y( 3 );
+
+    // check API using class
+    auto spmm = SparseMatrixMultiply{sparse::backend::omp()};
+    y.view().assign( -1 );  // some nonsense values
+    spmm( transpose( A ), x.view(), y.view() );
+    expect_equal( y.view(), Vector{2, 4, 3} );
+
+    // check API using function
+    y.view().assign( -1 );  // some nonsense values
+    sparse_matrix_multiply( transpose( A ), x.view(), y.view(), sparse::backend::omp() );
+    expect_equal( y.view(), Vector{2, 4, 3} );
+
+    // check matrix matrix multiply
+    ArrayMatrix<double> m{{1., 2.}, {3., 4.}, {5., 6.}};
+    ArrayMatrix<double> c( 3, 2 );
+    sparse_matrix_multiply( transpose( A ), m.view(), c.view(), sparse::backend::omp() );
+    expect_equal( c.view(), ArrayMatrix<double>{{2., 4.}, {6., 8.}, {7., 6.}}.view() );
+}
+
+//----------------------------------------------------------------------------------------------------------------------
+
 
 }  // namespace test
 }  // namespace atlas

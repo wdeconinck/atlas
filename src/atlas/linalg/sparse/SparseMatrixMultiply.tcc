@@ -23,6 +23,10 @@
 namespace atlas {
 namespace linalg {
 
+inline SparseMatrixTranspose transpose( const SparseMatrix& sm ) {
+    return SparseMatrixTranspose{sm};
+}
+
 namespace sparse {
 namespace {
 template <typename Backend, Indexing indexing>
@@ -37,6 +41,18 @@ struct SparseMatrixMultiplyHelper {
         static_assert( src_rank == tgt_rank, "src and tgt need same rank" );
         SparseMatrixMultiply<Backend, indexing, src_rank, SourceValue, TargetValue>::apply( W, src, tgt, config );
     }
+
+    template <typename SourceView, typename TargetView>
+    static void apply( const SparseMatrixTranspose& W, const SourceView& src, TargetView& tgt,
+                       const eckit::Configuration& config ) {
+        using SourceValue = const typename std::remove_const<typename SourceView::value_type>::type;
+        using TargetValue = typename std::remove_const<typename TargetView::value_type>::type;
+        constexpr int src_rank = introspection::rank<SourceView>();
+        constexpr int tgt_rank = introspection::rank<TargetView>();
+        static_assert( src_rank == tgt_rank, "src and tgt need same rank" );
+        SparseMatrixTransposeMultiply<Backend, indexing, src_rank, SourceValue, TargetValue>::apply( W.wrapped(), src, tgt, config );
+    }
+
 };
 
 template <typename Backend, typename Matrix, typename SourceView, typename TargetView>

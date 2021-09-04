@@ -24,6 +24,17 @@ namespace linalg {
 using SparseMatrix  = eckit::linalg::SparseMatrix;
 using Configuration = eckit::Configuration;
 
+class SparseMatrixTranspose {
+public:
+    SparseMatrixTranspose( const SparseMatrix& sm ) : wrapped_( &sm ) {}
+    const SparseMatrix& wrapped() const { return *wrapped_; }
+
+private:
+    const SparseMatrix* wrapped_;
+};
+
+SparseMatrixTranspose transpose( const SparseMatrix& sm );
+
 template <typename Matrix, typename SourceView, typename TargetView>
 void sparse_matrix_multiply( const Matrix& matrix, const SourceView& src, TargetView& tgt );
 
@@ -70,6 +81,18 @@ struct SparseMatrixMultiply {
         throw_NotImplemented( "SparseMatrixMultiply needs a template specialization with the implementation", Here() );
     }
 };
+
+// Template class which needs (full or partial) specialization for concrete template parameters
+template <typename Backend, Indexing, int Rank, typename SourceValue, typename TargetValue>
+struct SparseMatrixTransposeMultiply {
+    static void apply( const SparseMatrix&, const View<SourceValue, Rank>&, View<TargetValue, Rank>&,
+                       const Configuration& ) {
+        throw_NotImplemented( "SparseMatrixTransposeMultiply needs a template specialization with the implementation",
+                              Here() );
+    }
+};
+
+
 }  // namespace sparse
 
 }  // namespace linalg
