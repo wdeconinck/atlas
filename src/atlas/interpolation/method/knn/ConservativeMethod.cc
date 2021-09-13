@@ -102,15 +102,15 @@ std::vector<CSPolygon> ConservativeMethod::get_polygons( Mesh& mesh ) const {
     if ( fvtype_ == 0 ) {  // CellColumns
         const idx_t n_cells = mesh.cells().size();
         src_csp.resize( n_cells );
-        const auto& node_connectivity = mesh.cells().node_connectivity();
+        const auto& cell2node = mesh.cells().node_connectivity();
         const auto lonlat             = array::make_view<double, 2>( mesh.nodes().lonlat() );
         std::vector<PointLonLat> pts_ll;
         for ( idx_t icell = 0; icell < n_cells; ++icell ) {
-            const idx_t n_nodes = node_connectivity.cols( icell );
+            const idx_t n_nodes = cell2node.cols( icell );
             pts_ll.clear();
             pts_ll.resize( n_nodes );
             for ( idx_t jnode = 0; jnode < n_nodes; ++jnode ) {
-                idx_t inode   = node_connectivity( icell, jnode );
+                idx_t inode   = cell2node( icell, jnode );
                 pts_ll[jnode] = PointLonLat{lonlat( inode, 0 ), lonlat( inode, 1 )};
             }
             src_csp[icell] = CSPolygon( pts_ll );
