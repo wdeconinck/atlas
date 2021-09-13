@@ -41,7 +41,7 @@ ConservativeMethod::ConservativeMethod( const util::Config& config ) : Method( c
 }
 
 // get cell neighbours
-std::vector<idx_t> ConservativeMethod::get_neighbours( Mesh& mesh, idx_t jcell ) const {
+std::vector<idx_t> ConservativeMethod::get_cell_neighbours( Mesh& mesh, idx_t jcell ) const {
     const auto& cell2edge = mesh.cells().edge_connectivity();
     const auto& edge2cell = mesh.edges().cell_connectivity();
     const auto& edge2node = mesh.edges().node_connectivity();
@@ -96,6 +96,7 @@ std::vector<idx_t> ConservativeMethod::get_neighbours( Mesh& mesh, idx_t jcell )
     return nb_cells;
 }
 
+
 std::vector<CSPolygon> ConservativeMethod::get_polygons( Mesh& mesh ) const {
     std::vector<CSPolygon> src_csp;
     if ( fvtype_ == 0 ) {  // CellColumns
@@ -116,52 +117,115 @@ std::vector<CSPolygon> ConservativeMethod::get_polygons( Mesh& mesh ) const {
         }
     }
     else {  // NodeColumns
-        if ( !mesh.cells().has_field( "centroids_xy" ) ) {
-            mesh.cells().add(
-                Field( "centroids_xy", mesh::actions::build_centroids_xy( mesh.cells(), mesh.nodes().xy() ) ) );
-        }
-        if ( !mesh.edges().has_field( "centroids_xy" ) ) {
-            mesh.edges().add(
-                Field( "centroids_xy", mesh::actions::build_centroids_xy( mesh.edges(), mesh.nodes().xy() ) ) );
-        }
-        /*
-		auto xy             = array::make_view<double, 2>( nodes.xy() );
-		auto cell_centroids = array::make_view<double, 2>( cells.field( "centroids_xy" ) );
-		auto edge_centroids = array::make_view<double, 2>( edges.field( "centroids_xy" ) );
-		const mesh::HybridElements::Connectivity& cell_edge_connectivity = cells.edge_connectivity();
-		const mesh::HybridElements::Connectivity& edge_node_connectivity = edges.node_connectivity();
-		auto field_flags                                                 = array::make_view<int, 1>( cells.flags() );
+        mesh::actions::build_edges( mesh, util::Config( "pole_edges", false ) );
+        Field node_grad_field   = Field( "node_grad", array::make_datatype<double>(), array::make_shape( 3 ) );
+        const auto xy           = array::make_view<double, 2>( mesh.nodes().xy() );
+        const auto nodes_ll     = array::make_view<double, 2>( mesh.nodes().lonlat() );
+        auto edge_flags         = array::make_view<int, 1>( mesh.edges().flags() );
+        const auto& cell2edge   = mesh.cells().edge_connectivity();
+        const auto& cell2node   = mesh.cells().node_connectivity();
+        const auto& edge2node   = mesh.edges().node_connectivity();
+        const auto& edge2cell   = mesh.edges().cell_connectivity();
+        const auto& node2edge   = mesh.nodes().edge_connectivity();
+        const auto& field_flags = array::make_view<int, 1>( mesh.cells().flags() );
+        //		auto node_grad      = array::make_view<double, 3>( node_grad_field );
 
+        /*      TODO would be nice but does not work with healpix!!
 		auto patch = [&field_flags]( idx_t e ) {
         	using Topology = atlas::mesh::Nodes::Topology;
         	return Topology::check( field_flags( e ), Topology::PATCH );
     	};
-
-		// special ordering for bit-identical results
-		idx_t nb_cells = cells.size();
-		std::vector<Node> ordering( nb_cells );
-		for ( idx_t jcell = 0; jcell < nb_cells; ++jcell ) {
-			ordering[jcell] =
-				Node( util::unique_lonlat( cell_centroids( jcell, XX ), cell_centroids( jcell, YY ) ), jcell );
-		}
-		std::sort( ordering.data(), ordering.data() + nb_cells );
-        const idx_t n_nodes = mesh.nodes().size();
-        src_csp.resize( n_nodes );
-        const auto& node_edge_connectivity = mesh.nodes().edge_connectivity();
-        const auto lonlat             = array::make_view<double, 2>( mesh.nodes().lonlat() );
-        std::vector<PointLonLat> pts_ll;
-        for ( idx_t inode = 0; inode < n_nodes; ++inode ) {
-            const idx_t n_nodes = node_connectivity.cols( inode );
-            pts_ll.clear();
-            pts_ll.resize( n_nodes );
-            for ( idx_t jnode = 0; jnode < n_nodes; ++jnode ) {
-                idx_t inode   = node_connectivity( icell, jnode );
-                pts_ll[jnode] = PointLonLat{lonlat( inode, 0 ), lonlat( inode, 1 )};
-            }
-            src_csp[icell] = CSPolygon( pts_ll );
-        }
+		auto is_pole_edge = [&edge_flags]( idx_t e ) { // does not work with H-grids
+        	using Topology = atlas::mesh::Nodes::Topology;
+			return Topology::check( edge_flags( e ), Topology::POLE );
+		};
 */
-        ATLAS_ASSERT( false );
+        auto xyz2ll = []( atlas::PointXYZ& p_xyz ) {
+            PointLonLat p_ll;
+            eckit::geometry::Sphere::convertCartesianToSpherical( 1., p_xyz, p_ll );
+            return p_ll;
+        };
+
+        for ( idx_t icell = 0; icell < mesh.cells().size(); ++icell ) {
+            // get cell centre
+            PointXYZ cell_mid   = PointXYZ{0., 0., 0.};
+            const idx_t n_edges = cell2edge.cols( icell );
+            for ( idx_t iedge = 0; iedge < n_edges; ++iedge ) {
+                idx_t edge              = cell2edge( icell, iedge );
+                idx_t node0             = edge2node( edge, 0 );
+                idx_t node1             = edge2node( edge, 1 );
+                const PointLonLat p0_ll = PointLonLat{nodes_ll( node0, 0 ), nodes_ll( node0, 1 )};
+                const PointLonLat p1_ll = PointLonLat{nodes_ll( node1, 0 ), nodes_ll( node1, 1 )};
+                PointXYZ p0, p1;
+                eckit::geometry::Sphere::convertSphericalToCartesian( 1., p0_ll, p0 );
+                eckit::geometry::Sphere::convertSphericalToCartesian( 1., p1_ll, p1 );
+                if ( PointXYZ::norm( p0 - p1 ) < 1e-14 ) {
+                    continue;  // pole edge
+                }
+                cell_mid = cell_mid + p0;
+                cell_mid = cell_mid + p1;
+            }
+            cell_mid = PointXYZ::div( cell_mid, PointXYZ::norm( cell_mid ) );
+            PointLonLat cell_ll;
+            eckit::geometry::Sphere::convertCartesianToSpherical( 1., cell_mid, cell_ll );
+            // get CSPolygon for each valid edge
+            for ( idx_t iedge = 0; iedge < n_edges; ++iedge ) {
+                idx_t edge               = cell2edge( icell, iedge );
+                idx_t node0              = edge2node( edge, 0 );
+                idx_t node1              = edge2node( edge, 1 );
+                const PointLonLat pi0_ll = PointLonLat{nodes_ll( node0, 0 ), nodes_ll( node0, 1 )};
+                const PointLonLat pi1_ll = PointLonLat{nodes_ll( node1, 0 ), nodes_ll( node1, 1 )};
+                PointXYZ pi0, pi1;
+                eckit::geometry::Sphere::convertSphericalToCartesian( 1., pi0_ll, pi0 );
+                eckit::geometry::Sphere::convertSphericalToCartesian( 1., pi1_ll, pi1 );
+                PointXYZ iedge_mid = pi0 + pi1;
+                iedge_mid          = PointXYZ::div( iedge_mid, PointXYZ::norm( iedge_mid ) );
+                // get edge centre
+                if ( PointXYZ::norm( iedge_mid - pi0 ) < 1e-14 ) {
+                    continue;  // skip this edge, it is a pole point
+                }
+                PointLonLat iedge_mid_ll = xyz2ll( iedge_mid );
+                PointXYZ third_point;
+                PointLonLat third_point_ll;
+                if ( util::ConvexSphericalPolygon::leftOf( pi0, cell_mid, iedge_mid, 1e-14 ) ) {
+                    third_point    = pi0;
+                    third_point_ll = pi0_ll;
+                }
+                else {
+                    third_point    = pi1;
+                    third_point_ll = pi1_ll;
+                }
+                // find the other valid edge touching pi0
+                PointXYZ jedge_mid;
+                for ( idx_t jedge = 0; jedge < n_edges; ++jedge ) {
+                    idx_t edge               = cell2edge( icell, jedge );
+                    idx_t j0                 = edge2node( edge, 0 );
+                    idx_t j1                 = edge2node( edge, 1 );
+                    const PointLonLat pj0_ll = PointLonLat{nodes_ll( j0, 0 ), nodes_ll( j0, 1 )};
+                    const PointLonLat pj1_ll = PointLonLat{nodes_ll( j1, 0 ), nodes_ll( j1, 1 )};
+                    PointXYZ pj0, pj1;
+                    eckit::geometry::Sphere::convertSphericalToCartesian( 1., pj0_ll, pj0 );
+                    eckit::geometry::Sphere::convertSphericalToCartesian( 1., pj1_ll, pj1 );
+                    if ( PointXYZ::norm( pj0 - pj1 ) < 1e-14 ) {
+                        continue;  // pole edge
+                    }
+                    if ( jedge != iedge && ( PointXYZ::norm( third_point - pj0 ) < 1e-14 or
+                                             PointXYZ::norm( third_point - pj1 ) < 1e-14 ) ) {
+                        jedge_mid = pj0 + pj1;
+                        jedge_mid = PointXYZ::div( jedge_mid, PointXYZ::norm( jedge_mid ) );
+                        break;
+                    }
+                }
+                std::vector<PointLonLat> pts_ll( 4 );
+                pts_ll[0] = cell_ll;
+                pts_ll[1] = iedge_mid_ll;
+                pts_ll[2] = third_point_ll;
+                pts_ll[3] = xyz2ll( jedge_mid );
+                src_csp.emplace_back( CSPolygon( pts_ll ) );
+            }
+        }
+        ( Log::info() << "Created " << src_csp.size() << " CSPolygons from " << mesh.cells().size() << " mesh cells\n" )
+            .flush();
     }
     return src_csp;
 }
@@ -293,7 +357,7 @@ void ConservativeMethod::setup_2nd_order_matrix() {
     Triplets triplets;
     size_t triplets_size = 0;
     for ( idx_t scell = 0; scell < n_scells_; ++scell ) {
-        const auto nb_cells = get_neighbours( src_mesh_, scell );
+        const auto nb_cells = get_cell_neighbours( src_mesh_, scell );
         triplets_size += ( 2 * nb_cells.size() + 1 ) * iparam_[scell].centroids.size();
     }
     triplets.reserve( triplets_size );
@@ -312,7 +376,7 @@ void ConservativeMethod::setup_2nd_order_matrix() {
         ATLAS_ASSERT( Ci_norm > 0. );
         Ci                   = PointXYZ::div( Ci, Ci_norm );
         double dual_area_inv = 0.;
-        const auto nb_cells  = get_neighbours( src_mesh_, scell );
+        const auto nb_cells  = get_cell_neighbours( src_mesh_, scell );
         std::vector<PointXYZ> Rij;
         Rij.resize( nb_cells.size() );
         for ( idx_t nb_id = 0; nb_id < nb_cells.size(); ++nb_id ) {
@@ -413,7 +477,7 @@ void ConservativeMethod::do_execute( const Field& src_field, Field& tgt_field ) 
                 const PointXYZ& P        = src_centroids_[scell];
                 PointXYZ grad            = {0., 0., 0.};
                 PointXYZ src_barycenter  = {0., 0., 0.};
-                auto src_neighbour_cells = get_neighbours( src_mesh_, scell );
+                auto src_neighbour_cells = get_cell_neighbours( src_mesh_, scell );
                 double dual_area         = 0.;
                 for ( idx_t nb_id = 0; nb_id < src_neighbour_cells.size(); ++nb_id ) {
                     idx_t nnb_id    = ( nb_id != src_neighbour_cells.size() - 1 ) ? nb_id + 1 : 0;
