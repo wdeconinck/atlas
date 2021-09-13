@@ -71,7 +71,7 @@ private:
                             const TargetCellsIDs& tgt_cells ) const;
 
     std::vector<CSPolygon> get_polygons( Mesh& mesh ) const;
-    std::vector<idx_t> get_neighbours( Mesh& mesh, idx_t jcell ) const;
+    std::vector<idx_t> get_cell_neighbours( Mesh& mesh, idx_t jcell ) const;
 
 protected:
     FunctionSpace source_;
