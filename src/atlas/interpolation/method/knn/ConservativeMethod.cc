@@ -123,10 +123,7 @@ std::vector<CSPolygon> ConservativeMethod::get_polygons( Mesh& mesh ) const {
         const auto nodes_ll     = array::make_view<double, 2>( mesh.nodes().lonlat() );
         auto edge_flags         = array::make_view<int, 1>( mesh.edges().flags() );
         const auto& cell2edge   = mesh.cells().edge_connectivity();
-        const auto& cell2node   = mesh.cells().node_connectivity();
         const auto& edge2node   = mesh.edges().node_connectivity();
-        const auto& edge2cell   = mesh.edges().cell_connectivity();
-        const auto& node2edge   = mesh.nodes().edge_connectivity();
         const auto& field_flags = array::make_view<int, 1>( mesh.cells().flags() );
         //		auto node_grad      = array::make_view<double, 3>( node_grad_field );
 
@@ -345,15 +342,12 @@ void ConservativeMethod::setup_1st_order_matrix() {
 }
 
 void ConservativeMethod::setup_2nd_order_matrix() {
-    if ( order_ != 2 ) {
+    if ( order_ != 2 or matrix_free_ ) {
         return;
     }
-    mesh::actions::build_edges( src_mesh_, util::Config( "pole_edges", false ) );
-    if ( matrix_free_ ) {
-        return;
-    }
-    //const auto halo     = array::make_view<int, 1>( src_mesh_.cells().halo() );
     ATLAS_TRACE( "ConservativeMethod::setup: build cons-2 interpolant matrix" );
+    mesh::actions::build_edges( src_mesh_, util::Config( "pole_edges", false ) );
+    //const auto halo     = array::make_view<int, 1>( src_mesh_.cells().halo() );
     Triplets triplets;
     size_t triplets_size = 0;
     for ( idx_t scell = 0; scell < n_scells_; ++scell ) {
