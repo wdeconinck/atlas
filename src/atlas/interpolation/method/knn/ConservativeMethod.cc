@@ -103,7 +103,7 @@ std::vector<CSPolygon> ConservativeMethod::get_polygons( Mesh& mesh ) const {
         const idx_t n_cells = mesh.cells().size();
         src_csp.resize( n_cells );
         const auto& cell2node = mesh.cells().node_connectivity();
-        const auto lonlat             = array::make_view<double, 2>( mesh.nodes().lonlat() );
+        const auto lonlat     = array::make_view<double, 2>( mesh.nodes().lonlat() );
         std::vector<PointLonLat> pts_ll;
         for ( idx_t icell = 0; icell < n_cells; ++icell ) {
             const idx_t n_nodes = cell2node.cols( icell );
@@ -234,7 +234,9 @@ void ConservativeMethod::do_setup( const Grid& src_grid, const Grid& tgt_grid ) 
     if ( mpi::size() > 1 ) {
         ATLAS_NOTIMPLEMENTED;
     }
-    src_mesh_ = MeshGenerator( src_grid.meshgenerator() ).generate( src_grid );
+    auto src_mesh_config = src_grid.meshgenerator();
+    src_mesh_config.set( "include_pole", true );
+    src_mesh_ = MeshGenerator( src_mesh_config ).generate( src_grid );
     tgt_mesh_ = MeshGenerator( tgt_grid.meshgenerator() ).generate( tgt_grid );
     functionspace::CellColumns src_fs( src_mesh_ );
     functionspace::CellColumns tgt_fs( tgt_mesh_ );
