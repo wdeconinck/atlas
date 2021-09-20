@@ -40,60 +40,57 @@ ConservativeMethod::ConservativeMethod( const util::Config& config ) : Method( c
     config.get( "matrix_free", matrix_free_ = true );
 }
 
-// get cell neighbours
-std::vector<idx_t> ConservativeMethod::get_cell_neighbours( Mesh& mesh, idx_t jcell ) const {
+// get counter-clockwise sorted edges of a cell
+std::vector<idx_t> ConservativeMethod::sort_cell_edges( Mesh& mesh, idx_t cell_id ) const {
     const auto& cell2edge = mesh.cells().edge_connectivity();
-    const auto& edge2cell = mesh.edges().cell_connectivity();
+    const auto& cell2node = mesh.cells().node_connectivity();
     const auto& edge2node = mesh.edges().node_connectivity();
-    auto c2e_missval      = cell2edge.missing_value();
-    auto valid_nb_cell    = [jcell, c2e_missval]( idx_t cid1, idx_t cid2 ) {
-        if ( cid1 != c2e_missval && cid1 != jcell ) {
-            return cid1;
+    const int nnodes      = cell2node.cols( cell_id );
+    const int nedges      = cell2edge.cols( cell_id );
+    std::vector<idx_t> edges;
+    edges.resize( nedges );
+    idx_t ii = 0;
+    for ( int inode = 0; inode < nnodes; ++inode ) {
+        idx_t node  = cell2node( cell_id, inode );
+        idx_t nnode = cell2node( cell_id, ( inode != nnodes - 1 ? inode + 1 : 0 ) );
+        for ( int iedge = 0; iedge < nedges; ++iedge ) {
+            const idx_t edge  = cell2edge( cell_id, iedge );
+            const idx_t node0 = edge2node( edge, 0 );
+            const idx_t node1 = edge2node( edge, 1 );
+            if ( ( node0 == node && node1 == nnode ) or ( node0 == nnode && node1 == node ) ) {
+                edges[ii++] = edge;
+                break;
+            }
         }
-        else if ( cid2 != c2e_missval && cid2 != jcell ) {
-            return cid2;
-        }
-        return -1;
-    };
-    std::vector<idx_t> nb_cells;
-    idx_t n_edges = cell2edge.cols( jcell );
-    nb_cells.reserve( n_edges );
-    std::vector<bool> edge_done;
-    edge_done.resize( n_edges );
-    std::vector<idx_t> loc_edge_id( n_edges );
-    for ( int ledge = 0; ledge < n_edges; ++ledge ) {
-        loc_edge_id[ledge] = cell2edge( jcell, ledge );
     }
-    idx_t ledge = 0;
-    idx_t iedge = cell2edge( jcell, ledge );
-    idx_t nbid  = valid_nb_cell( edge2cell( iedge, 0 ), edge2cell( iedge, 1 ) );
-    if ( nbid != -1 ) {
-        nb_cells.emplace_back( nbid );
-    }
-    edge_done[ledge] = true;
-    idx_t nedge_done = 1;
-    auto last_node   = edge2node( iedge, 1 );  // take any end point
+    return edges;
+}
 
-    for ( ledge = 0; nedge_done < n_edges; ++ledge ) {
-        if ( edge_done[ledge] ) {
-            ledge = ( ledge == n_edges - 1 ? -1 : ledge );
+// get counter-clockwise sorted neighbours of a cell
+std::vector<idx_t> ConservativeMethod::get_cell_neighbours( Mesh& mesh, idx_t cell_id ) const {
+    const auto& cell2edge  = mesh.cells().edge_connectivity();
+    const auto& edge2cell  = mesh.edges().cell_connectivity();
+    const auto& edge2node  = mesh.edges().node_connectivity();
+    auto c2e_missval       = cell2edge.missing_value();
+    const auto& edges_sort = sort_cell_edges( mesh, cell_id );
+    const idx_t nedges     = cell2edge.cols( cell_id );
+    std::vector<idx_t> nbr_cells;
+    nbr_cells.reserve( nedges );
+
+    for ( idx_t iedge = 0, inbr = 0; iedge < nedges; ++iedge ) {
+        const idx_t edge  = edges_sort[iedge];
+        const idx_t c1_id = edge2cell( edge, 0 );
+        if ( c1_id != c2e_missval && c1_id != cell_id ) {
+            nbr_cells.emplace_back( c1_id );
             continue;
         }
-        idx_t node0 = edge2node( cell2edge( jcell, ledge ), 0 );
-        idx_t node1 = edge2node( cell2edge( jcell, ledge ), 1 );
-        if ( last_node == node0 or last_node == node1 ) {
-            nbid =
-                valid_nb_cell( edge2cell( cell2edge( jcell, ledge ), 0 ), edge2cell( cell2edge( jcell, ledge ), 1 ) );
-            if ( nbid != -1 ) {
-                nb_cells.emplace_back( nbid );
-            }
-            last_node        = ( last_node == node0 ? node1 : node0 );
-            edge_done[ledge] = true;
-            ++nedge_done;
+        const idx_t c2_id = edge2cell( edge, 1 );
+        if ( c2_id != c2e_missval && c2_id != cell_id ) {
+            nbr_cells.emplace_back( c2_id );
+            continue;
         }
-        ledge = ( ledge == n_edges - 1 ? -1 : ledge );
     }
-    return nb_cells;
+    return nbr_cells;
 }
 
 
