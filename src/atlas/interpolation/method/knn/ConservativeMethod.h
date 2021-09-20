@@ -42,15 +42,18 @@ public:
     ConservativeMethod( const util::Config& = util::NoConfig() );
 
     using Method::do_setup;
-    void do_setup( const FunctionSpace& source, const FunctionSpace& target ) { ATLAS_NOTIMPLEMENTED; }
-    void do_setup( const Grid& source, const Grid& target );
-    void do_setup( const Grid& source, const Grid& target, const Cache& ) { ATLAS_NOTIMPLEMENTED; }
+    void do_setup( const FunctionSpace& src_fs, const FunctionSpace& tgt_fs ) { ATLAS_NOTIMPLEMENTED; }
+    void do_setup( const Grid& src_grid, const Grid& tgt_grid );
+    void do_setup( const Grid& src_grid, const Grid& tgt_grid, const Cache& ) { ATLAS_NOTIMPLEMENTED; }
 
     void do_setup_with_polygons( const PolygonArray& src_csp, const PolygonArray& tgt_scp );
 
     void do_execute( const Field& src_field, Field& tgt_field );
 
     void print( std::ostream& out ) const { out << "ConservativeMethod[]"; }
+
+    bool src_cell_data() const { return src_cell_data_; }
+    bool tgt_cell_data() const { return tgt_cell_data_; }
     const FunctionSpace& source() const { return src_fs_; }
     const FunctionSpace& target() const { return tgt_fs_; }
 
