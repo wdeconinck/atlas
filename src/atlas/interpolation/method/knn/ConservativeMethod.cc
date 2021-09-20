@@ -95,10 +95,9 @@ std::vector<idx_t> ConservativeMethod::get_cell_neighbours( Mesh& mesh, idx_t ce
     return nbr_cells;
 }
 
-
+// cell centred data -> polygons are mesh elements
 std::vector<CSPolygon> ConservativeMethod::get_polygons_celldata( Mesh& mesh ) const {
     std::vector<CSPolygon> cspolygons;
-    // cell centred data -> polygons are mesh elements
     const idx_t n_cells = mesh.cells().size();
     cspolygons.resize( n_cells );
     const auto& cell2node = mesh.cells().node_connectivity();
@@ -117,10 +116,17 @@ std::vector<CSPolygon> ConservativeMethod::get_polygons_celldata( Mesh& mesh ) c
     return cspolygons;
 }
 
-std::vector<CSPolygon> ConservativeMethod::get_polygons_nodedata( Mesh& mesh ) const {
-    std::vector<CSPolygon> cspolygons;
-    // cell vertex data -> polygons are (cell_centre, edge_centre, cell_vertex, edge_centre)
+// cell vertex data -> polygons are (cell_centre, edge_centre, cell_vertex, edge_centre)
+std::vector<CSPolygon> ConservativeMethod::get_polygons_nodedata( Mesh& mesh, bool compute_csp2node,
+                                                                  std::vector<idx_t>& csp2node, bool compute_node2csp,
+                                                                  std::vector<std::vector<idx_t> >& node2csp ) const {
     mesh::actions::build_edges( mesh, util::Config( "pole_edges", false ) );
+    std::vector<CSPolygon> cspolygons;
+    csp2node.clear();
+    node2csp.clear();
+    if ( compute_node2csp ) {
+        node2csp.resize( mesh.nodes().size() );
+    }
     const auto xy           = array::make_view<double, 2>( mesh.nodes().xy() );
     const auto nodes_ll     = array::make_view<double, 2>( mesh.nodes().lonlat() );
     auto edge_flags         = array::make_view<int, 1>( mesh.edges().flags() );
@@ -147,6 +153,8 @@ std::vector<CSPolygon> ConservativeMethod::get_polygons_nodedata( Mesh& mesh ) c
         eckit::geometry::Sphere::convertCartesianToSpherical( 1., p_xyz, p_ll );
         return p_ll;
     };
+
+    idx_t cspol_id = 0;
 
     for ( idx_t icell = 0; icell < mesh.cells().size(); ++icell ) {
         // get cell centre
@@ -192,10 +200,22 @@ std::vector<CSPolygon> ConservativeMethod::get_polygons_nodedata( Mesh& mesh ) c
             if ( util::ConvexSphericalPolygon::leftOf( pi0, cell_mid, iedge_mid, 1e-14 ) ) {
                 third_point    = pi0;
                 third_point_ll = pi0_ll;
+                if ( compute_csp2node ) {
+                    csp2node.emplace_back( node0 );
+                }
+                if ( compute_node2csp ) {
+                    node2csp[node0].emplace_back( cspol_id );
+                }
             }
             else {
                 third_point    = pi1;
                 third_point_ll = pi1_ll;
+                if ( compute_csp2node ) {
+                    csp2node.emplace_back( node1 );
+                }
+                if ( compute_node2csp ) {
+                    node2csp[node1].emplace_back( cspol_id );
+                }
             }
             // find the other valid edge touching pi0
             PointXYZ jedge_mid;
@@ -224,6 +244,7 @@ std::vector<CSPolygon> ConservativeMethod::get_polygons_nodedata( Mesh& mesh ) c
             pts_ll[2] = third_point_ll;
             pts_ll[3] = xyz2ll( jedge_mid );
             cspolygons.emplace_back( CSPolygon( pts_ll ) );
+            cspol_id++;
         }
     }
     ( Log::info() << "Created " << cspolygons.size() << " CSPolygons from " << mesh.cells().size() << " mesh cells\n" )
@@ -245,6 +266,8 @@ void ConservativeMethod::do_setup( const Grid& src_grid, const Grid& tgt_grid ) 
 
     std::vector<CSPolygon> src_csp;
     std::vector<CSPolygon> tgt_csp;
+    std::vector<idx_t> src_csp2node;
+    std::vector<std::vector<idx_t> > tgt_node2csp;
     if ( src_cell_data_ ) {
         functionspace::CellColumns src_fs( src_mesh_ );
         src_fs_ = src_fs;
@@ -253,7 +276,7 @@ void ConservativeMethod::do_setup( const Grid& src_grid, const Grid& tgt_grid ) 
     else {
         functionspace::NodeColumns src_fs( src_mesh_ );
         src_fs_ = src_fs;
-        src_csp = get_polygons_nodedata( src_mesh_ );
+        src_csp = get_polygons_nodedata( src_mesh_, true, src_csp2node, false, tgt_node2csp );
     }
     if ( tgt_cell_data_ ) {
         functionspace::CellColumns tgt_fs( tgt_mesh_ );
@@ -263,7 +286,7 @@ void ConservativeMethod::do_setup( const Grid& src_grid, const Grid& tgt_grid ) 
     else {
         functionspace::NodeColumns tgt_fs( tgt_mesh_ );
         tgt_fs_ = tgt_fs;
-        tgt_csp = get_polygons_nodedata( tgt_mesh_ );
+        tgt_csp = get_polygons_nodedata( tgt_mesh_, false, src_csp2node, true, tgt_node2csp );
     }
     do_setup_with_polygons( src_csp, tgt_csp );
 }
