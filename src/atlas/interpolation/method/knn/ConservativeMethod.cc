@@ -38,6 +38,8 @@ ConservativeMethod::ConservativeMethod( const util::Config& config ) : Method( c
     config.get( "normalise_intersections", normalise_intersections_ = 1 );
     config.get( "field_value_type", fvtype_ = 0 );
     config.get( "matrix_free", matrix_free_ = true );
+    config.get( "src_cell_data", src_cell_data_ = true );
+    config.get( "tgt_cell_data", tgt_cell_data_ = true );
 }
 
 // get counter-clockwise sorted edges of a cell
@@ -94,9 +96,10 @@ std::vector<idx_t> ConservativeMethod::get_cell_neighbours( Mesh& mesh, idx_t ce
 }
 
 
-std::vector<CSPolygon> ConservativeMethod::get_polygons( Mesh& mesh ) const {
+std::vector<CSPolygon> ConservativeMethod::get_polygons( Mesh& mesh, bool cell_data ) const {
     std::vector<CSPolygon> src_csp;
-    if ( fvtype_ == 0 ) {  // CellColumns
+    if ( cell_data ) {
+        // cell centred data -> polygons are mesh elements
         const idx_t n_cells = mesh.cells().size();
         src_csp.resize( n_cells );
         const auto& cell2node = mesh.cells().node_connectivity();
@@ -113,15 +116,18 @@ std::vector<CSPolygon> ConservativeMethod::get_polygons( Mesh& mesh ) const {
             src_csp[icell] = CSPolygon( pts_ll );
         }
     }
-    else {  // NodeColumns
+    else {
+        // cell vertex data -> polygons are (cell_centre, edge_centre, cell_vertex, edge_centre)
         mesh::actions::build_edges( mesh, util::Config( "pole_edges", false ) );
-        Field node_grad_field   = Field( "node_grad", array::make_datatype<double>(), array::make_shape( 3 ) );
         const auto xy           = array::make_view<double, 2>( mesh.nodes().xy() );
         const auto nodes_ll     = array::make_view<double, 2>( mesh.nodes().lonlat() );
         auto edge_flags         = array::make_view<int, 1>( mesh.edges().flags() );
         const auto& cell2edge   = mesh.cells().edge_connectivity();
         const auto& edge2node   = mesh.edges().node_connectivity();
         const auto& field_flags = array::make_view<int, 1>( mesh.cells().flags() );
+
+        // compute gradient estimate now
+        //Field node_grad_field   = Field( "node_grad", array::make_datatype<double>(), array::make_shape( 3 ) );
         //		auto node_grad      = array::make_view<double, 3>( node_grad_field );
 
         /*      TODO would be nice but does not work with healpix!!
@@ -235,15 +241,33 @@ void ConservativeMethod::do_setup( const Grid& src_grid, const Grid& tgt_grid ) 
     src_mesh_config.set( "include_pole", true );
     src_mesh_ = MeshGenerator( src_mesh_config ).generate( src_grid );
     tgt_mesh_ = MeshGenerator( tgt_grid.meshgenerator() ).generate( tgt_grid );
-    functionspace::CellColumns src_fs( src_mesh_ );
-    functionspace::CellColumns tgt_fs( tgt_mesh_ );
-    source_ = src_fs;
-    target_ = tgt_fs;
+    if ( src_cell_data_ ) {
+        functionspace::CellColumns src_fs( src_mesh_ );
+        src_fs_ = src_fs;
+    }
+    else {
+        functionspace::NodeColumns src_fs( src_mesh_ );
+        src_fs_ = src_fs;
+    }
+    if ( tgt_cell_data_ ) {
+        functionspace::CellColumns tgt_fs( tgt_mesh_ );
+        tgt_fs_ = tgt_fs;
+    }
+    else {
+        functionspace::NodeColumns tgt_fs( tgt_mesh_ );
+        tgt_fs_ = tgt_fs;
+    }
 
-    const auto& src_csp = get_polygons( src_mesh_ );
-    const auto& tgt_csp = get_polygons( tgt_mesh_ );
-    n_scells_           = src_csp.size();
-    n_tcells_           = tgt_csp.size();
+    const auto& src_csp = get_polygons( src_mesh_, src_cell_data_ );
+    const auto& tgt_csp = get_polygons( tgt_mesh_, tgt_cell_data_ );
+    do_setup_with_polygons( src_csp, tgt_csp );
+}
+
+
+void ConservativeMethod::do_setup_with_polygons( const std::vector<CSPolygon>& src_csp,
+                                                 const std::vector<CSPolygon>& tgt_csp ) {
+    n_scells_ = src_csp.size();
+    n_tcells_ = tgt_csp.size();
 
     src_centroids_.resize( n_scells_ );
     tgt_centroids_.resize( n_tcells_ );
