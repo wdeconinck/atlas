@@ -30,6 +30,8 @@ namespace method {
 class ConservativeMethod : public Method {
 public:
     typedef util::ConvexSphericalPolygon CSPolygon;
+    typedef std::vector<CSPolygon> PolygonArray;
+
     struct InterpolationParameters {
         std::vector<idx_t> tcell_id;
         std::vector<PointXYZ> centroids;
@@ -44,11 +46,13 @@ public:
     void do_setup( const Grid& source, const Grid& target );
     void do_setup( const Grid& source, const Grid& target, const Cache& ) { ATLAS_NOTIMPLEMENTED; }
 
+    void do_setup_with_polygons( const PolygonArray& src_csp, const PolygonArray& tgt_scp );
+
     void do_execute( const Field& src_field, Field& tgt_field );
 
     void print( std::ostream& out ) const { out << "ConservativeMethod[]"; }
-    const FunctionSpace& source() const { return source_; }
-    const FunctionSpace& target() const { return target_; }
+    const FunctionSpace& source() const { return src_fs_; }
+    const FunctionSpace& target() const { return tgt_fs_; }
 
     inline const std::vector<InterpolationParameters>& iparam() const { return iparam_; }
     inline const PointXYZ& src_centroid( size_t id ) const { return src_centroids_[id]; }
@@ -77,11 +81,13 @@ private:
 
     std::vector<idx_t> sort_cell_edges( Mesh& mesh, idx_t cell_id ) const;
     std::vector<idx_t> get_cell_neighbours( Mesh& mesh, idx_t jcell ) const;
-    std::vector<CSPolygon> get_polygons( Mesh& mesh ) const;
+    std::vector<CSPolygon> get_polygons( Mesh& mesh, bool cell_data ) const;
 
 protected:
-    FunctionSpace source_;
-    FunctionSpace target_;
+    bool src_cell_data_;
+    bool tgt_cell_data_;
+    FunctionSpace src_fs_;
+    FunctionSpace tgt_fs_;
     Mesh src_mesh_;
     Mesh tgt_mesh_;
     int normalise_intersections_;
