@@ -16,7 +16,9 @@
 #include <forward_list>
 
 #include "atlas/functionspace.h"
+#include "atlas/mesh/actions/BuildEdges.h"
 #include "atlas/util/Config.h"
+
 #include "atlas/util/ConvexSphericalPolygon.h"
 
 
@@ -55,6 +57,9 @@ public:
     inline const double& tgt_area( size_t id ) const { return tgt_areas_[id]; }
     void set_order( int order ) {
         order_ = order;
+        if ( order == 2 ) {
+            mesh::actions::build_edges( src_mesh_, util::Config( "pole_edges", false ) );
+        }
         setup_1st_order_matrix();
         setup_2nd_order_matrix();
     }
@@ -70,8 +75,9 @@ private:
                             const std::vector<util::ConvexSphericalPolygon>& tgt_csp,
                             const TargetCellsIDs& tgt_cells ) const;
 
-    std::vector<CSPolygon> get_polygons( Mesh& mesh ) const;
+    std::vector<idx_t> sort_cell_edges( Mesh& mesh, idx_t cell_id ) const;
     std::vector<idx_t> get_cell_neighbours( Mesh& mesh, idx_t jcell ) const;
+    std::vector<CSPolygon> get_polygons( Mesh& mesh ) const;
 
 protected:
     FunctionSpace source_;
