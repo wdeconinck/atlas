@@ -33,8 +33,9 @@
 namespace atlas {
 namespace test {
 
-using CSPolygon  = util::ConvexSphericalPolygon;
+using CSPolygon          = util::ConvexSphericalPolygon;
 using ConservativeMethod = interpolation::method::ConservativeMethod;
+using FieldArray         = array::ArrayView<double, 1>;
 
 Grid localgrid( int nx, int ny ) {
     util::Config gridspec;
@@ -48,8 +49,8 @@ Grid localgrid( int nx, int ny ) {
     return Grid{gridspec};
 }
 
-void compute_geom_errors( const array::ArrayView<double, 1>& src_vals, const array::ArrayView<double, 1>& tgt_vals,
-                          ConservativeMethod& consMethod, double func( const PointLonLat& ), std::ofstream& outfile ) {
+void compute_geom_errors( const FieldArray& src_vals, const FieldArray& tgt_vals, ConservativeMethod& consMethod,
+                          double func( const PointLonLat& ), std::ofstream& outfile ) {
     double src_sum = 0.;
     double tgt_sum = 0.;
     for ( idx_t scell = 0; scell < src_vals.size(); ++scell ) {
@@ -81,9 +82,8 @@ void compute_geom_errors( const array::ArrayView<double, 1>& src_vals, const arr
     outfile << std::setw( 10 ) << err_1 << std::setw( 10 ) << err_max;
 }
 
-void compute_field_errors( const array::ArrayView<double, 1>& src_vals, const array::ArrayView<double, 1>& tgt_vals,
-                           array::ArrayView<double, 1>& diff_vals, ConservativeMethod& consMethod,
-                           double func( const PointLonLat& ), std::ofstream& outfile ) {
+void compute_field_errors( const FieldArray& src_vals, const FieldArray& tgt_vals, FieldArray& diff_vals,
+                           ConservativeMethod& consMethod, double func( const PointLonLat& ), std::ofstream& outfile ) {
     double global_cons_err = 0;
     for ( idx_t scell = 0; scell < src_vals.size(); ++scell ) {
         diff_vals( scell ) = src_vals( scell ) * consMethod.src_area( scell );
@@ -121,7 +121,7 @@ void do_remapping_test( Grid src_grid, Grid tgt_grid, double func( const PointLo
     config.set( "matrix_free", false );
     config.set( "normalise_intersections", 1 );
     config.set( "triangulate", false );
-    config.set( "src_cell_data", true );  // data stored in cel centres
+    config.set( "src_cell_data", true );  // data stored in cell centres
     config.set( "tgt_cell_data", true );
 
     outfile << std::setw( 10 ) << src_grid.name() << std::setw( 10 ) << tgt_grid.name();

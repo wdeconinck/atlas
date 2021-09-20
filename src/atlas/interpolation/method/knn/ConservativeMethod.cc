@@ -96,138 +96,139 @@ std::vector<idx_t> ConservativeMethod::get_cell_neighbours( Mesh& mesh, idx_t ce
 }
 
 
-std::vector<CSPolygon> ConservativeMethod::get_polygons( Mesh& mesh, bool cell_data ) const {
-    std::vector<CSPolygon> src_csp;
-    if ( cell_data ) {
-        // cell centred data -> polygons are mesh elements
-        const idx_t n_cells = mesh.cells().size();
-        src_csp.resize( n_cells );
-        const auto& cell2node = mesh.cells().node_connectivity();
-        const auto lonlat     = array::make_view<double, 2>( mesh.nodes().lonlat() );
-        std::vector<PointLonLat> pts_ll;
-        for ( idx_t icell = 0; icell < n_cells; ++icell ) {
-            const idx_t n_nodes = cell2node.cols( icell );
-            pts_ll.clear();
-            pts_ll.resize( n_nodes );
-            for ( idx_t jnode = 0; jnode < n_nodes; ++jnode ) {
-                idx_t inode   = cell2node( icell, jnode );
-                pts_ll[jnode] = PointLonLat{lonlat( inode, 0 ), lonlat( inode, 1 )};
-            }
-            src_csp[icell] = CSPolygon( pts_ll );
+std::vector<CSPolygon> ConservativeMethod::get_polygons_celldata( Mesh& mesh ) const {
+    std::vector<CSPolygon> cspolygons;
+    // cell centred data -> polygons are mesh elements
+    const idx_t n_cells = mesh.cells().size();
+    cspolygons.resize( n_cells );
+    const auto& cell2node = mesh.cells().node_connectivity();
+    const auto lonlat     = array::make_view<double, 2>( mesh.nodes().lonlat() );
+    std::vector<PointLonLat> pts_ll;
+    for ( idx_t icell = 0; icell < n_cells; ++icell ) {
+        const idx_t n_nodes = cell2node.cols( icell );
+        pts_ll.clear();
+        pts_ll.resize( n_nodes );
+        for ( idx_t jnode = 0; jnode < n_nodes; ++jnode ) {
+            idx_t inode   = cell2node( icell, jnode );
+            pts_ll[jnode] = PointLonLat{lonlat( inode, 0 ), lonlat( inode, 1 )};
         }
+        cspolygons[icell] = CSPolygon( pts_ll );
     }
-    else {
-        // cell vertex data -> polygons are (cell_centre, edge_centre, cell_vertex, edge_centre)
-        mesh::actions::build_edges( mesh, util::Config( "pole_edges", false ) );
-        const auto xy           = array::make_view<double, 2>( mesh.nodes().xy() );
-        const auto nodes_ll     = array::make_view<double, 2>( mesh.nodes().lonlat() );
-        auto edge_flags         = array::make_view<int, 1>( mesh.edges().flags() );
-        const auto& cell2edge   = mesh.cells().edge_connectivity();
-        const auto& edge2node   = mesh.edges().node_connectivity();
-        const auto& field_flags = array::make_view<int, 1>( mesh.cells().flags() );
+    return cspolygons;
+}
 
-        // compute gradient estimate now
-        //Field node_grad_field   = Field( "node_grad", array::make_datatype<double>(), array::make_shape( 3 ) );
-        //		auto node_grad      = array::make_view<double, 3>( node_grad_field );
+std::vector<CSPolygon> ConservativeMethod::get_polygons_nodedata( Mesh& mesh ) const {
+    std::vector<CSPolygon> cspolygons;
+    // cell vertex data -> polygons are (cell_centre, edge_centre, cell_vertex, edge_centre)
+    mesh::actions::build_edges( mesh, util::Config( "pole_edges", false ) );
+    const auto xy           = array::make_view<double, 2>( mesh.nodes().xy() );
+    const auto nodes_ll     = array::make_view<double, 2>( mesh.nodes().lonlat() );
+    auto edge_flags         = array::make_view<int, 1>( mesh.edges().flags() );
+    const auto& cell2edge   = mesh.cells().edge_connectivity();
+    const auto& edge2node   = mesh.edges().node_connectivity();
+    const auto& field_flags = array::make_view<int, 1>( mesh.cells().flags() );
 
-        /*      TODO would be nice but does not work with healpix!!
-		auto patch = [&field_flags]( idx_t e ) {
-        	using Topology = atlas::mesh::Nodes::Topology;
-        	return Topology::check( field_flags( e ), Topology::PATCH );
-    	};
-		auto is_pole_edge = [&edge_flags]( idx_t e ) { // does not work with H-grids
-        	using Topology = atlas::mesh::Nodes::Topology;
-			return Topology::check( edge_flags( e ), Topology::POLE );
-		};
+    // compute gradient estimate now
+    //Field node_grad_field   = Field( "node_grad", array::make_datatype<double>(), array::make_shape( 3 ) );
+    //		auto node_grad      = array::make_view<double, 3>( node_grad_field );
+
+    /*      TODO would be nice but does not work with healpix!!
+	auto patch = [&field_flags]( idx_t e ) {
+		using Topology = atlas::mesh::Nodes::Topology;
+		return Topology::check( field_flags( e ), Topology::PATCH );
+	};
+	auto is_pole_edge = [&edge_flags]( idx_t e ) { // does not work with H-grids
+		using Topology = atlas::mesh::Nodes::Topology;
+		return Topology::check( edge_flags( e ), Topology::POLE );
+	};
 */
-        auto xyz2ll = []( atlas::PointXYZ& p_xyz ) {
-            PointLonLat p_ll;
-            eckit::geometry::Sphere::convertCartesianToSpherical( 1., p_xyz, p_ll );
-            return p_ll;
-        };
+    auto xyz2ll = []( atlas::PointXYZ& p_xyz ) {
+        PointLonLat p_ll;
+        eckit::geometry::Sphere::convertCartesianToSpherical( 1., p_xyz, p_ll );
+        return p_ll;
+    };
 
-        for ( idx_t icell = 0; icell < mesh.cells().size(); ++icell ) {
-            // get cell centre
-            PointXYZ cell_mid   = PointXYZ{0., 0., 0.};
-            const idx_t n_edges = cell2edge.cols( icell );
-            for ( idx_t iedge = 0; iedge < n_edges; ++iedge ) {
-                idx_t edge              = cell2edge( icell, iedge );
-                idx_t node0             = edge2node( edge, 0 );
-                idx_t node1             = edge2node( edge, 1 );
-                const PointLonLat p0_ll = PointLonLat{nodes_ll( node0, 0 ), nodes_ll( node0, 1 )};
-                const PointLonLat p1_ll = PointLonLat{nodes_ll( node1, 0 ), nodes_ll( node1, 1 )};
-                PointXYZ p0, p1;
-                eckit::geometry::Sphere::convertSphericalToCartesian( 1., p0_ll, p0 );
-                eckit::geometry::Sphere::convertSphericalToCartesian( 1., p1_ll, p1 );
-                if ( PointXYZ::norm( p0 - p1 ) < 1e-14 ) {
+    for ( idx_t icell = 0; icell < mesh.cells().size(); ++icell ) {
+        // get cell centre
+        PointXYZ cell_mid   = PointXYZ{0., 0., 0.};
+        const idx_t n_edges = cell2edge.cols( icell );
+        for ( idx_t iedge = 0; iedge < n_edges; ++iedge ) {
+            idx_t edge              = cell2edge( icell, iedge );
+            idx_t node0             = edge2node( edge, 0 );
+            idx_t node1             = edge2node( edge, 1 );
+            const PointLonLat p0_ll = PointLonLat{nodes_ll( node0, 0 ), nodes_ll( node0, 1 )};
+            const PointLonLat p1_ll = PointLonLat{nodes_ll( node1, 0 ), nodes_ll( node1, 1 )};
+            PointXYZ p0, p1;
+            eckit::geometry::Sphere::convertSphericalToCartesian( 1., p0_ll, p0 );
+            eckit::geometry::Sphere::convertSphericalToCartesian( 1., p1_ll, p1 );
+            if ( PointXYZ::norm( p0 - p1 ) < 1e-14 ) {
+                continue;  // pole edge
+            }
+            cell_mid = cell_mid + p0;
+            cell_mid = cell_mid + p1;
+        }
+        cell_mid = PointXYZ::div( cell_mid, PointXYZ::norm( cell_mid ) );
+        PointLonLat cell_ll;
+        eckit::geometry::Sphere::convertCartesianToSpherical( 1., cell_mid, cell_ll );
+        // get CSPolygon for each valid edge
+        for ( idx_t iedge = 0; iedge < n_edges; ++iedge ) {
+            idx_t edge               = cell2edge( icell, iedge );
+            idx_t node0              = edge2node( edge, 0 );
+            idx_t node1              = edge2node( edge, 1 );
+            const PointLonLat pi0_ll = PointLonLat{nodes_ll( node0, 0 ), nodes_ll( node0, 1 )};
+            const PointLonLat pi1_ll = PointLonLat{nodes_ll( node1, 0 ), nodes_ll( node1, 1 )};
+            PointXYZ pi0, pi1;
+            eckit::geometry::Sphere::convertSphericalToCartesian( 1., pi0_ll, pi0 );
+            eckit::geometry::Sphere::convertSphericalToCartesian( 1., pi1_ll, pi1 );
+            PointXYZ iedge_mid = pi0 + pi1;
+            iedge_mid          = PointXYZ::div( iedge_mid, PointXYZ::norm( iedge_mid ) );
+            // get edge centre
+            if ( PointXYZ::norm( iedge_mid - pi0 ) < 1e-14 ) {
+                continue;  // skip this edge, it is a pole point
+            }
+            PointLonLat iedge_mid_ll = xyz2ll( iedge_mid );
+            PointXYZ third_point;
+            PointLonLat third_point_ll;
+            if ( util::ConvexSphericalPolygon::leftOf( pi0, cell_mid, iedge_mid, 1e-14 ) ) {
+                third_point    = pi0;
+                third_point_ll = pi0_ll;
+            }
+            else {
+                third_point    = pi1;
+                third_point_ll = pi1_ll;
+            }
+            // find the other valid edge touching pi0
+            PointXYZ jedge_mid;
+            for ( idx_t jedge = 0; jedge < n_edges; ++jedge ) {
+                idx_t edge               = cell2edge( icell, jedge );
+                idx_t j0                 = edge2node( edge, 0 );
+                idx_t j1                 = edge2node( edge, 1 );
+                const PointLonLat pj0_ll = PointLonLat{nodes_ll( j0, 0 ), nodes_ll( j0, 1 )};
+                const PointLonLat pj1_ll = PointLonLat{nodes_ll( j1, 0 ), nodes_ll( j1, 1 )};
+                PointXYZ pj0, pj1;
+                eckit::geometry::Sphere::convertSphericalToCartesian( 1., pj0_ll, pj0 );
+                eckit::geometry::Sphere::convertSphericalToCartesian( 1., pj1_ll, pj1 );
+                if ( PointXYZ::norm( pj0 - pj1 ) < 1e-14 ) {
                     continue;  // pole edge
                 }
-                cell_mid = cell_mid + p0;
-                cell_mid = cell_mid + p1;
+                if ( jedge != iedge &&
+                     ( PointXYZ::norm( third_point - pj0 ) < 1e-14 or PointXYZ::norm( third_point - pj1 ) < 1e-14 ) ) {
+                    jedge_mid = pj0 + pj1;
+                    jedge_mid = PointXYZ::div( jedge_mid, PointXYZ::norm( jedge_mid ) );
+                    break;
+                }
             }
-            cell_mid = PointXYZ::div( cell_mid, PointXYZ::norm( cell_mid ) );
-            PointLonLat cell_ll;
-            eckit::geometry::Sphere::convertCartesianToSpherical( 1., cell_mid, cell_ll );
-            // get CSPolygon for each valid edge
-            for ( idx_t iedge = 0; iedge < n_edges; ++iedge ) {
-                idx_t edge               = cell2edge( icell, iedge );
-                idx_t node0              = edge2node( edge, 0 );
-                idx_t node1              = edge2node( edge, 1 );
-                const PointLonLat pi0_ll = PointLonLat{nodes_ll( node0, 0 ), nodes_ll( node0, 1 )};
-                const PointLonLat pi1_ll = PointLonLat{nodes_ll( node1, 0 ), nodes_ll( node1, 1 )};
-                PointXYZ pi0, pi1;
-                eckit::geometry::Sphere::convertSphericalToCartesian( 1., pi0_ll, pi0 );
-                eckit::geometry::Sphere::convertSphericalToCartesian( 1., pi1_ll, pi1 );
-                PointXYZ iedge_mid = pi0 + pi1;
-                iedge_mid          = PointXYZ::div( iedge_mid, PointXYZ::norm( iedge_mid ) );
-                // get edge centre
-                if ( PointXYZ::norm( iedge_mid - pi0 ) < 1e-14 ) {
-                    continue;  // skip this edge, it is a pole point
-                }
-                PointLonLat iedge_mid_ll = xyz2ll( iedge_mid );
-                PointXYZ third_point;
-                PointLonLat third_point_ll;
-                if ( util::ConvexSphericalPolygon::leftOf( pi0, cell_mid, iedge_mid, 1e-14 ) ) {
-                    third_point    = pi0;
-                    third_point_ll = pi0_ll;
-                }
-                else {
-                    third_point    = pi1;
-                    third_point_ll = pi1_ll;
-                }
-                // find the other valid edge touching pi0
-                PointXYZ jedge_mid;
-                for ( idx_t jedge = 0; jedge < n_edges; ++jedge ) {
-                    idx_t edge               = cell2edge( icell, jedge );
-                    idx_t j0                 = edge2node( edge, 0 );
-                    idx_t j1                 = edge2node( edge, 1 );
-                    const PointLonLat pj0_ll = PointLonLat{nodes_ll( j0, 0 ), nodes_ll( j0, 1 )};
-                    const PointLonLat pj1_ll = PointLonLat{nodes_ll( j1, 0 ), nodes_ll( j1, 1 )};
-                    PointXYZ pj0, pj1;
-                    eckit::geometry::Sphere::convertSphericalToCartesian( 1., pj0_ll, pj0 );
-                    eckit::geometry::Sphere::convertSphericalToCartesian( 1., pj1_ll, pj1 );
-                    if ( PointXYZ::norm( pj0 - pj1 ) < 1e-14 ) {
-                        continue;  // pole edge
-                    }
-                    if ( jedge != iedge && ( PointXYZ::norm( third_point - pj0 ) < 1e-14 or
-                                             PointXYZ::norm( third_point - pj1 ) < 1e-14 ) ) {
-                        jedge_mid = pj0 + pj1;
-                        jedge_mid = PointXYZ::div( jedge_mid, PointXYZ::norm( jedge_mid ) );
-                        break;
-                    }
-                }
-                std::vector<PointLonLat> pts_ll( 4 );
-                pts_ll[0] = cell_ll;
-                pts_ll[1] = iedge_mid_ll;
-                pts_ll[2] = third_point_ll;
-                pts_ll[3] = xyz2ll( jedge_mid );
-                src_csp.emplace_back( CSPolygon( pts_ll ) );
-            }
+            std::vector<PointLonLat> pts_ll( 4 );
+            pts_ll[0] = cell_ll;
+            pts_ll[1] = iedge_mid_ll;
+            pts_ll[2] = third_point_ll;
+            pts_ll[3] = xyz2ll( jedge_mid );
+            cspolygons.emplace_back( CSPolygon( pts_ll ) );
         }
-        ( Log::info() << "Created " << src_csp.size() << " CSPolygons from " << mesh.cells().size() << " mesh cells\n" )
-            .flush();
     }
-    return src_csp;
+    ( Log::info() << "Created " << cspolygons.size() << " CSPolygons from " << mesh.cells().size() << " mesh cells\n" )
+        .flush();
+    return cspolygons;
 }
 
 void ConservativeMethod::do_setup( const Grid& src_grid, const Grid& tgt_grid ) {
@@ -241,25 +242,29 @@ void ConservativeMethod::do_setup( const Grid& src_grid, const Grid& tgt_grid ) 
     src_mesh_config.set( "include_pole", true );
     src_mesh_ = MeshGenerator( src_mesh_config ).generate( src_grid );
     tgt_mesh_ = MeshGenerator( tgt_grid.meshgenerator() ).generate( tgt_grid );
+
+    std::vector<CSPolygon> src_csp;
+    std::vector<CSPolygon> tgt_csp;
     if ( src_cell_data_ ) {
         functionspace::CellColumns src_fs( src_mesh_ );
         src_fs_ = src_fs;
+        src_csp = get_polygons_celldata( src_mesh_ );
     }
     else {
         functionspace::NodeColumns src_fs( src_mesh_ );
         src_fs_ = src_fs;
+        src_csp = get_polygons_nodedata( src_mesh_ );
     }
     if ( tgt_cell_data_ ) {
         functionspace::CellColumns tgt_fs( tgt_mesh_ );
         tgt_fs_ = tgt_fs;
+        tgt_csp = get_polygons_celldata( tgt_mesh_ );
     }
     else {
         functionspace::NodeColumns tgt_fs( tgt_mesh_ );
         tgt_fs_ = tgt_fs;
+        tgt_csp = get_polygons_nodedata( tgt_mesh_ );
     }
-
-    const auto& src_csp = get_polygons( src_mesh_, src_cell_data_ );
-    const auto& tgt_csp = get_polygons( tgt_mesh_, tgt_cell_data_ );
     do_setup_with_polygons( src_csp, tgt_csp );
 }
 
