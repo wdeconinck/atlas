@@ -288,24 +288,24 @@ void ConservativeMethod::do_setup( const Grid& src_grid, const Grid& tgt_grid ) 
         tgt_fs_ = tgt_fs;
         tgt_csp = get_polygons_nodedata( tgt_mesh_, false, src_csp2node, true, tgt_node2csp );
     }
-    do_setup_with_polygons( src_csp, tgt_csp );
+    intersect_polygons( src_csp, tgt_csp );
 }
 
 
-void ConservativeMethod::do_setup_with_polygons( const std::vector<CSPolygon>& src_csp,
-                                                 const std::vector<CSPolygon>& tgt_csp ) {
-    n_scells_ = src_csp.size();
-    n_tcells_ = tgt_csp.size();
+void ConservativeMethod::intersect_polygons( const std::vector<CSPolygon>& src_csp,
+                                             const std::vector<CSPolygon>& tgt_csp ) {
+    n_spoints_ = src_csp.size();
+    n_tpoints_ = tgt_csp.size();
 
-    src_centroids_.resize( n_scells_ );
-    tgt_centroids_.resize( n_tcells_ );
-    src_areas_.resize( n_scells_ );
-    tgt_areas_.resize( n_tcells_ );
+    src_points_.resize( n_spoints_ );
+    tgt_points_.resize( n_tpoints_ );
+    src_areas_.resize( n_spoints_ );
+    tgt_areas_.resize( n_tpoints_ );
     util::KDTree<idx_t> kdt_search;
-    kdt_search.reserve( n_tcells_ );
+    kdt_search.reserve( n_tpoints_ );
 
     double max_tgtcell_rad = 0.;
-    for ( idx_t jcell = 0; jcell < n_tcells_; ++jcell ) {
+    for ( idx_t jcell = 0; jcell < n_tpoints_; ++jcell ) {
         kdt_search.insert( tgt_csp[jcell].centroid(), jcell );
         max_tgtcell_rad = std::max( max_tgtcell_rad, tgt_csp[jcell].cell_radius() );
     }
@@ -313,15 +313,15 @@ void ConservativeMethod::do_setup_with_polygons( const std::vector<CSPolygon>& s
 
     size_t nonintersect        = 0;
     double src_area_notcovered = 0.;
-    iparam_.resize( n_scells_ );
+    iparam_.resize( n_spoints_ );
     eckit::Channel blackhole;
-    eckit::ProgressTimer progress( "Intersecting polygons ", n_scells_, " cell", double( 10 ),
-                                   n_scells_ > 50 ? Log::info() : blackhole );
-    for ( idx_t scell = 0; scell < n_scells_; ++scell, ++progress ) {
-        const auto& s_csp     = src_csp[scell];
-        src_centroids_[scell] = s_csp.centroid();
-        src_areas_[scell]     = s_csp.area();
-        double covered_area   = 0.;
+    eckit::ProgressTimer progress( "Intersecting polygons ", n_spoints_, " cell", double( 10 ),
+                                   n_spoints_ > 50 ? Log::info() : blackhole );
+    for ( idx_t scell = 0; scell < n_spoints_; ++scell, ++progress ) {
+        const auto& s_csp   = src_csp[scell];
+        src_points_[scell]  = s_csp.centroid();
+        src_areas_[scell]   = s_csp.area();
+        double covered_area = 0.;
         auto tgt_cells =
             kdt_search.closestPointsWithinRadius( s_csp.centroid(), s_csp.cell_radius() + max_tgtcell_rad );
         for ( idx_t ttcell = 0; ttcell < tgt_cells.size(); ++ttcell ) {
@@ -355,9 +355,9 @@ void ConservativeMethod::do_setup_with_polygons( const std::vector<CSPolygon>& s
     }
     Log::info() << "WARNING " << nonintersect << " source mesh polygons do NOT intersect any other polygon.\n";
     Log::info() << "WARNING " << src_area_notcovered << " area of source mesh NOT covered by target mesh.\n";
-    for ( idx_t tcell = 0; tcell < n_tcells_; ++tcell ) {
-        tgt_centroids_[tcell] = tgt_csp[tcell].centroid();
-        tgt_areas_[tcell]     = tgt_csp[tcell].area();
+    for ( idx_t tcell = 0; tcell < n_tpoints_; ++tcell ) {
+        tgt_points_[tcell] = tgt_csp[tcell].centroid();
+        tgt_areas_[tcell]  = tgt_csp[tcell].area();
     }
     mesh::actions::build_halo( src_mesh_, 0 );
     setup_1st_order_matrix();
@@ -371,14 +371,14 @@ void ConservativeMethod::setup_1st_order_matrix() {
     ATLAS_TRACE( "ConservativeMethod::setup: build cons-1 interpolant matrix" );
     Triplets triplets;
     size_t triplets_size = 0;
-    for ( idx_t scell = 0; scell < n_scells_; ++scell ) {
+    for ( idx_t scell = 0; scell < n_spoints_; ++scell ) {
         const auto& iparam = iparam_[scell];
         for ( idx_t icell = 0; icell < iparam.centroids.size(); ++icell ) {
             triplets_size++;
         }
     }
     triplets.reserve( triplets_size );
-    for ( idx_t scell = 0; scell < n_scells_; ++scell ) {
+    for ( idx_t scell = 0; scell < n_spoints_; ++scell ) {
         const auto& iparam = iparam_[scell];
         for ( idx_t icell = 0; icell < iparam.centroids.size(); ++icell ) {
             idx_t tcell = iparam.tcell_id[icell];
@@ -388,7 +388,7 @@ void ConservativeMethod::setup_1st_order_matrix() {
     std::sort( std::begin( triplets ), std::end( triplets ), []( const Triplet& t1, const Triplet& t2 ) {
         return ( t1.row() < t2.row() or ( t1.row() == t2.row() and ( t1.col() < t2.col() ) ) );
     } );
-    Matrix A( n_tcells_, n_scells_, triplets );
+    Matrix A( n_tpoints_, n_spoints_, triplets );
     matrix_shared_->swap( A );
 }
 
@@ -401,12 +401,12 @@ void ConservativeMethod::setup_2nd_order_matrix() {
     //const auto halo     = array::make_view<int, 1>( src_mesh_.cells().halo() );
     Triplets triplets;
     size_t triplets_size = 0;
-    for ( idx_t scell = 0; scell < n_scells_; ++scell ) {
+    for ( idx_t scell = 0; scell < n_spoints_; ++scell ) {
         const auto nb_cells = get_cell_neighbours( src_mesh_, scell );
         triplets_size += ( 2 * nb_cells.size() + 1 ) * iparam_[scell].centroids.size();
     }
     triplets.reserve( triplets_size );
-    for ( idx_t scell = 0; scell < n_scells_; ++scell ) {
+    for ( idx_t scell = 0; scell < n_spoints_; ++scell ) {
         const auto& iparam = iparam_[scell];
         if ( iparam.centroids.size() == 0 ) {
             Log::info() << " WARNING source cell " << scell << " not covered "
@@ -429,8 +429,8 @@ void ConservativeMethod::setup_2nd_order_matrix() {
             idx_t ncell  = nb_cells[nb_id];
             idx_t nncell = nb_cells[nnb_id];
             if ( ncell != scell && nncell != scell ) {
-                const auto& Cij1 = src_centroids_[ncell];
-                const auto& Cij2 = src_centroids_[nncell];
+                const auto& Cij1 = src_points_[ncell];
+                const auto& Cij2 = src_points_[nncell];
                 auto csp         = CSPolygon( {Cij1, Cij2, Ci} );
                 if ( csp.area() < std::numeric_limits<double>::epsilon() ) {
                     csp = CSPolygon( {Cij1, Ci, Cij2} );
@@ -475,7 +475,7 @@ void ConservativeMethod::setup_2nd_order_matrix() {
     std::sort( std::begin( triplets ), std::end( triplets ), []( const Triplet& t1, const Triplet& t2 ) {
         return ( t1.row() < t2.row() or ( t1.row() == t2.row() and t1.col() < t2.col() ) );
     } );
-    Matrix A( n_tcells_, n_scells_, triplets );
+    Matrix A( n_tpoints_, n_spoints_, triplets );
     matrix_shared_->swap( A );
 }
 
@@ -519,7 +519,7 @@ void ConservativeMethod::do_execute( const Field& src_field, Field& tgt_field ) 
                 //    continue;
                 //}
                 const auto& iparam       = iparam_[scell];
-                const PointXYZ& P        = src_centroids_[scell];
+                const PointXYZ& P        = src_points_[scell];
                 PointXYZ grad            = {0., 0., 0.};
                 PointXYZ src_barycenter  = {0., 0., 0.};
                 auto src_neighbour_cells = get_cell_neighbours( src_mesh_, scell );
@@ -528,8 +528,8 @@ void ConservativeMethod::do_execute( const Field& src_field, Field& tgt_field ) 
                     idx_t nnb_id    = ( nb_id != src_neighbour_cells.size() - 1 ) ? nb_id + 1 : 0;
                     idx_t ncell     = src_neighbour_cells[nb_id];
                     idx_t nncell    = src_neighbour_cells[nnb_id];
-                    const auto& Pn  = src_centroids_[ncell];
-                    const auto& Pnn = src_centroids_[nncell];
+                    const auto& Pn  = src_points_[ncell];
+                    const auto& Pnn = src_points_[nncell];
                     if ( ncell != scell && nncell != scell ) {
                         double val = 0.5 * ( src_vals( ncell ) + src_vals( nncell ) ) - src_vals( scell );
                         auto csp   = CSPolygon( {Pn, Pnn, P} );

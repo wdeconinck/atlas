@@ -46,7 +46,7 @@ public:
     void do_setup( const Grid& src_grid, const Grid& tgt_grid );
     void do_setup( const Grid& src_grid, const Grid& tgt_grid, const Cache& ) { ATLAS_NOTIMPLEMENTED; }
 
-    void do_setup_with_polygons( const PolygonArray& src_csp, const PolygonArray& tgt_scp );
+    void intersect_polygons( const PolygonArray& src_csp, const PolygonArray& tgt_scp );
 
     void do_execute( const Field& src_field, Field& tgt_field );
 
@@ -58,8 +58,8 @@ public:
     const FunctionSpace& target() const { return tgt_fs_; }
 
     inline const std::vector<InterpolationParameters>& iparam() const { return iparam_; }
-    inline const PointXYZ& src_centroid( size_t id ) const { return src_centroids_[id]; }
-    inline const PointXYZ& tgt_centroid( size_t id ) const { return tgt_centroids_[id]; }
+    inline const PointXYZ& src_centroid( size_t id ) const { return src_points_[id]; }
+    inline const PointXYZ& tgt_centroid( size_t id ) const { return tgt_points_[id]; }
     inline const double& src_area( size_t id ) const { return src_areas_[id]; }
     inline const double& tgt_area( size_t id ) const { return tgt_areas_[id]; }
     void set_order( int order ) {
@@ -99,11 +99,11 @@ protected:
     int normalise_intersections_;
     int order_;
     int fvtype_;
-    idx_t n_scells_;
-    idx_t n_tcells_;
+    idx_t n_spoints_;
+    idx_t n_tpoints_;
     bool matrix_free_;
-    std::vector<PointXYZ> src_centroids_;
-    std::vector<PointXYZ> tgt_centroids_;
+    std::vector<PointXYZ> src_points_;
+    std::vector<PointXYZ> tgt_points_;
     std::vector<double> src_areas_;
     std::vector<double> tgt_areas_;
     std::vector<InterpolationParameters> iparam_;
