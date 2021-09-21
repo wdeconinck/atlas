@@ -58,8 +58,8 @@ public:
     const FunctionSpace& target() const { return tgt_fs_; }
 
     inline const std::vector<InterpolationParameters>& iparam() const { return iparam_; }
-    inline const PointXYZ& src_centroid( size_t id ) const { return src_points_[id]; }
-    inline const PointXYZ& tgt_centroid( size_t id ) const { return tgt_points_[id]; }
+    inline const PointXYZ& src_points( size_t id ) const { return src_points_[id]; }
+    inline const PointXYZ& tgt_points( size_t id ) const { return tgt_points_[id]; }
     inline const double& src_area( size_t id ) const { return src_areas_[id]; }
     inline const double& tgt_area( size_t id ) const { return tgt_areas_[id]; }
     void set_order( int order ) {

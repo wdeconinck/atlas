@@ -99,7 +99,7 @@ void compute_field_errors( const FieldArray& src_vals, const FieldArray& tgt_val
     double err_max = 0.;
     for ( idx_t tcell = 0; tcell < tgt_vals.size(); ++tcell ) {
         global_cons_err -= tgt_vals( tcell ) * consMethod.tgt_area( tcell );
-        auto p = consMethod.tgt_centroid( tcell );
+        auto p = consMethod.tgt_points( tcell );
         PointLonLat pll;
         eckit::geometry::Sphere::convertCartesianToSpherical( 1., p, pll );
         double err_l = std::abs( tgt_vals( tcell ) - func( pll ) );
@@ -150,7 +150,7 @@ void do_remapping_test( Grid src_grid, Grid tgt_grid, double func( const PointLo
 
     if ( consMethod.src_cell_data() ) {
         for ( idx_t scell = 0; scell < src_vals.size(); ++scell ) {
-            auto p = consMethod.src_centroid( scell );
+            auto p = consMethod.src_points( scell );
             PointLonLat pll;
             eckit::geometry::Sphere::convertCartesianToSpherical( 1., p, pll );
             src_vals( scell ) = func( pll );

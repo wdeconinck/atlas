@@ -289,23 +289,34 @@ void ConservativeMethod::do_setup( const Grid& src_grid, const Grid& tgt_grid ) 
         tgt_csp = get_polygons_nodedata( tgt_mesh_, false, src_csp2node, true, tgt_node2csp );
     }
     intersect_polygons( src_csp, tgt_csp );
+
+    n_spoints_ = ( src_cell_data_ ? src_mesh_.cells().size() : src_mesh_.nodes().size() );
+    n_tpoints_ = ( tgt_cell_data_ ? tgt_mesh_.cells().size() : tgt_mesh_.nodes().size() );
+    src_points_.resize( n_spoints_ );
+    tgt_points_.resize( n_tpoints_ );
+    src_areas_.resize( n_spoints_ );
+    tgt_areas_.resize( n_tpoints_ );
+    for ( idx_t spt = 0; spt < n_spoints_; ++spt ) {
+        src_points_[spt] = src_csp[spt].centroid();
+        src_areas_[spt]  = src_csp[spt].area();
+    }
+    for ( idx_t tpt = 0; tpt < n_tpoints_; ++tpt ) {
+        tgt_points_[tpt] = tgt_csp[tpt].centroid();
+        tgt_areas_[tpt]  = tgt_csp[tpt].area();
+    }
+    mesh::actions::build_halo( src_mesh_, 0 );
+    setup_1st_order_matrix();
+    setup_2nd_order_matrix();
 }
 
 
 void ConservativeMethod::intersect_polygons( const std::vector<CSPolygon>& src_csp,
                                              const std::vector<CSPolygon>& tgt_csp ) {
-    n_spoints_ = src_csp.size();
-    n_tpoints_ = tgt_csp.size();
-
-    src_points_.resize( n_spoints_ );
-    tgt_points_.resize( n_tpoints_ );
-    src_areas_.resize( n_spoints_ );
-    tgt_areas_.resize( n_tpoints_ );
     util::KDTree<idx_t> kdt_search;
-    kdt_search.reserve( n_tpoints_ );
+    kdt_search.reserve( tgt_csp.size() );
 
     double max_tgtcell_rad = 0.;
-    for ( idx_t jcell = 0; jcell < n_tpoints_; ++jcell ) {
+    for ( idx_t jcell = 0; jcell < tgt_csp.size(); ++jcell ) {
         kdt_search.insert( tgt_csp[jcell].centroid(), jcell );
         max_tgtcell_rad = std::max( max_tgtcell_rad, tgt_csp[jcell].cell_radius() );
     }
@@ -313,14 +324,12 @@ void ConservativeMethod::intersect_polygons( const std::vector<CSPolygon>& src_c
 
     size_t nonintersect        = 0;
     double src_area_notcovered = 0.;
-    iparam_.resize( n_spoints_ );
+    iparam_.resize( src_csp.size() );
     eckit::Channel blackhole;
-    eckit::ProgressTimer progress( "Intersecting polygons ", n_spoints_, " cell", double( 10 ),
-                                   n_spoints_ > 50 ? Log::info() : blackhole );
-    for ( idx_t scell = 0; scell < n_spoints_; ++scell, ++progress ) {
+    eckit::ProgressTimer progress( "Intersecting polygons ", src_csp.size(), " cell", double( 10 ),
+                                   src_csp.size() > 50 ? Log::info() : blackhole );
+    for ( idx_t scell = 0; scell < src_csp.size(); ++scell, ++progress ) {
         const auto& s_csp   = src_csp[scell];
-        src_points_[scell]  = s_csp.centroid();
-        src_areas_[scell]   = s_csp.area();
         double covered_area = 0.;
         auto tgt_cells =
             kdt_search.closestPointsWithinRadius( s_csp.centroid(), s_csp.cell_radius() + max_tgtcell_rad );
@@ -355,13 +364,6 @@ void ConservativeMethod::intersect_polygons( const std::vector<CSPolygon>& src_c
     }
     Log::info() << "WARNING " << nonintersect << " source mesh polygons do NOT intersect any other polygon.\n";
     Log::info() << "WARNING " << src_area_notcovered << " area of source mesh NOT covered by target mesh.\n";
-    for ( idx_t tcell = 0; tcell < n_tpoints_; ++tcell ) {
-        tgt_points_[tcell] = tgt_csp[tcell].centroid();
-        tgt_areas_[tcell]  = tgt_csp[tcell].area();
-    }
-    mesh::actions::build_halo( src_mesh_, 0 );
-    setup_1st_order_matrix();
-    setup_2nd_order_matrix();
 }
 
 void ConservativeMethod::setup_1st_order_matrix() {
