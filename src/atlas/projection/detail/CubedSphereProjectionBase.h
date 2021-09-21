@@ -13,8 +13,9 @@
 #include "eckit/config/Parametrisation.h"
 #include "eckit/utils/Hash.h"
 
-#include "atlas/library/config.h"
-#include "atlas/projection/detail/ProjectionImpl.h"
+namespace atlas {
+class CubedSphereTiles;
+}
 
 namespace atlas {
 namespace projection {
@@ -27,10 +28,7 @@ public:
 
     void hash( eckit::Hash& ) const;
 
-    idx_t tileFromXY( const double xy[] ) const;
-
-protected:
-    void enforceXYdomain( double xy[] ) const;
+    atlas::grid::CubedSphereTiles getCubedSphereTiles() const { return tiles_; };
 
 protected:
     // projection and inverse projection
@@ -38,11 +36,10 @@ protected:
     void lonlat2xy_pre( double crd[], idx_t& t, double xyz[] ) const;
 
     void xy2alphabetat( const double xy[], idx_t& t, double ab[] ) const;
-    void alphabetat2xy( const idx_t& t, const double ab[], double xy[] ) const;
-
-    idx_t tileFromLonLat( const double crd[] ) const;
+    void alphabetat2xy( const idx_t t, const double ab[], double xy[] ) const;
 
 private:
+    atlas::grid::CubedSphereTiles tiles_;
     // Shift entire grid
     double shiftLon_;
     // Schmidt transform
