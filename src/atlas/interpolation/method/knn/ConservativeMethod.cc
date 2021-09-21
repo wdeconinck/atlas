@@ -267,6 +267,8 @@ void ConservativeMethod::do_setup( const Grid& src_grid, const Grid& tgt_grid ) 
     std::vector<CSPolygon> src_csp;
     std::vector<CSPolygon> tgt_csp;
     std::vector<idx_t> src_csp2node;
+    std::vector<idx_t> tgt_csp2node;
+    std::vector<std::vector<idx_t> > src_node2csp;
     std::vector<std::vector<idx_t> > tgt_node2csp;
     if ( src_cell_data_ ) {
         functionspace::CellColumns src_fs( src_mesh_ );
@@ -276,7 +278,7 @@ void ConservativeMethod::do_setup( const Grid& src_grid, const Grid& tgt_grid ) 
     else {
         functionspace::NodeColumns src_fs( src_mesh_ );
         src_fs_ = src_fs;
-        src_csp = get_polygons_nodedata( src_mesh_, true, src_csp2node, false, tgt_node2csp );
+        src_csp = get_polygons_nodedata( src_mesh_, true, src_csp2node, true, src_node2csp );
     }
     if ( tgt_cell_data_ ) {
         functionspace::CellColumns tgt_fs( tgt_mesh_ );
@@ -286,7 +288,7 @@ void ConservativeMethod::do_setup( const Grid& src_grid, const Grid& tgt_grid ) 
     else {
         functionspace::NodeColumns tgt_fs( tgt_mesh_ );
         tgt_fs_ = tgt_fs;
-        tgt_csp = get_polygons_nodedata( tgt_mesh_, false, src_csp2node, true, tgt_node2csp );
+        tgt_csp = get_polygons_nodedata( tgt_mesh_, false, tgt_csp2node, true, tgt_node2csp );
     }
     intersect_polygons( src_csp, tgt_csp );
 
@@ -296,13 +298,39 @@ void ConservativeMethod::do_setup( const Grid& src_grid, const Grid& tgt_grid ) 
     tgt_points_.resize( n_tpoints_ );
     src_areas_.resize( n_spoints_ );
     tgt_areas_.resize( n_tpoints_ );
-    for ( idx_t spt = 0; spt < n_spoints_; ++spt ) {
-        src_points_[spt] = src_csp[spt].centroid();
-        src_areas_[spt]  = src_csp[spt].area();
+    if ( src_cell_data_ ) {
+        for ( idx_t spt = 0; spt < n_spoints_; ++spt ) {
+            src_points_[spt] = src_csp[spt].centroid();
+            src_areas_[spt]  = src_csp[spt].area();
+        }
     }
-    for ( idx_t tpt = 0; tpt < n_tpoints_; ++tpt ) {
-        tgt_points_[tpt] = tgt_csp[tpt].centroid();
-        tgt_areas_[tpt]  = tgt_csp[tpt].area();
+    else {
+        const auto lonlat = array::make_view<double, 2>( src_mesh_.nodes().lonlat() );
+        for ( idx_t spt = 0; spt < n_spoints_; ++spt ) {
+            auto p = PointLonLat{lonlat( spt, 0 ), lonlat( spt, 1 )};
+            eckit::geometry::Sphere::convertSphericalToCartesian( 1., p, src_points_[spt] );
+            src_areas_[spt] = 0.;
+            for ( idx_t subcell = 0; subcell < src_node2csp[spt].size(); ++subcell ) {
+                src_areas_[spt] += src_csp[spt].area();
+            }
+        }
+    }
+    if ( tgt_cell_data_ ) {
+        for ( idx_t spt = 0; spt < n_tpoints_; ++spt ) {
+            tgt_points_[spt] = tgt_csp[spt].centroid();
+            tgt_areas_[spt]  = tgt_csp[spt].area();
+        }
+    }
+    else {
+        const auto lonlat = array::make_view<double, 2>( tgt_mesh_.nodes().lonlat() );
+        for ( idx_t spt = 0; spt < n_tpoints_; ++spt ) {
+            auto p = PointLonLat{lonlat( spt, 0 ), lonlat( spt, 1 )};
+            eckit::geometry::Sphere::convertSphericalToCartesian( 1., p, tgt_points_[spt] );
+            tgt_areas_[spt] = 0.;
+            for ( idx_t subcell = 0; subcell < tgt_node2csp[spt].size(); ++subcell ) {
+                tgt_areas_[spt] += tgt_csp[spt].area();
+            }
+        }
     }
     mesh::actions::build_halo( src_mesh_, 0 );
     setup_1st_order_matrix();
