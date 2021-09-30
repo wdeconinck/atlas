@@ -75,6 +75,8 @@ public:
     Mesh tgt_mesh() const { return tgt_mesh_; }
     void setup_1st_order_matrix();
     void setup_2nd_order_matrix();
+    double geo_err_l1() const { return geo_err_l1_; }
+    double geo_err_linf() const { return geo_err_linf_; }
 
 private:
     template <class TargetCellsIDs>
@@ -106,7 +108,9 @@ protected:
     std::vector<PointXYZ> tgt_points_;
     std::vector<double> src_areas_;
     std::vector<double> tgt_areas_;
-    std::vector<InterpolationParameters> iparam_;
+    std::vector<InterpolationParameters> iparam_;  // TODO: remove
+    double geo_err_l1_;                            // error in polygon intersections
+    double geo_err_linf_;                          // error in polygon intersections
 };
 
 

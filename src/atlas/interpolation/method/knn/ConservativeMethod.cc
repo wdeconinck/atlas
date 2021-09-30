@@ -95,7 +95,7 @@ std::vector<idx_t> ConservativeMethod::get_cell_neighbours( Mesh& mesh, idx_t ce
     return nbr_cells;
 }
 
-// cell centred data -> polygons are mesh elements
+// cell-centred data -> polygons are mesh cells
 std::vector<CSPolygon> ConservativeMethod::get_polygons_celldata( Mesh& mesh ) const {
     std::vector<CSPolygon> cspolygons;
     const idx_t n_cells = mesh.cells().size();
@@ -116,7 +116,9 @@ std::vector<CSPolygon> ConservativeMethod::get_polygons_celldata( Mesh& mesh ) c
     return cspolygons;
 }
 
-// cell vertex data -> polygons are (cell_centre, edge_centre, cell_vertex, edge_centre)
+// cell-vertex data -> polygons are subcells of mesh cells created as
+// 	 (cell_centre, edge_centre, cell_vertex, edge_centre)
+// additionally, subcell-to-node and node-to-subcells mapping are computed
 std::vector<CSPolygon> ConservativeMethod::get_polygons_nodedata( Mesh& mesh, bool compute_csp2node,
                                                                   std::vector<idx_t>& csp2node, bool compute_node2csp,
                                                                   std::vector<std::vector<idx_t> >& node2csp ) const {
@@ -247,7 +249,8 @@ std::vector<CSPolygon> ConservativeMethod::get_polygons_nodedata( Mesh& mesh, bo
             cspol_id++;
         }
     }
-    ( Log::info() << "Created " << cspolygons.size() << " CSPolygons from " << mesh.cells().size() << " mesh cells\n" )
+    ( Log::info() << "ConservativeMethod::get_polygons_nodedata : Created " << cspolygons.size() << " CSPolygons from "
+                  << mesh.cells().size() << " mesh cells\n" )
         .flush();
     return cspolygons;
 }
@@ -351,6 +354,7 @@ void ConservativeMethod::intersect_polygons( const std::vector<CSPolygon>& src_c
     kdt_search.build();
 
     size_t nonintersect        = 0;
+    size_t n_icsp              = 0;
     double src_area_notcovered = 0.;
     iparam_.resize( src_csp.size() );
     eckit::Channel blackhole;
@@ -389,9 +393,29 @@ void ConservativeMethod::intersect_polygons( const std::vector<CSPolygon>& src_c
             dump_intersection( src_csp[scell], tgt_csp, tgt_cells );
             ATLAS_ASSERT( false );
         }
+        n_icsp += iparam_[scell].weights.size();
     }
-    Log::info() << "WARNING " << nonintersect << " source mesh polygons do NOT intersect any other polygon.\n";
-    Log::info() << "WARNING " << src_area_notcovered << " area of source mesh NOT covered by target mesh.\n";
+    Log::info() << "ConservativeMethod::intersect_polygons : size of src_grid, tgt_grid, supergrid: " << src_csp.size()
+                << " " << tgt_csp.size() << " " << n_icsp << "\n";
+    Log::info() << "ConservativeMethod::intersect_polygons : " << nonintersect
+                << " source mesh polygons do NOT intersect any other polygon.\n";
+    Log::info() << "ConservativeMethod::intersect_polygons : " << src_area_notcovered
+                << " area of source mesh NOT covered by target mesh.\n";
+    geo_err_l1_    = 0.;
+    geo_err_linf_  = 0.;
+    size_t no_iplg = 0;
+    for ( idx_t scell = 0; scell < src_csp.size(); ++scell ) {
+        double diff_cell = src_csp[scell].area();
+        for ( idx_t icell = 0; icell < iparam_[scell].weights.size(); ++icell ) {
+            diff_cell -= iparam_[scell].weights[icell];
+        }
+        no_iplg += iparam_[scell].weights.size();
+        geo_err_l1_ += std::abs( diff_cell );
+        geo_err_linf_ = std::max( geo_err_linf_, std::abs( diff_cell ) );
+    }
+    geo_err_l1_ *= 0.25 * M_1_PI;
+    Log::info() << "ConservativeMethod::intersect_polygons : cons err in polygon intersect  : (L1) " << geo_err_l1_
+                << " (Lmax) " << geo_err_linf_ << "\n";
 }
 
 void ConservativeMethod::setup_1st_order_matrix() {
