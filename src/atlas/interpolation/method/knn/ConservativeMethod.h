@@ -89,7 +89,7 @@ private:
     std::vector<CSPolygon> get_polygons_celldata( Mesh& mesh ) const;
     std::vector<CSPolygon> get_polygons_nodedata( Mesh& mesh, bool compute_csp2node, std::vector<idx_t>& csp2node,
                                                   bool compute_node2csp,
-                                                  std::vector<std::vector<idx_t> >& node2csp ) const;
+                                                  std::vector<std::vector<idx_t>>& node2csp ) const;
 
 protected:
     bool src_cell_data_;
@@ -111,6 +111,10 @@ protected:
     std::vector<InterpolationParameters> iparam_;  // TODO: remove
     double geo_err_l1_;                            // error in polygon intersections
     double geo_err_linf_;                          // error in polygon intersections
+    std::vector<idx_t> src_csp2node_;
+    std::vector<idx_t> tgt_csp2node_;
+    std::vector<std::vector<idx_t>> src_node2csp_;
+    std::vector<std::vector<idx_t>> tgt_node2csp_;
 };
 
 

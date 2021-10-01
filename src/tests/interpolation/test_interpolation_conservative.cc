@@ -59,8 +59,6 @@ void compute_geom_errors( const FieldArray& src_vals, const FieldArray& tgt_vals
     for ( idx_t tcell = 0; tcell < tgt_vals.size(); ++tcell ) {
         tgt_sum += consMethod.tgt_area( tcell );
     }
-    Log::info() << "    src_grid area     : " << src_sum * 0.25 * M_1_PI << "\n";
-    Log::info() << "    tgt_grid area     : " << tgt_sum * 0.25 * M_1_PI << "\n";
     outfile << std::setw( 10 ) << std::abs( src_sum - tgt_sum ) * 0.25 * M_1_PI;
     Log::info() << "    cons err in polygon create     : " << std::abs( src_sum - tgt_sum ) * 0.25 * M_1_PI << "\n";
     outfile << std::setw( 10 ) << std::abs( src_sum - tgt_sum ) * 0.25 * M_1_PI;
@@ -106,7 +104,7 @@ void do_remapping_test( Grid src_grid, Grid tgt_grid, double func( const PointLo
     config.set( "matrix_free", false );
     config.set( "normalise_intersections", 1 );
     config.set( "triangulate", false );
-    config.set( "src_cell_data", false );  // data stored in cell centres
+    config.set( "src_cell_data", true );
     config.set( "tgt_cell_data", true );
 
     outfile << std::setw( 10 ) << src_grid.name() << std::setw( 10 ) << tgt_grid.name();

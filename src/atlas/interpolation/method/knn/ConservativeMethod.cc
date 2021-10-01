@@ -95,7 +95,7 @@ std::vector<idx_t> ConservativeMethod::get_cell_neighbours( Mesh& mesh, idx_t ce
     return nbr_cells;
 }
 
-// cell-centred data -> polygons are mesh cells
+// Create polygons for cell-centred data. Here, the polygons are mesh cells
 std::vector<CSPolygon> ConservativeMethod::get_polygons_celldata( Mesh& mesh ) const {
     std::vector<CSPolygon> cspolygons;
     const idx_t n_cells = mesh.cells().size();
@@ -116,7 +116,7 @@ std::vector<CSPolygon> ConservativeMethod::get_polygons_celldata( Mesh& mesh ) c
     return cspolygons;
 }
 
-// cell-vertex data -> polygons are subcells of mesh cells created as
+// Create polygons for cell-vertex data. Here, the polygons are subcells of mesh cells created as
 // 	 (cell_centre, edge_centre, cell_vertex, edge_centre)
 // additionally, subcell-to-node and node-to-subcells mapping are computed
 std::vector<CSPolygon> ConservativeMethod::get_polygons_nodedata( Mesh& mesh, bool compute_csp2node,
@@ -269,10 +269,6 @@ void ConservativeMethod::do_setup( const Grid& src_grid, const Grid& tgt_grid ) 
 
     std::vector<CSPolygon> src_csp;
     std::vector<CSPolygon> tgt_csp;
-    std::vector<idx_t> src_csp2node;
-    std::vector<idx_t> tgt_csp2node;
-    std::vector<std::vector<idx_t> > src_node2csp;
-    std::vector<std::vector<idx_t> > tgt_node2csp;
     if ( src_cell_data_ ) {
         functionspace::CellColumns src_fs( src_mesh_ );
         src_fs_ = src_fs;
@@ -281,7 +277,7 @@ void ConservativeMethod::do_setup( const Grid& src_grid, const Grid& tgt_grid ) 
     else {
         functionspace::NodeColumns src_fs( src_mesh_ );
         src_fs_ = src_fs;
-        src_csp = get_polygons_nodedata( src_mesh_, true, src_csp2node, true, src_node2csp );
+        src_csp = get_polygons_nodedata( src_mesh_, true, src_csp2node_, true, src_node2csp_ );
     }
     if ( tgt_cell_data_ ) {
         functionspace::CellColumns tgt_fs( tgt_mesh_ );
@@ -291,7 +287,7 @@ void ConservativeMethod::do_setup( const Grid& src_grid, const Grid& tgt_grid ) 
     else {
         functionspace::NodeColumns tgt_fs( tgt_mesh_ );
         tgt_fs_ = tgt_fs;
-        tgt_csp = get_polygons_nodedata( tgt_mesh_, false, tgt_csp2node, true, tgt_node2csp );
+        tgt_csp = get_polygons_nodedata( tgt_mesh_, false, tgt_csp2node_, true, tgt_node2csp_ );
     }
     intersect_polygons( src_csp, tgt_csp );
 
@@ -313,7 +309,7 @@ void ConservativeMethod::do_setup( const Grid& src_grid, const Grid& tgt_grid ) 
             auto p = PointLonLat{lonlat( spt, 0 ), lonlat( spt, 1 )};
             eckit::geometry::Sphere::convertSphericalToCartesian( 1., p, src_points_[spt] );
             src_areas_[spt] = 0.;
-            for ( idx_t subcell = 0; subcell < src_node2csp[spt].size(); ++subcell ) {
+            for ( idx_t subcell = 0; subcell < src_node2csp_[spt].size(); ++subcell ) {
                 src_areas_[spt] += src_csp[spt].area();
             }
         }
@@ -330,7 +326,7 @@ void ConservativeMethod::do_setup( const Grid& src_grid, const Grid& tgt_grid ) 
             auto p = PointLonLat{lonlat( spt, 0 ), lonlat( spt, 1 )};
             eckit::geometry::Sphere::convertSphericalToCartesian( 1., p, tgt_points_[spt] );
             tgt_areas_[spt] = 0.;
-            for ( idx_t subcell = 0; subcell < tgt_node2csp[spt].size(); ++subcell ) {
+            for ( idx_t subcell = 0; subcell < tgt_node2csp_[spt].size(); ++subcell ) {
                 tgt_areas_[spt] += tgt_csp[spt].area();
             }
         }
@@ -425,18 +421,39 @@ void ConservativeMethod::setup_1st_order_matrix() {
     ATLAS_TRACE( "ConservativeMethod::setup: build cons-1 interpolant matrix" );
     Triplets triplets;
     size_t triplets_size = 0;
-    for ( idx_t scell = 0; scell < n_spoints_; ++scell ) {
-        const auto& iparam = iparam_[scell];
-        for ( idx_t icell = 0; icell < iparam.centroids.size(); ++icell ) {
-            triplets_size++;
+    if ( src_cell_data_ ) {
+        for ( idx_t scell = 0; scell < n_spoints_; ++scell ) {
+            const auto& iparam = iparam_[scell];
+            for ( idx_t icell = 0; icell < iparam.centroids.size(); ++icell ) {
+                triplets_size++;
+            }
+        }
+        triplets.reserve( triplets_size );
+        for ( idx_t scell = 0; scell < n_spoints_; ++scell ) {
+            const auto& iparam = iparam_[scell];
+            for ( idx_t icell = 0; icell < iparam.centroids.size(); ++icell ) {
+                idx_t tcell = iparam.tcell_id[icell];
+                triplets.emplace_back( tcell, scell, iparam.sweights[icell] );
+            }
         }
     }
-    triplets.reserve( triplets_size );
-    for ( idx_t scell = 0; scell < n_spoints_; ++scell ) {
-        const auto& iparam = iparam_[scell];
-        for ( idx_t icell = 0; icell < iparam.centroids.size(); ++icell ) {
-            idx_t tcell = iparam.tcell_id[icell];
-            triplets.emplace_back( tcell, scell, iparam.sweights[icell] );
+    else {
+        for ( idx_t snode = 0; snode < n_spoints_; ++snode ) {
+            for ( idx_t isubcell = 0; isubcell < src_node2csp_[snode].size(); ++isubcell ) {
+                idx_t subcell = src_node2csp_[snode][isubcell];
+                triplets_size += iparam_[subcell].sweights.size();
+            }
+        }
+        triplets.reserve( triplets_size );
+        for ( idx_t snode = 0; snode < n_spoints_; ++snode ) {
+            for ( idx_t isubcell = 0; isubcell < src_node2csp_[snode].size(); ++isubcell ) {
+                const idx_t subcell = src_node2csp_[snode][isubcell];
+                const auto& iparam  = iparam_[subcell];
+                for ( idx_t icell = 0; icell < iparam.centroids.size(); ++icell ) {
+                    idx_t tcell = iparam.tcell_id[icell];
+                    triplets.emplace_back( tcell, snode, iparam.sweights[icell] );
+                }
+            }
         }
     }
     std::sort( std::begin( triplets ), std::end( triplets ), []( const Triplet& t1, const Triplet& t2 ) {
