@@ -119,16 +119,13 @@ std::vector<CSPolygon> ConservativeMethod::get_polygons_celldata( Mesh& mesh ) c
 // Create polygons for cell-vertex data. Here, the polygons are subcells of mesh cells created as
 // 	 (cell_centre, edge_centre, cell_vertex, edge_centre)
 // additionally, subcell-to-node and node-to-subcells mapping are computed
-std::vector<CSPolygon> ConservativeMethod::get_polygons_nodedata( Mesh& mesh, bool compute_csp2node,
-                                                                  std::vector<idx_t>& csp2node, bool compute_node2csp,
+std::vector<CSPolygon> ConservativeMethod::get_polygons_nodedata( Mesh& mesh, std::vector<idx_t>& csp2node,
                                                                   std::vector<std::vector<idx_t> >& node2csp ) const {
     mesh::actions::build_edges( mesh, util::Config( "pole_edges", false ) );
     std::vector<CSPolygon> cspolygons;
     csp2node.clear();
     node2csp.clear();
-    if ( compute_node2csp ) {
-        node2csp.resize( mesh.nodes().size() );
-    }
+    node2csp.resize( mesh.nodes().size() );
     const auto xy           = array::make_view<double, 2>( mesh.nodes().xy() );
     const auto nodes_ll     = array::make_view<double, 2>( mesh.nodes().lonlat() );
     auto edge_flags         = array::make_view<int, 1>( mesh.edges().flags() );
@@ -202,22 +199,14 @@ std::vector<CSPolygon> ConservativeMethod::get_polygons_nodedata( Mesh& mesh, bo
             if ( util::ConvexSphericalPolygon::leftOf( pi0, cell_mid, iedge_mid, 1e-14 ) ) {
                 third_point    = pi0;
                 third_point_ll = pi0_ll;
-                if ( compute_csp2node ) {
-                    csp2node.emplace_back( node0 );
-                }
-                if ( compute_node2csp ) {
-                    node2csp[node0].emplace_back( cspol_id );
-                }
+                csp2node.emplace_back( node0 );
+                node2csp[node0].emplace_back( cspol_id );
             }
             else {
                 third_point    = pi1;
                 third_point_ll = pi1_ll;
-                if ( compute_csp2node ) {
-                    csp2node.emplace_back( node1 );
-                }
-                if ( compute_node2csp ) {
-                    node2csp[node1].emplace_back( cspol_id );
-                }
+                csp2node.emplace_back( node1 );
+                node2csp[node1].emplace_back( cspol_id );
             }
             // find the other valid edge touching pi0
             PointXYZ jedge_mid;
@@ -277,7 +266,7 @@ void ConservativeMethod::do_setup( const Grid& src_grid, const Grid& tgt_grid ) 
     else {
         functionspace::NodeColumns src_fs( src_mesh_ );
         src_fs_ = src_fs;
-        src_csp = get_polygons_nodedata( src_mesh_, true, src_csp2node_, true, src_node2csp_ );
+        src_csp = get_polygons_nodedata( src_mesh_, src_csp2node_, src_node2csp_ );
     }
     if ( tgt_cell_data_ ) {
         functionspace::CellColumns tgt_fs( tgt_mesh_ );
@@ -287,7 +276,7 @@ void ConservativeMethod::do_setup( const Grid& src_grid, const Grid& tgt_grid ) 
     else {
         functionspace::NodeColumns tgt_fs( tgt_mesh_ );
         tgt_fs_ = tgt_fs;
-        tgt_csp = get_polygons_nodedata( tgt_mesh_, true, tgt_csp2node_, true, tgt_node2csp_ );
+        tgt_csp = get_polygons_nodedata( tgt_mesh_, tgt_csp2node_, tgt_node2csp_ );
     }
     intersect_polygons( src_csp, tgt_csp );
 
