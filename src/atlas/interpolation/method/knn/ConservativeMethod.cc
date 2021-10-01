@@ -287,7 +287,7 @@ void ConservativeMethod::do_setup( const Grid& src_grid, const Grid& tgt_grid ) 
     else {
         functionspace::NodeColumns tgt_fs( tgt_mesh_ );
         tgt_fs_ = tgt_fs;
-        tgt_csp = get_polygons_nodedata( tgt_mesh_, false, tgt_csp2node_, true, tgt_node2csp_ );
+        tgt_csp = get_polygons_nodedata( tgt_mesh_, true, tgt_csp2node_, true, tgt_node2csp_ );
     }
     intersect_polygons( src_csp, tgt_csp );
 
@@ -309,8 +309,9 @@ void ConservativeMethod::do_setup( const Grid& src_grid, const Grid& tgt_grid ) 
             auto p = PointLonLat{lonlat( spt, 0 ), lonlat( spt, 1 )};
             eckit::geometry::Sphere::convertSphericalToCartesian( 1., p, src_points_[spt] );
             src_areas_[spt] = 0.;
-            for ( idx_t subcell = 0; subcell < src_node2csp_[spt].size(); ++subcell ) {
-                src_areas_[spt] += src_csp[spt].area();
+            for ( idx_t isubcell = 0; isubcell < src_node2csp_[spt].size(); ++isubcell ) {
+                idx_t subcell = src_node2csp_[spt][isubcell];
+                src_areas_[spt] += src_csp[subcell].area();
             }
         }
     }
@@ -326,8 +327,9 @@ void ConservativeMethod::do_setup( const Grid& src_grid, const Grid& tgt_grid ) 
             auto p = PointLonLat{lonlat( spt, 0 ), lonlat( spt, 1 )};
             eckit::geometry::Sphere::convertSphericalToCartesian( 1., p, tgt_points_[spt] );
             tgt_areas_[spt] = 0.;
-            for ( idx_t subcell = 0; subcell < tgt_node2csp_[spt].size(); ++subcell ) {
-                tgt_areas_[spt] += tgt_csp[spt].area();
+            for ( idx_t isubcell = 0; isubcell < tgt_node2csp_[spt].size(); ++isubcell ) {
+                idx_t subcell = tgt_node2csp_[spt][isubcell];
+                tgt_areas_[spt] += tgt_csp[subcell].area();
             }
         }
     }
@@ -421,20 +423,10 @@ void ConservativeMethod::setup_1st_order_matrix() {
     ATLAS_TRACE( "ConservativeMethod::setup: build cons-1 interpolant matrix" );
     Triplets triplets;
     size_t triplets_size = 0;
+    // determine the size of array of triplets used to define the sparse matrix
     if ( src_cell_data_ ) {
         for ( idx_t scell = 0; scell < n_spoints_; ++scell ) {
-            const auto& iparam = iparam_[scell];
-            for ( idx_t icell = 0; icell < iparam.centroids.size(); ++icell ) {
-                triplets_size++;
-            }
-        }
-        triplets.reserve( triplets_size );
-        for ( idx_t scell = 0; scell < n_spoints_; ++scell ) {
-            const auto& iparam = iparam_[scell];
-            for ( idx_t icell = 0; icell < iparam.centroids.size(); ++icell ) {
-                idx_t tcell = iparam.tcell_id[icell];
-                triplets.emplace_back( tcell, scell, iparam.sweights[icell] );
-            }
+            triplets_size += iparam_[scell].centroids.size();
         }
     }
     else {
@@ -444,7 +436,19 @@ void ConservativeMethod::setup_1st_order_matrix() {
                 triplets_size += iparam_[subcell].sweights.size();
             }
         }
-        triplets.reserve( triplets_size );
+    }
+    triplets.reserve( triplets_size );
+    // assemble triplets to define the sparse matrix
+    if ( src_cell_data_ && tgt_cell_data_ ) {
+        for ( idx_t scell = 0; scell < n_spoints_; ++scell ) {
+            const auto& iparam = iparam_[scell];
+            for ( idx_t icell = 0; icell < iparam.centroids.size(); ++icell ) {
+                idx_t tcell = iparam.tcell_id[icell];
+                triplets.emplace_back( tcell, scell, iparam.sweights[icell] );
+            }
+        }
+    }
+    else if ( not src_cell_data_ && tgt_cell_data_ ) {
         for ( idx_t snode = 0; snode < n_spoints_; ++snode ) {
             for ( idx_t isubcell = 0; isubcell < src_node2csp_[snode].size(); ++isubcell ) {
                 const idx_t subcell = src_node2csp_[snode][isubcell];
@@ -452,6 +456,29 @@ void ConservativeMethod::setup_1st_order_matrix() {
                 for ( idx_t icell = 0; icell < iparam.centroids.size(); ++icell ) {
                     idx_t tcell = iparam.tcell_id[icell];
                     triplets.emplace_back( tcell, snode, iparam.sweights[icell] );
+                }
+            }
+        }
+    }
+    else if ( src_cell_data_ && not tgt_cell_data_ ) {
+        for ( idx_t scell = 0; scell < n_spoints_; ++scell ) {
+            const auto& iparam = iparam_[scell];
+            for ( idx_t icell = 0; icell < iparam.centroids.size(); ++icell ) {
+                idx_t tcell = iparam.tcell_id[icell];
+                idx_t tnode = tgt_csp2node_[tcell];
+                triplets.emplace_back( tnode, scell, iparam.weights[icell] / tgt_areas_[tnode] );
+            }
+        }
+    }
+    else if ( not src_cell_data_ && not tgt_cell_data_ ) {
+        for ( idx_t snode = 0; snode < n_spoints_; ++snode ) {
+            for ( idx_t isubcell = 0; isubcell < src_node2csp_[snode].size(); ++isubcell ) {
+                const idx_t subcell = src_node2csp_[snode][isubcell];
+                const auto& iparam  = iparam_[subcell];
+                for ( idx_t icell = 0; icell < iparam.centroids.size(); ++icell ) {
+                    idx_t tcell = iparam.tcell_id[icell];
+                    idx_t tnode = tgt_csp2node_[tcell];
+                    triplets.emplace_back( tnode, snode, iparam.weights[icell] / tgt_areas_[tnode] );
                 }
             }
         }
