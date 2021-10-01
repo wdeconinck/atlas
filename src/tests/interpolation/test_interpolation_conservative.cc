@@ -104,7 +104,7 @@ void do_remapping_test( Grid src_grid, Grid tgt_grid, double func( const PointLo
     config.set( "matrix_free", false );
     config.set( "normalise_intersections", 1 );
     config.set( "triangulate", false );
-    config.set( "src_cell_data", false );
+    config.set( "src_cell_data", true );
     config.set( "tgt_cell_data", false );
 
     outfile << std::setw( 10 ) << src_grid.name() << std::setw( 10 ) << tgt_grid.name();
@@ -160,8 +160,6 @@ void do_remapping_test( Grid src_grid, Grid tgt_grid, double func( const PointLo
     auto diff_vals  = array::make_view<double, 1>( diff_field );
     compute_field_errors( src_vals, tgt_vals, diff_vals, consMethod, func, outfile );
     output::Gmsh( "cons-remap_difffield-1ord.msh", util::Config( "coordinates", "lonlat" ) ).write( diff_field );
-
-    return;
 
     consMethod.set_order( 2 );
     start = std::chrono::system_clock::now();
