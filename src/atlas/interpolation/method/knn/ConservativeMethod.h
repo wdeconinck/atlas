@@ -85,7 +85,9 @@ private:
                             const TargetCellsIDs& tgt_cells ) const;
 
     std::vector<idx_t> sort_cell_edges( Mesh& mesh, idx_t cell_id ) const;
+    std::vector<idx_t> sort_node_edges( Mesh& mesh, idx_t cell_id ) const;
     std::vector<idx_t> get_cell_neighbours( Mesh& mesh, idx_t jcell ) const;
+    std::vector<idx_t> get_node_neighbours( Mesh& mesh, idx_t jcell ) const;
     std::vector<CSPolygon> get_polygons_celldata( Mesh& mesh ) const;
     std::vector<CSPolygon> get_polygons_nodedata( Mesh& mesh, std::vector<idx_t>& csp2node,
                                                   std::vector<std::vector<idx_t>>& node2csp ) const;

@@ -42,7 +42,7 @@ ConservativeMethod::ConservativeMethod( const util::Config& config ) : Method( c
     config.get( "tgt_cell_data", tgt_cell_data_ = true );
 }
 
-// get counter-clockwise sorted edges of a cell
+// get cyclically sorted edges from a cell
 std::vector<idx_t> ConservativeMethod::sort_cell_edges( Mesh& mesh, idx_t cell_id ) const {
     const auto& cell2edge = mesh.cells().edge_connectivity();
     const auto& cell2node = mesh.cells().node_connectivity();
@@ -68,7 +68,43 @@ std::vector<idx_t> ConservativeMethod::sort_cell_edges( Mesh& mesh, idx_t cell_i
     return edges;
 }
 
-// get counter-clockwise sorted neighbours of a cell
+// get cyclically sorted edges from a node
+std::vector<idx_t> ConservativeMethod::sort_node_edges( Mesh& mesh, idx_t node_id ) const {
+    const auto& node2edge = mesh.nodes().edge_connectivity();
+    const auto& edge2cell = mesh.edges().cell_connectivity();
+    const auto& edge2node = mesh.edges().node_connectivity();
+    const int nedges      = node2edge.cols( node_id );
+    std::vector<idx_t> edges;
+    std::vector<std::array<idx_t, 3>> ecc;
+    edges.resize( nedges );
+    ecc.resize( nedges );
+    for ( int iedge = 0; iedge < nedges; ++iedge ) {
+        idx_t edge = node2edge( node_id, iedge );
+        ecc.emplace_back( std::array<idx_t, 3>( {edge2cell( edge, 0 ), edge2cell( edge, 1 ), edge} ) );
+    }
+    edges.emplace_back( ecc[0][2] );
+    idx_t prev = ecc[0][0];  // previous cell
+    idx_t find = ecc[0][1];  // search cell
+    do {
+        for ( int i = 1; i < nedges; ++i ) {
+            if ( ecc[i][0] == find and ecc[i][1] != prev ) {
+                edges.emplace_back( ecc[i][2] );
+                prev = find;
+                find = ecc[i][1];
+                break;
+            }
+            if ( ecc[i][1] == find and ecc[i][0] != prev ) {
+                edges.emplace_back( ecc[i][2] );
+                prev = find;
+                find = ecc[i][0];
+                break;
+            }
+        }
+    } while ( find != ecc[0][2] );
+    return edges;
+}
+
+// get cyclically sorted neighbours of a cell
 std::vector<idx_t> ConservativeMethod::get_cell_neighbours( Mesh& mesh, idx_t cell_id ) const {
     const auto& cell2edge  = mesh.cells().edge_connectivity();
     const auto& edge2cell  = mesh.edges().cell_connectivity();
@@ -93,6 +129,32 @@ std::vector<idx_t> ConservativeMethod::get_cell_neighbours( Mesh& mesh, idx_t ce
         }
     }
     return nbr_cells;
+}
+
+// get cyclically sorted node neighbours
+std::vector<idx_t> ConservativeMethod::get_node_neighbours( Mesh& mesh, idx_t node_id ) const {
+    const auto& node2edge  = mesh.nodes().edge_connectivity();
+    const auto& edge2cell  = mesh.edges().cell_connectivity();
+    const auto& edge2node  = mesh.edges().node_connectivity();
+    auto n2e_missval       = node2edge.missing_value();
+    const auto& edges_sort = sort_node_edges( mesh, node_id );
+    const int nedges       = node2edge.cols( node_id );
+    std::vector<idx_t> nbr_nodes;
+    nbr_nodes.resize( nedges );
+    for ( idx_t iedge = 0; iedge < nedges; ++iedge ) {
+        const idx_t edge  = edges_sort[iedge];
+        const idx_t n1_id = edge2node( edge, 0 );
+        if ( n1_id != n2e_missval && n1_id != node_id ) {
+            nbr_nodes.emplace_back( n1_id );
+            continue;
+        }
+        const idx_t n2_id = edge2cell( edge, 1 );
+        if ( n2_id != n2e_missval && n2_id != node_id ) {
+            nbr_nodes.emplace_back( n2_id );
+            continue;
+        }
+    }
+    return nbr_nodes;
 }
 
 // Create polygons for cell-centred data. Here, the polygons are mesh cells
@@ -120,8 +182,7 @@ std::vector<CSPolygon> ConservativeMethod::get_polygons_celldata( Mesh& mesh ) c
 // 	 (cell_centre, edge_centre, cell_vertex, edge_centre)
 // additionally, subcell-to-node and node-to-subcells mapping are computed
 std::vector<CSPolygon> ConservativeMethod::get_polygons_nodedata( Mesh& mesh, std::vector<idx_t>& csp2node,
-                                                                  std::vector<std::vector<idx_t> >& node2csp ) const {
-    mesh::actions::build_edges( mesh, util::Config( "pole_edges", false ) );
+                                                                  std::vector<std::vector<idx_t>>& node2csp ) const {
     std::vector<CSPolygon> cspolygons;
     csp2node.clear();
     node2csp.clear();
@@ -252,9 +313,13 @@ void ConservativeMethod::do_setup( const Grid& src_grid, const Grid& tgt_grid ) 
         ATLAS_NOTIMPLEMENTED;
     }
     auto src_mesh_config = src_grid.meshgenerator();
+    auto tgt_mesh_config = tgt_grid.meshgenerator();
     src_mesh_config.set( "include_pole", true );
+    tgt_mesh_config.set( "include_pole", true );
     src_mesh_ = MeshGenerator( src_mesh_config ).generate( src_grid );
-    tgt_mesh_ = MeshGenerator( tgt_grid.meshgenerator() ).generate( tgt_grid );
+    tgt_mesh_ = MeshGenerator( tgt_mesh_config ).generate( tgt_grid );
+    mesh::actions::build_edges( src_mesh_, util::Config( "pole_edges", false ) );
+    mesh::actions::build_edges( tgt_mesh_, util::Config( "pole_edges", false ) );
 
     std::vector<CSPolygon> src_csp;
     std::vector<CSPolygon> tgt_csp;
@@ -488,94 +553,198 @@ void ConservativeMethod::setup_2nd_order_matrix() {
     //const auto halo     = array::make_view<int, 1>( src_mesh_.cells().halo() );
     Triplets triplets;
     size_t triplets_size = 0;
-    for ( idx_t scell = 0; scell < n_spoints_; ++scell ) {
-        const auto nb_cells = get_cell_neighbours( src_mesh_, scell );
-        triplets_size += ( 2 * nb_cells.size() + 1 ) * iparam_[scell].centroids.size();
-    }
-    triplets.reserve( triplets_size );
-    for ( idx_t scell = 0; scell < n_spoints_; ++scell ) {
-        const auto& iparam = iparam_[scell];
-        if ( iparam.centroids.size() == 0 ) {
-            Log::info() << " WARNING source cell " << scell << " not covered "
-                        << "\n";
-            continue;
+    if ( src_cell_data_ ) {
+        for ( idx_t scell = 0; scell < n_spoints_; ++scell ) {
+            const auto nb_cells = get_cell_neighbours( src_mesh_, scell );
+            triplets_size += ( 2 * nb_cells.size() + 1 ) * iparam_[scell].centroids.size();
         }
-        PointXYZ Ci = {0., 0., 0.};
-        for ( idx_t icell = 0; icell < iparam.centroids.size(); ++icell ) {
-            Ci = Ci + PointXYZ::mul( iparam.centroids[icell], iparam.weights[icell] );
-        }
-        const double Ci_norm = PointXYZ::norm( Ci );
-        ATLAS_ASSERT( Ci_norm > 0. );
-        Ci                   = PointXYZ::div( Ci, Ci_norm );
-        double dual_area_inv = 0.;
-        const auto nb_cells  = get_cell_neighbours( src_mesh_, scell );
-        std::vector<PointXYZ> Rij;
-        Rij.resize( nb_cells.size() );
-        for ( idx_t nb_id = 0; nb_id < nb_cells.size(); ++nb_id ) {
-            idx_t nnb_id = ( nb_id != nb_cells.size() - 1 ) ? nb_id + 1 : 0;
-            idx_t ncell  = nb_cells[nb_id];
-            idx_t nncell = nb_cells[nnb_id];
-            if ( ncell != scell && nncell != scell ) {
-                const auto& Cij1 = src_points_[ncell];
-                const auto& Cij2 = src_points_[nncell];
-                auto csp         = CSPolygon( {Cij1, Cij2, Ci} );
-                if ( csp.area() < std::numeric_limits<double>::epsilon() ) {
-                    csp = CSPolygon( {Cij1, Ci, Cij2} );
-                }
-                dual_area_inv += csp.area();
-                if ( CSPolygon::leftOf( Cij2, Ci, Cij1, 1e-16, 0 ) ) {
-                    Rij[nb_id] = PointXYZ::cross( Cij2, Cij1 );
+        triplets.reserve( triplets_size );
+        for ( idx_t scell = 0; scell < n_spoints_; ++scell ) {
+            const auto nb_cells = get_cell_neighbours( src_mesh_, scell );
+            const auto& iparam  = iparam_[scell];
+            if ( iparam.centroids.size() == 0 ) {
+                Log::info() << " WARNING source cell " << scell << " not covered "
+                            << "\n";
+                continue;
+            }
+            PointXYZ Ci = {0., 0., 0.};
+            for ( idx_t icell = 0; icell < iparam.centroids.size(); ++icell ) {
+                Ci = Ci + PointXYZ::mul( iparam.centroids[icell], iparam.weights[icell] );
+            }
+            const double Ci_norm = PointXYZ::norm( Ci );
+            ATLAS_ASSERT( Ci_norm > 0. );
+            Ci                   = PointXYZ::div( Ci, Ci_norm );
+            double dual_area_inv = 0.;
+            std::vector<PointXYZ> Rij;
+            Rij.resize( nb_cells.size() );
+            for ( idx_t nb_id = 0; nb_id < nb_cells.size(); ++nb_id ) {
+                idx_t nnb_id = ( nb_id != nb_cells.size() - 1 ) ? nb_id + 1 : 0;
+                idx_t ncell  = nb_cells[nb_id];
+                idx_t nncell = nb_cells[nnb_id];
+                if ( ncell != scell && nncell != scell ) {
+                    const auto& Cij1 = src_points_[ncell];
+                    const auto& Cij2 = src_points_[nncell];
+                    auto csp         = CSPolygon( {Cij1, Cij2, Ci} );
+                    if ( csp.area() < std::numeric_limits<double>::epsilon() ) {
+                        csp = CSPolygon( {Cij1, Ci, Cij2} );
+                    }
+                    dual_area_inv += csp.area();
+                    if ( CSPolygon::leftOf( Cij2, Ci, Cij1, 1e-16, 0 ) ) {
+                        Rij[nb_id] = PointXYZ::cross( Cij2, Cij1 );
+                    }
+                    else {
+                        Rij[nb_id] = PointXYZ::cross( Cij1, Cij2 );
+                    }
                 }
                 else {
-                    Rij[nb_id] = PointXYZ::cross( Cij1, Cij2 );
+                    Rij[nb_id] = {0., 0., 0.};
+                }
+            }
+            dual_area_inv = ( dual_area_inv > 0. ) ? 1. / dual_area_inv : 1.;
+            std::vector<PointXYZ> Aik;
+            Aik.resize( iparam.centroids.size() );
+            for ( idx_t icell = 0; icell < iparam.centroids.size(); ++icell ) {
+                const PointXYZ& Cik   = iparam.centroids[icell];
+                const PointXYZ Cik_Ci = Cik - Ci;
+                Aik[icell]            = Cik_Ci - PointXYZ::mul( Ci, PointXYZ::dot( Ci, Cik_Ci ) );
+                Aik[icell]            = PointXYZ::mul( Aik[icell], iparam.sweights[icell] * dual_area_inv );
+            }
+            PointXYZ Rij_sum = {0., 0., 0.};
+            for ( idx_t nb_id = 0; nb_id < nb_cells.size(); ++nb_id ) {
+                Rij_sum = Rij_sum + Rij[nb_id];
+            }
+            if ( tgt_cell_data_ ) {
+                for ( idx_t icell = 0; icell < iparam.centroids.size(); ++icell ) {
+                    for ( idx_t nb_id = 0; nb_id < nb_cells.size(); ++nb_id ) {
+                        idx_t nnb_id = ( nb_id != nb_cells.size() - 1 ) ? nb_id + 1 : 0;
+                        idx_t ij1    = nb_cells[nb_id];
+                        idx_t ij2    = nb_cells[nnb_id];
+                        triplets.emplace_back( iparam.tcell_id[icell], ij1,
+                                               0.5 * PointXYZ::dot( Rij[nb_id], Aik[icell] ) );
+                        triplets.emplace_back( iparam.tcell_id[icell], ij2,
+                                               0.5 * PointXYZ::dot( Rij[nb_id], Aik[icell] ) );
+                    }
+                    triplets.emplace_back( iparam.tcell_id[icell], scell,
+                                           iparam.sweights[icell] - PointXYZ::dot( Rij_sum, Aik[icell] ) );
                 }
             }
             else {
-                Rij[nb_id] = {0., 0., 0.};
+                for ( idx_t icell = 0; icell < iparam.centroids.size(); ++icell ) {
+                    idx_t tcell                = iparam.tcell_id[icell];
+                    idx_t tnode                = tgt_csp2node_[tcell];
+                    const double csp2node_coef = iparam.weights[icell] / iparam.sweights[icell] / tgt_areas_[tnode];
+                    for ( idx_t nb_id = 0; nb_id < nb_cells.size(); ++nb_id ) {
+                        idx_t nnb_id = ( nb_id != nb_cells.size() - 1 ) ? nb_id + 1 : 0;
+                        idx_t ij1    = nb_cells[nb_id];
+                        idx_t ij2    = nb_cells[nnb_id];
+                        triplets.emplace_back( tnode, ij1,
+                                               ( 0.5 * PointXYZ::dot( Rij[nb_id], Aik[icell] ) ) * csp2node_coef );
+                        triplets.emplace_back( tnode, ij2,
+                                               ( 0.5 * PointXYZ::dot( Rij[nb_id], Aik[icell] ) ) * csp2node_coef );
+                    }
+                    triplets.emplace_back(
+                        tnode, scell,
+                        ( iparam.sweights[icell] - PointXYZ::dot( Rij_sum, Aik[icell] ) ) * csp2node_coef );
+                }
             }
         }
-        dual_area_inv = ( dual_area_inv > 0. ) ? 1. / dual_area_inv : 1.;
-        std::vector<PointXYZ> Aik;
-        Aik.resize( iparam.centroids.size() );
-        for ( idx_t icell = 0; icell < iparam.centroids.size(); ++icell ) {
-            const PointXYZ& Cik   = iparam.centroids[icell];
-            const PointXYZ Cik_Ci = Cik - Ci;
-            Aik[icell]            = Cik_Ci - PointXYZ::mul( Ci, PointXYZ::dot( Ci, Cik_Ci ) );
-            Aik[icell]            = PointXYZ::mul( Aik[icell], iparam.sweights[icell] * dual_area_inv );
+    }
+    else {  // if ( not src_cell_data_ )
+        for ( idx_t snode = 0; snode < n_spoints_; ++snode ) {
+            const auto nb_nodes = get_node_neighbours( src_mesh_, snode );
+            triplets_size += ( 2 * nb_nodes.size() + 1 ) * 4;
         }
-        PointXYZ Rij_sum = {0., 0., 0.};
-        for ( idx_t nb_id = 0; nb_id < nb_cells.size(); ++nb_id ) {
-            Rij_sum = Rij_sum + Rij[nb_id];
-        }
-        if ( tgt_cell_data_ ) {
-            for ( idx_t icell = 0; icell < iparam.centroids.size(); ++icell ) {
-                for ( idx_t nb_id = 0; nb_id < nb_cells.size(); ++nb_id ) {
-                    idx_t nnb_id = ( nb_id != nb_cells.size() - 1 ) ? nb_id + 1 : 0;
-                    idx_t ij1    = nb_cells[nb_id];
-                    idx_t ij2    = nb_cells[nnb_id];
-                    triplets.emplace_back( iparam.tcell_id[icell], ij1, 0.5 * PointXYZ::dot( Rij[nb_id], Aik[icell] ) );
-                    triplets.emplace_back( iparam.tcell_id[icell], ij2, 0.5 * PointXYZ::dot( Rij[nb_id], Aik[icell] ) );
+        triplets.reserve( triplets_size );
+        for ( idx_t snode = 0; snode < n_spoints_; ++snode ) {
+            const auto nb_nodes = get_node_neighbours( src_mesh_, snode );
+            for ( idx_t isubcell = 0; isubcell < src_node2csp_[snode].size(); ++isubcell ) {
+                idx_t subcell      = src_node2csp_[snode][isubcell];
+                const auto& iparam = iparam_[subcell];
+                if ( iparam.centroids.size() == 0 ) {
+                    Log::info() << " WARNING source subcell around node " << snode << " not covered "
+                                << "\n";
+                    continue;
                 }
-                triplets.emplace_back( iparam.tcell_id[icell], scell,
-                                       iparam.sweights[icell] - PointXYZ::dot( Rij_sum, Aik[icell] ) );
-            }
-        }
-        else {
-            for ( idx_t icell = 0; icell < iparam.centroids.size(); ++icell ) {
-                idx_t tcell                = iparam.tcell_id[icell];
-                idx_t tnode                = tgt_csp2node_[tcell];
-                const double csp2node_coef = iparam.weights[icell] / iparam.sweights[icell] / tgt_areas_[tnode];
-                for ( idx_t nb_id = 0; nb_id < nb_cells.size(); ++nb_id ) {
-                    idx_t nnb_id = ( nb_id != nb_cells.size() - 1 ) ? nb_id + 1 : 0;
-                    idx_t ij1    = nb_cells[nb_id];
-                    idx_t ij2    = nb_cells[nnb_id];
-                    triplets.emplace_back( tnode, ij1,
-                                           ( 0.5 * PointXYZ::dot( Rij[nb_id], Aik[icell] ) ) * csp2node_coef );
-                    triplets.emplace_back( tnode, ij2,
-                                           ( 0.5 * PointXYZ::dot( Rij[nb_id], Aik[icell] ) ) * csp2node_coef );
+                PointXYZ Ci = {0., 0., 0.};
+                for ( idx_t icell = 0; icell < iparam.centroids.size(); ++icell ) {
+                    Ci = Ci + PointXYZ::mul( iparam.centroids[icell], iparam.weights[icell] );
                 }
-                triplets.emplace_back(
-                    tnode, scell, ( iparam.sweights[icell] - PointXYZ::dot( Rij_sum, Aik[icell] ) ) * csp2node_coef );
+                const double Ci_norm = PointXYZ::norm( Ci );
+                ATLAS_ASSERT( Ci_norm > 0. );
+                Ci                   = PointXYZ::div( Ci, Ci_norm );
+                double dual_area_inv = 0.;
+                std::vector<PointXYZ> Rij;
+                Rij.resize( nb_nodes.size() );
+                for ( idx_t nb_id = 0; nb_id < nb_nodes.size(); ++nb_id ) {
+                    idx_t nnb_id = ( nb_id != nb_nodes.size() - 1 ) ? nb_id + 1 : 0;
+                    idx_t nnode  = nb_nodes[nb_id];
+                    idx_t nnnode = nb_nodes[nnb_id];
+                    if ( nnode != snode && nnnode != snode ) {
+                        const auto& Cij1 = src_points_[nnode];
+                        const auto& Cij2 = src_points_[nnnode];
+                        auto csp         = CSPolygon( {Cij1, Cij2, Ci} );
+                        if ( csp.area() < std::numeric_limits<double>::epsilon() ) {
+                            csp = CSPolygon( {Cij1, Ci, Cij2} );
+                        }
+                        dual_area_inv += csp.area();
+                        if ( CSPolygon::leftOf( Cij2, Ci, Cij1, 1e-16, 0 ) ) {
+                            Rij[nb_id] = PointXYZ::cross( Cij2, Cij1 );
+                        }
+                        else {
+                            Rij[nb_id] = PointXYZ::cross( Cij1, Cij2 );
+                        }
+                    }
+                    else {
+                        Rij[nb_id] = {0., 0., 0.};
+                    }
+                }
+                dual_area_inv = ( dual_area_inv > 0. ) ? 1. / dual_area_inv : 1.;
+                std::vector<PointXYZ> Aik;
+                Aik.resize( iparam.centroids.size() );
+                for ( idx_t icell = 0; icell < iparam.centroids.size(); ++icell ) {
+                    const PointXYZ& Cik   = iparam.centroids[icell];
+                    const PointXYZ Cik_Ci = Cik - Ci;
+                    Aik[icell]            = Cik_Ci - PointXYZ::mul( Ci, PointXYZ::dot( Ci, Cik_Ci ) );
+                    Aik[icell]            = PointXYZ::mul( Aik[icell], iparam.sweights[icell] * dual_area_inv );
+                }
+                PointXYZ Rij_sum = {0., 0., 0.};
+                for ( idx_t nb_id = 0; nb_id < nb_nodes.size(); ++nb_id ) {
+                    Rij_sum = Rij_sum + Rij[nb_id];
+                }
+                if ( tgt_cell_data_ ) {
+                    for ( idx_t icell = 0; icell < iparam.centroids.size(); ++icell ) {
+                        for ( idx_t nb_id = 0; nb_id < nb_nodes.size(); ++nb_id ) {
+                            idx_t nnb_id = ( nb_id != nb_nodes.size() - 1 ) ? nb_id + 1 : 0;
+                            idx_t ij1    = nb_nodes[nb_id];
+                            idx_t ij2    = nb_nodes[nnb_id];
+                            triplets.emplace_back( iparam.tcell_id[icell], ij1,
+                                                   0.5 * PointXYZ::dot( Rij[nb_id], Aik[icell] ) );
+                            triplets.emplace_back( iparam.tcell_id[icell], ij2,
+                                                   0.5 * PointXYZ::dot( Rij[nb_id], Aik[icell] ) );
+                        }
+                        triplets.emplace_back( iparam.tcell_id[icell], snode,
+                                               iparam.sweights[icell] - PointXYZ::dot( Rij_sum, Aik[icell] ) );
+                    }
+                }
+                else {
+                    for ( idx_t icell = 0; icell < iparam.centroids.size(); ++icell ) {
+                        idx_t tcell                = iparam.tcell_id[icell];
+                        idx_t tnode                = tgt_csp2node_[tcell];
+                        const double csp2node_coef = iparam.weights[icell] / iparam.sweights[icell] / tgt_areas_[tnode];
+                        for ( idx_t nb_id = 0; nb_id < nb_nodes.size(); ++nb_id ) {
+                            idx_t nnb_id = ( nb_id != nb_nodes.size() - 1 ) ? nb_id + 1 : 0;
+                            idx_t ij1    = nb_nodes[nb_id];
+                            idx_t ij2    = nb_nodes[nnb_id];
+                            triplets.emplace_back( tnode, ij1,
+                                                   ( 0.5 * PointXYZ::dot( Rij[nb_id], Aik[icell] ) ) * csp2node_coef );
+                            triplets.emplace_back( tnode, ij2,
+                                                   ( 0.5 * PointXYZ::dot( Rij[nb_id], Aik[icell] ) ) * csp2node_coef );
+                        }
+                        triplets.emplace_back(
+                            tnode, snode,
+                            ( iparam.sweights[icell] - PointXYZ::dot( Rij_sum, Aik[icell] ) ) * csp2node_coef );
+                    }
+                }
             }
         }
     }
