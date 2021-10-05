@@ -549,7 +549,6 @@ void ConservativeMethod::setup_2nd_order_matrix() {
         return;
     }
     ATLAS_TRACE( "ConservativeMethod::setup: build cons-2 interpolant matrix" );
-    mesh::actions::build_edges( src_mesh_, util::Config( "pole_edges", false ) );
     //const auto halo     = array::make_view<int, 1>( src_mesh_.cells().halo() );
     Triplets triplets;
     size_t triplets_size = 0;
