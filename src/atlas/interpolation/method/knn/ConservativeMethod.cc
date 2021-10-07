@@ -75,32 +75,42 @@ std::vector<idx_t> ConservativeMethod::sort_node_edges( Mesh& mesh, idx_t node_i
     const auto& edge2node = mesh.edges().node_connectivity();
     const int nedges      = node2edge.cols( node_id );
     std::vector<idx_t> edges;
-    std::vector<std::array<idx_t, 3>> ecc;
     edges.resize( nedges );
-    ecc.resize( nedges );
-    for ( int iedge = 0; iedge < nedges; ++iedge ) {
-        idx_t edge = node2edge( node_id, iedge );
-        ecc.emplace_back( std::array<idx_t, 3>( {edge2cell( edge, 0 ), edge2cell( edge, 1 ), edge} ) );
+    if ( nedges <= 2 ) {
+        for ( int i = 0; i < nedges; i++ ) {
+            edges[i] = node2edge.row( node_id )( i );
+        }
+        return edges;
     }
-    edges.emplace_back( ecc[0][2] );
-    idx_t prev = ecc[0][0];  // previous cell
-    idx_t find = ecc[0][1];  // search cell
-    do {
+    std::vector<std::array<idx_t, 3>> ecc;
+    ecc.resize( nedges );
+    idx_t count = 0;
+    for ( int iedge = 0; iedge < nedges; ++iedge ) {
+        edges[iedge] = -1;
+        idx_t edge   = node2edge( node_id, iedge );
+        ecc[count++] = std::array<idx_t, 3>( {edge2cell( edge, 0 ), edge2cell( edge, 1 ), edge} );
+    }
+    count          = 0;
+    edges[count++] = ecc[0][2];
+    idx_t prev     = ecc[0][0];  // previous cell
+    idx_t find     = ecc[0][1];  // search cell
+    idx_t ctrl     = 0;
+    for ( ; ctrl < nedges; ++ctrl ) {
         for ( int i = 1; i < nedges; ++i ) {
             if ( ecc[i][0] == find and ecc[i][1] != prev ) {
-                edges.emplace_back( ecc[i][2] );
-                prev = find;
-                find = ecc[i][1];
-                break;
+                edges[count++] = ecc[i][2];
+                prev           = find;
+                find           = ecc[i][1];
+                continue;
             }
             if ( ecc[i][1] == find and ecc[i][0] != prev ) {
-                edges.emplace_back( ecc[i][2] );
-                prev = find;
-                find = ecc[i][0];
-                break;
+                edges[count++] = ecc[i][2];
+                prev           = find;
+                find           = ecc[i][0];
+                continue;
             }
         }
-    } while ( find != ecc[0][2] );
+    }
     return edges;
 }
 
@@ -138,9 +148,11 @@ std::vector<idx_t> ConservativeMethod::get_node_neighbours( Mesh& mesh, idx_t no
     const auto& edge2node  = mesh.edges().node_connectivity();
     auto n2e_missval       = node2edge.missing_value();
     const auto& edges_sort = sort_node_edges( mesh, node_id );
-    const int nedges       = node2edge.cols( node_id );
+    //const auto edges_sort = node2edge.row( node_id );
+    const int nedges = node2edge.cols( node_id );
+    //const auto glb_idx     = array::make_view<gidx_t,1>( mesh.nodes().global_index() );
     std::vector<idx_t> nbr_nodes;
-    nbr_nodes.resize( nedges );
+    nbr_nodes.reserve( nedges );
     for ( idx_t iedge = 0; iedge < nedges; ++iedge ) {
         const idx_t edge  = edges_sort[iedge];
         const idx_t n1_id = edge2node( edge, 0 );
@@ -148,12 +160,18 @@ std::vector<idx_t> ConservativeMethod::get_node_neighbours( Mesh& mesh, idx_t no
             nbr_nodes.emplace_back( n1_id );
             continue;
         }
-        const idx_t n2_id = edge2cell( edge, 1 );
+        const idx_t n2_id = edge2node( edge, 1 );
         if ( n2_id != n2e_missval && n2_id != node_id ) {
             nbr_nodes.emplace_back( n2_id );
             continue;
         }
     }
+    ATLAS_ASSERT( nedges == nbr_nodes.size() );
+    //std::cout << "      node, nedges, edges_size, edges: " << glb_idx(node_id) << " " << nedges << " " << nbr_nodes.size() << " -- ";
+    //for ( int i = 0; i < nbr_nodes.size(); i++ ) {
+    //	std::cout << " " << glb_idx(nbr_nodes[i]);
+    //}
+    //std::cout << std::endl;
     return nbr_nodes;
 }
 
@@ -319,6 +337,9 @@ void ConservativeMethod::do_setup( const Grid& src_grid, const Grid& tgt_grid ) 
     src_mesh_ = MeshGenerator( src_mesh_config ).generate( src_grid );
     tgt_mesh_ = MeshGenerator( tgt_mesh_config ).generate( tgt_grid );
     mesh::actions::build_edges( src_mesh_, util::Config( "pole_edges", false ) );
+    if ( not src_cell_data_ ) {
+        mesh::actions::build_node_to_edge_connectivity( src_mesh_ );
+    }
     mesh::actions::build_edges( tgt_mesh_, util::Config( "pole_edges", false ) );
 
     std::vector<CSPolygon> src_csp;
@@ -651,11 +672,15 @@ void ConservativeMethod::setup_2nd_order_matrix() {
     else {  // if ( not src_cell_data_ )
         for ( idx_t snode = 0; snode < n_spoints_; ++snode ) {
             const auto nb_nodes = get_node_neighbours( src_mesh_, snode );
-            triplets_size += ( 2 * nb_nodes.size() + 1 ) * 4;
+            for ( idx_t isubcell = 0; isubcell < src_node2csp_[snode].size(); ++isubcell ) {
+                idx_t subcell = src_node2csp_[snode][isubcell];
+                triplets_size += ( 2 * nb_nodes.size() + 1 ) * iparam_[subcell].centroids.size();
+            }
         }
         triplets.reserve( triplets_size );
         for ( idx_t snode = 0; snode < n_spoints_; ++snode ) {
             const auto nb_nodes = get_node_neighbours( src_mesh_, snode );
+            const auto& Ni      = src_points_[snode];
             for ( idx_t isubcell = 0; isubcell < src_node2csp_[snode].size(); ++isubcell ) {
                 idx_t subcell      = src_node2csp_[snode][isubcell];
                 const auto& iparam = iparam_[subcell];
@@ -679,18 +704,18 @@ void ConservativeMethod::setup_2nd_order_matrix() {
                     idx_t nnode  = nb_nodes[nb_id];
                     idx_t nnnode = nb_nodes[nnb_id];
                     if ( nnode != snode && nnnode != snode ) {
-                        const auto& Cij1 = src_points_[nnode];
-                        const auto& Cij2 = src_points_[nnnode];
-                        auto csp         = CSPolygon( {Cij1, Cij2, Ci} );
+                        const auto& Nij1 = src_points_[nnode];
+                        const auto& Nij2 = src_points_[nnnode];
+                        auto csp         = CSPolygon( {Nij1, Nij2, Ni} );
                         if ( csp.area() < std::numeric_limits<double>::epsilon() ) {
-                            csp = CSPolygon( {Cij1, Ci, Cij2} );
+                            csp = CSPolygon( {Nij1, Ni, Nij2} );
                         }
                         dual_area_inv += csp.area();
-                        if ( CSPolygon::leftOf( Cij2, Ci, Cij1, 1e-16, 0 ) ) {
-                            Rij[nb_id] = PointXYZ::cross( Cij2, Cij1 );
+                        if ( CSPolygon::leftOf( Nij2, Ni, Nij1, 1e-16, 0 ) ) {
+                            Rij[nb_id] = PointXYZ::cross( Nij2, Nij1 );
                         }
                         else {
-                            Rij[nb_id] = PointXYZ::cross( Cij1, Cij2 );
+                            Rij[nb_id] = PointXYZ::cross( Nij1, Nij2 );
                         }
                     }
                     else {
