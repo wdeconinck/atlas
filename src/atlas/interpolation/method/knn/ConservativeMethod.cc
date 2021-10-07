@@ -600,6 +600,10 @@ void ConservativeMethod::setup_2nd_order_matrix() {
                 }
             }
             dual_area_inv = ( dual_area_inv > 0. ) ? 1. / dual_area_inv : 1.;
+            PointXYZ Rs   = {0., 0., 0.};
+            for ( idx_t j = 0; j < nb_cells.size(); ++j ) {
+                Rs = Rs + Rsj[j];
+            }
             // now, assemble the matrix
             std::vector<PointXYZ> Aik;
             Aik.resize( iparam.centroids.size() );
@@ -608,10 +612,6 @@ void ConservativeMethod::setup_2nd_order_matrix() {
                 const PointXYZ Csk_Cs = Csk - Cs;
                 Aik[icell]            = Csk_Cs - PointXYZ::mul( Cs, PointXYZ::dot( Cs, Csk_Cs ) );
                 Aik[icell]            = PointXYZ::mul( Aik[icell], iparam.sweights[icell] * dual_area_inv );
-            }
-            PointXYZ Rs = {0., 0., 0.};
-            for ( idx_t j = 0; j < nb_cells.size(); ++j ) {
-                Rs = Rs + Rsj[j];
             }
             if ( tgt_cell_data_ ) {
                 for ( idx_t icell = 0; icell < iparam.centroids.size(); ++icell ) {
@@ -679,6 +679,10 @@ void ConservativeMethod::setup_2nd_order_matrix() {
                 }
             }
             dual_area_inv = ( dual_area_inv > 0. ) ? 1. / dual_area_inv : 1.;
+            PointXYZ Rs   = {0., 0., 0.};
+            for ( idx_t j = 0; j < nb_nodes.size(); ++j ) {
+                Rs = Rs + Rsj[j];
+            }
             // now, assemble the matrix
             for ( idx_t isubcell = 0; isubcell < src_node2csp_[snode].size(); ++isubcell ) {
                 idx_t subcell      = src_node2csp_[snode][isubcell];
@@ -702,10 +706,6 @@ void ConservativeMethod::setup_2nd_order_matrix() {
                     const PointXYZ Csk_Cs = Csk - Cs;
                     Aik[icell]            = Csk_Cs - PointXYZ::mul( Cs, PointXYZ::dot( Cs, Csk_Cs ) );
                     Aik[icell]            = PointXYZ::mul( Aik[icell], iparam.sweights[icell] * dual_area_inv );
-                }
-                PointXYZ Rs = {0., 0., 0.};
-                for ( idx_t j = 0; j < nb_nodes.size(); ++j ) {
-                    Rs = Rs + Rsj[j];
                 }
                 if ( tgt_cell_data_ ) {
                     for ( idx_t icell = 0; icell < iparam.centroids.size(); ++icell ) {
