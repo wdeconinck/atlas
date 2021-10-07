@@ -573,65 +573,60 @@ void ConservativeMethod::setup_2nd_order_matrix() {
                             << "\n";
                 continue;
             }
-            PointXYZ Ci = {0., 0., 0.};
+            PointXYZ Cs = {0., 0., 0.};
             for ( idx_t icell = 0; icell < iparam.centroids.size(); ++icell ) {
-                Ci = Ci + PointXYZ::mul( iparam.centroids[icell], iparam.weights[icell] );
+                Cs = Cs + PointXYZ::mul( iparam.centroids[icell], iparam.weights[icell] );
             }
-            const double Ci_norm = PointXYZ::norm( Ci );
-            ATLAS_ASSERT( Ci_norm > 0. );
-            Ci                   = PointXYZ::div( Ci, Ci_norm );
+            const double Cs_norm = PointXYZ::norm( Cs );
+            ATLAS_ASSERT( Cs_norm > 0. );
+            Cs = PointXYZ::div( Cs, Cs_norm );
+            // compute gradient from cells
             double dual_area_inv = 0.;
-            std::vector<PointXYZ> Rij;
-            Rij.resize( nb_cells.size() );
-            for ( idx_t nb_id = 0; nb_id < nb_cells.size(); ++nb_id ) {
-                idx_t nnb_id = ( nb_id != nb_cells.size() - 1 ) ? nb_id + 1 : 0;
-                idx_t ncell  = nb_cells[nb_id];
-                idx_t nncell = nb_cells[nnb_id];
-                if ( ncell != scell && nncell != scell ) {
-                    const auto& Cij1 = src_points_[ncell];
-                    const auto& Cij2 = src_points_[nncell];
-                    auto csp         = CSPolygon( {Cij1, Cij2, Ci} );
-                    if ( csp.area() < std::numeric_limits<double>::epsilon() ) {
-                        csp = CSPolygon( {Cij1, Ci, Cij2} );
-                    }
-                    dual_area_inv += csp.area();
-                    if ( CSPolygon::leftOf( Cij2, Ci, Cij1, 1e-16, 0 ) ) {
-                        Rij[nb_id] = PointXYZ::cross( Cij2, Cij1 );
-                    }
-                    else {
-                        Rij[nb_id] = PointXYZ::cross( Cij1, Cij2 );
-                    }
+            std::vector<PointXYZ> Rsj;
+            Rsj.resize( nb_cells.size() );
+            for ( idx_t j = 0; j < nb_cells.size(); ++j ) {
+                idx_t nj         = ( j != nb_cells.size() - 1 ) ? j + 1 : 0;
+                idx_t sj         = nb_cells[j];
+                idx_t nsj        = nb_cells[nj];
+                const auto& Csj  = src_points_[sj];
+                const auto& Cnsj = src_points_[nsj];
+                auto csp         = CSPolygon( {Csj, Cnsj, Cs} );
+                if ( csp.area() < std::numeric_limits<double>::epsilon() ) {
+                    csp = CSPolygon( {Csj, Cs, Cnsj} );
+                }
+                dual_area_inv += csp.area();
+                if ( CSPolygon::leftOf( Cnsj, Cs, Csj, 1e-16, 0 ) ) {
+                    Rsj[j] = PointXYZ::cross( Cnsj, Csj );
                 }
                 else {
-                    Rij[nb_id] = {0., 0., 0.};
+                    Rsj[j] = PointXYZ::cross( Csj, Cnsj );
                 }
             }
             dual_area_inv = ( dual_area_inv > 0. ) ? 1. / dual_area_inv : 1.;
+            // now, assemble the matrix
             std::vector<PointXYZ> Aik;
             Aik.resize( iparam.centroids.size() );
             for ( idx_t icell = 0; icell < iparam.centroids.size(); ++icell ) {
-                const PointXYZ& Cik   = iparam.centroids[icell];
-                const PointXYZ Cik_Ci = Cik - Ci;
-                Aik[icell]            = Cik_Ci - PointXYZ::mul( Ci, PointXYZ::dot( Ci, Cik_Ci ) );
+                const PointXYZ& Csk   = iparam.centroids[icell];
+                const PointXYZ Csk_Cs = Csk - Cs;
+                Aik[icell]            = Csk_Cs - PointXYZ::mul( Cs, PointXYZ::dot( Cs, Csk_Cs ) );
                 Aik[icell]            = PointXYZ::mul( Aik[icell], iparam.sweights[icell] * dual_area_inv );
             }
-            PointXYZ Rij_sum = {0., 0., 0.};
-            for ( idx_t nb_id = 0; nb_id < nb_cells.size(); ++nb_id ) {
-                Rij_sum = Rij_sum + Rij[nb_id];
+            PointXYZ Rs = {0., 0., 0.};
+            for ( idx_t j = 0; j < nb_cells.size(); ++j ) {
+                Rs = Rs + Rsj[j];
             }
             if ( tgt_cell_data_ ) {
                 for ( idx_t icell = 0; icell < iparam.centroids.size(); ++icell ) {
-                    for ( idx_t nb_id = 0; nb_id < nb_cells.size(); ++nb_id ) {
-                        idx_t nnb_id = ( nb_id != nb_cells.size() - 1 ) ? nb_id + 1 : 0;
-                        idx_t ij1    = nb_cells[nb_id];
-                        idx_t ij2    = nb_cells[nnb_id];
-                        triplets.emplace_back( iparam.tcell_id[icell], ij1,
-                                               0.5 * PointXYZ::dot( Rij[nb_id], Aik[icell] ) );
-                        triplets.emplace_back( iparam.tcell_id[icell], ij2,
-                                               0.5 * PointXYZ::dot( Rij[nb_id], Aik[icell] ) );
+                    for ( idx_t j = 0; j < nb_cells.size(); ++j ) {
+                        idx_t nj  = ( j != nb_cells.size() - 1 ) ? j + 1 : 0;
+                        idx_t sj  = nb_cells[j];
+                        idx_t nsj = nb_cells[nj];
+                        triplets.emplace_back( iparam.tcell_id[icell], sj, 0.5 * PointXYZ::dot( Rsj[j], Aik[icell] ) );
+                        triplets.emplace_back( iparam.tcell_id[icell], nsj, 0.5 * PointXYZ::dot( Rsj[j], Aik[icell] ) );
                     }
                     triplets.emplace_back( iparam.tcell_id[icell], scell,
-                                           iparam.sweights[icell] - PointXYZ::dot( Rij_sum, Aik[icell] ) );
+                                           iparam.sweights[icell] - PointXYZ::dot( Rs, Aik[icell] ) );
                 }
             }
             else {
@@ -639,18 +634,17 @@ void ConservativeMethod::setup_2nd_order_matrix() {
                     idx_t tcell                = iparam.tcell_id[icell];
                     idx_t tnode                = tgt_csp2node_[tcell];
                     const double csp2node_coef = iparam.weights[icell] / iparam.sweights[icell] / tgt_areas_[tnode];
-                    for ( idx_t nb_id = 0; nb_id < nb_cells.size(); ++nb_id ) {
-                        idx_t nnb_id = ( nb_id != nb_cells.size() - 1 ) ? nb_id + 1 : 0;
-                        idx_t ij1    = nb_cells[nb_id];
-                        idx_t ij2    = nb_cells[nnb_id];
-                        triplets.emplace_back( tnode, ij1,
-                                               ( 0.5 * PointXYZ::dot( Rij[nb_id], Aik[icell] ) ) * csp2node_coef );
-                        triplets.emplace_back( tnode, ij2,
-                                               ( 0.5 * PointXYZ::dot( Rij[nb_id], Aik[icell] ) ) * csp2node_coef );
+                    for ( idx_t j = 0; j < nb_cells.size(); ++j ) {
+                        idx_t nj  = ( j != nb_cells.size() - 1 ) ? j + 1 : 0;
+                        idx_t sj  = nb_cells[j];
+                        idx_t nsj = nb_cells[nj];
+                        triplets.emplace_back( tnode, sj,
+                                               ( 0.5 * PointXYZ::dot( Rsj[j], Aik[icell] ) ) * csp2node_coef );
+                        triplets.emplace_back( tnode, nsj,
+                                               ( 0.5 * PointXYZ::dot( Rsj[j], Aik[icell] ) ) * csp2node_coef );
                     }
                     triplets.emplace_back(
-                        tnode, scell,
-                        ( iparam.sweights[icell] - PointXYZ::dot( Rij_sum, Aik[icell] ) ) * csp2node_coef );
+                        tnode, scell, ( iparam.sweights[icell] - PointXYZ::dot( Rs, Aik[icell] ) ) * csp2node_coef );
                 }
             }
         }
@@ -684,9 +678,11 @@ void ConservativeMethod::setup_2nd_order_matrix() {
                 dual_area_inv += csp.area();
                 if ( CSPolygon::leftOf( Nsnj, Ns, Nsj, 1e-16, 0 ) ) {
                     Rsj[j] = PointXYZ::cross( Nsj, Nsnj );
+                    //Rsj[j] = PointXYZ::cross( Nsnj, Nsj );
                 }
                 else {
                     Rsj[j] = PointXYZ::cross( Nsnj, Nsj );
+                    //Rsj[j] = PointXYZ::cross( Nsj, Nsnj );
                 }
             }
             dual_area_inv = ( dual_area_inv > 0. ) ? 1. / dual_area_inv : 1.;
@@ -699,24 +695,24 @@ void ConservativeMethod::setup_2nd_order_matrix() {
                                 << "\n";
                     continue;
                 }
-                PointXYZ Ci = {0., 0., 0.};
+                PointXYZ Cs = {0., 0., 0.};
                 for ( idx_t icell = 0; icell < iparam.centroids.size(); ++icell ) {
-                    Ci = Ci + PointXYZ::mul( iparam.centroids[icell], iparam.weights[icell] );
+                    Cs = Cs + PointXYZ::mul( iparam.centroids[icell], iparam.weights[icell] );
                 }
-                const double Ci_norm = PointXYZ::norm( Ci );
-                ATLAS_ASSERT( Ci_norm > 0. );
-                Ci = PointXYZ::div( Ci, Ci_norm );
+                const double Cs_norm = PointXYZ::norm( Cs );
+                ATLAS_ASSERT( Cs_norm > 0. );
+                Cs = PointXYZ::div( Cs, Cs_norm );
                 std::vector<PointXYZ> Aik;
                 Aik.resize( iparam.centroids.size() );
                 for ( idx_t icell = 0; icell < iparam.centroids.size(); ++icell ) {
-                    const PointXYZ& Cik   = iparam.centroids[icell];
-                    const PointXYZ Cik_Ci = Cik - Ci;
-                    Aik[icell]            = Cik_Ci - PointXYZ::mul( Ci, PointXYZ::dot( Ci, Cik_Ci ) );
+                    const PointXYZ& Csk   = iparam.centroids[icell];
+                    const PointXYZ Csk_Cs = Csk - Cs;
+                    Aik[icell]            = Csk_Cs - PointXYZ::mul( Cs, PointXYZ::dot( Cs, Csk_Cs ) );
                     Aik[icell]            = PointXYZ::mul( Aik[icell], iparam.sweights[icell] * dual_area_inv );
                 }
-                PointXYZ Rsj_sum = {0., 0., 0.};
-                for ( idx_t nb_id = 0; nb_id < nb_nodes.size(); ++nb_id ) {
-                    Rsj_sum = Rsj_sum + Rsj[nb_id];
+                PointXYZ Rs = {0., 0., 0.};
+                for ( idx_t j = 0; j < nb_nodes.size(); ++j ) {
+                    Rs = Rs + Rsj[j];
                 }
                 if ( tgt_cell_data_ ) {
                     for ( idx_t icell = 0; icell < iparam.centroids.size(); ++icell ) {
@@ -730,7 +726,7 @@ void ConservativeMethod::setup_2nd_order_matrix() {
                                                    0.5 * PointXYZ::dot( Rsj[j], Aik[icell] ) );
                         }
                         triplets.emplace_back( iparam.tcell_id[icell], snode,
-                                               iparam.sweights[icell] - PointXYZ::dot( Rsj_sum, Aik[icell] ) );
+                                               iparam.sweights[icell] - PointXYZ::dot( Rs, Aik[icell] ) );
                     }
                 }
                 else {
@@ -749,7 +745,7 @@ void ConservativeMethod::setup_2nd_order_matrix() {
                         }
                         triplets.emplace_back(
                             tnode, snode,
-                            ( iparam.sweights[icell] - PointXYZ::dot( Rsj_sum, Aik[icell] ) ) * csp2node_coef );
+                            ( iparam.sweights[icell] - PointXYZ::dot( Rs, Aik[icell] ) ) * csp2node_coef );
                     }
                 }
             }
