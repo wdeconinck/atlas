@@ -212,20 +212,6 @@ std::vector<CSPolygon> ConservativeMethod::get_polygons_nodedata( Mesh& mesh, st
     const auto& edge2node   = mesh.edges().node_connectivity();
     const auto& field_flags = array::make_view<int, 1>( mesh.cells().flags() );
 
-    // compute gradient estimate now
-    //Field node_grad_field   = Field( "node_grad", array::make_datatype<double>(), array::make_shape( 3 ) );
-    //		auto node_grad      = array::make_view<double, 3>( node_grad_field );
-
-    /*      TODO would be nice but does not work with healpix!!
-	auto patch = [&field_flags]( idx_t e ) {
-		using Topology = atlas::mesh::Nodes::Topology;
-		return Topology::check( field_flags( e ), Topology::PATCH );
-	};
-	auto is_pole_edge = [&edge_flags]( idx_t e ) { // does not work with H-grids
-		using Topology = atlas::mesh::Nodes::Topology;
-		return Topology::check( edge_flags( e ), Topology::POLE );
-	};
-*/
     auto xyz2ll = []( atlas::PointXYZ& p_xyz ) {
         PointLonLat p_ll;
         eckit::geometry::Sphere::convertCartesianToSpherical( 1., p_xyz, p_ll );
