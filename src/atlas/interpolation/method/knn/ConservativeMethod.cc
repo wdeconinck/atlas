@@ -590,16 +590,13 @@ void ConservativeMethod::setup_2nd_order_matrix() {
                 idx_t nsj        = nb_cells[nj];
                 const auto& Csj  = src_points_[sj];
                 const auto& Cnsj = src_points_[nsj];
-                auto csp         = CSPolygon( {Csj, Cnsj, Cs} );
-                if ( csp.area() < std::numeric_limits<double>::epsilon() ) {
-                    csp = CSPolygon( {Csj, Cs, Cnsj} );
-                }
-                dual_area_inv += csp.area();
                 if ( CSPolygon::leftOf( Cnsj, Cs, Csj, 1e-16, 0 ) ) {
                     Rsj[j] = PointXYZ::cross( Cnsj, Csj );
+                    dual_area_inv += CSPolygon( {Cs, Csj, Cnsj} ).area();
                 }
                 else {
                     Rsj[j] = PointXYZ::cross( Csj, Cnsj );
+                    dual_area_inv += CSPolygon( {Cs, Cnsj, Csj} ).area();
                 }
             }
             dual_area_inv = ( dual_area_inv > 0. ) ? 1. / dual_area_inv : 1.;
@@ -665,24 +662,20 @@ void ConservativeMethod::setup_2nd_order_matrix() {
             double dual_area_inv = 0.;
             std::vector<PointXYZ> Rsj;
             Rsj.resize( nb_nodes.size() );
+            ATLAS_ASSERT( nb_nodes.size() > 1 );
             for ( idx_t j = 0; j < nb_nodes.size(); ++j ) {
                 idx_t nj         = ( j != nb_nodes.size() - 1 ) ? j + 1 : 0;
                 idx_t sj         = nb_nodes[j];
                 idx_t snj        = nb_nodes[nj];
                 const auto& Nsj  = src_points_[sj];
                 const auto& Nsnj = src_points_[snj];
-                auto csp         = CSPolygon( {Nsj, Nsnj, Ns} );
-                if ( csp.area() < std::numeric_limits<double>::epsilon() ) {
-                    csp = CSPolygon( {Nsj, Ns, Nsnj} );
-                }
-                dual_area_inv += csp.area();
                 if ( CSPolygon::leftOf( Nsnj, Ns, Nsj, 1e-16, 0 ) ) {
-                    Rsj[j] = PointXYZ::cross( Nsj, Nsnj );
-                    //Rsj[j] = PointXYZ::cross( Nsnj, Nsj );
+                    Rsj[j] = PointXYZ::cross( Nsnj, Nsj );
+                    dual_area_inv += CSPolygon( {Ns, Nsj, Nsnj} ).area();
                 }
                 else {
-                    Rsj[j] = PointXYZ::cross( Nsnj, Nsj );
-                    //Rsj[j] = PointXYZ::cross( Nsj, Nsnj );
+                    Rsj[j] = PointXYZ::cross( Nsj, Nsnj );
+                    dual_area_inv += CSPolygon( {Ns, Nsnj, Nsj} ).area();
                 }
             }
             dual_area_inv = ( dual_area_inv > 0. ) ? 1. / dual_area_inv : 1.;
