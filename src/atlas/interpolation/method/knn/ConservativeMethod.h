@@ -30,7 +30,7 @@ namespace method {
 class ConservativeMethod : public Method {
 public:
     typedef util::ConvexSphericalPolygon CSPolygon;
-    typedef std::vector<CSPolygon> PolygonArray;
+    typedef std::vector<std::pair<CSPolygon, int>> PolygonArray;
 
     struct InterpolationParameters {
         std::vector<idx_t> tcell_id;
@@ -80,17 +80,16 @@ public:
 
 private:
     template <class TargetCellsIDs>
-    void dump_intersection( const util::ConvexSphericalPolygon& s_csp,
-                            const std::vector<util::ConvexSphericalPolygon>& tgt_csp,
+    void dump_intersection( const util::ConvexSphericalPolygon& s_csp, const PolygonArray& tgt_csp,
                             const TargetCellsIDs& tgt_cells ) const;
 
     std::vector<idx_t> sort_cell_edges( Mesh& mesh, idx_t cell_id ) const;
     std::vector<idx_t> sort_node_edges( Mesh& mesh, idx_t cell_id ) const;
     std::vector<idx_t> get_cell_neighbours( Mesh& mesh, idx_t jcell ) const;
     std::vector<idx_t> get_node_neighbours( Mesh& mesh, idx_t jcell ) const;
-    std::vector<CSPolygon> get_polygons_celldata( Mesh& mesh ) const;
-    std::vector<CSPolygon> get_polygons_nodedata( Mesh& mesh, std::vector<idx_t>& csp2node,
-                                                  std::vector<std::vector<idx_t>>& node2csp ) const;
+    PolygonArray get_polygons_celldata( Mesh& mesh ) const;
+    PolygonArray get_polygons_nodedata( Mesh& mesh, std::vector<idx_t>& csp2node,
+                                        std::vector<std::vector<idx_t>>& node2csp ) const;
 
 protected:
     bool src_cell_data_;

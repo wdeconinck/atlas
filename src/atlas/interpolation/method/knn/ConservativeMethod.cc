@@ -176,12 +176,13 @@ std::vector<idx_t> ConservativeMethod::get_node_neighbours( Mesh& mesh, idx_t no
 }
 
 // Create polygons for cell-centred data. Here, the polygons are mesh cells
-std::vector<CSPolygon> ConservativeMethod::get_polygons_celldata( Mesh& mesh ) const {
-    std::vector<CSPolygon> cspolygons;
+std::vector<std::pair<CSPolygon, int>> ConservativeMethod::get_polygons_celldata( Mesh& mesh ) const {
+    std::vector<std::pair<CSPolygon, int>> cspolygons;
     const idx_t n_cells = mesh.cells().size();
     cspolygons.resize( n_cells );
     const auto& cell2node = mesh.cells().node_connectivity();
     const auto lonlat     = array::make_view<double, 2>( mesh.nodes().lonlat() );
+    const auto part       = array::make_view<int, 1>( mesh.cells().halo() );
     std::vector<PointLonLat> pts_ll;
     for ( idx_t icell = 0; icell < n_cells; ++icell ) {
         const idx_t n_nodes = cell2node.cols( icell );
@@ -191,7 +192,8 @@ std::vector<CSPolygon> ConservativeMethod::get_polygons_celldata( Mesh& mesh ) c
             idx_t inode   = cell2node( icell, jnode );
             pts_ll[jnode] = PointLonLat{lonlat( inode, 0 ), lonlat( inode, 1 )};
         }
-        cspolygons[icell] = CSPolygon( pts_ll );
+        cspolygons[icell].first  = CSPolygon( pts_ll );
+        cspolygons[icell].second = part( icell );
     }
     return cspolygons;
 }
@@ -199,9 +201,9 @@ std::vector<CSPolygon> ConservativeMethod::get_polygons_celldata( Mesh& mesh ) c
 // Create polygons for cell-vertex data. Here, the polygons are subcells of mesh cells created as
 // 	 (cell_centre, edge_centre, cell_vertex, edge_centre)
 // additionally, subcell-to-node and node-to-subcells mapping are computed
-std::vector<CSPolygon> ConservativeMethod::get_polygons_nodedata( Mesh& mesh, std::vector<idx_t>& csp2node,
-                                                                  std::vector<std::vector<idx_t>>& node2csp ) const {
-    std::vector<CSPolygon> cspolygons;
+std::vector<std::pair<CSPolygon, int>> ConservativeMethod::get_polygons_nodedata(
+    Mesh& mesh, std::vector<idx_t>& csp2node, std::vector<std::vector<idx_t>>& node2csp ) const {
+    std::vector<std::pair<CSPolygon, int>> cspolygons;
     csp2node.clear();
     node2csp.clear();
     node2csp.resize( mesh.nodes().size() );
@@ -211,6 +213,7 @@ std::vector<CSPolygon> ConservativeMethod::get_polygons_nodedata( Mesh& mesh, st
     const auto& cell2edge   = mesh.cells().edge_connectivity();
     const auto& edge2node   = mesh.edges().node_connectivity();
     const auto& field_flags = array::make_view<int, 1>( mesh.cells().flags() );
+    const auto part         = array::make_view<int, 1>( mesh.nodes().ghost() );
 
     auto xyz2ll = []( atlas::PointXYZ& p_xyz ) {
         PointLonLat p_ll;
@@ -261,14 +264,17 @@ std::vector<CSPolygon> ConservativeMethod::get_polygons_nodedata( Mesh& mesh, st
             PointLonLat iedge_mid_ll = xyz2ll( iedge_mid );
             PointXYZ third_point;
             PointLonLat third_point_ll;
+            int inode;
             if ( util::ConvexSphericalPolygon::leftOf( pi0, cell_mid, iedge_mid, 1e-14 ) ) {
                 third_point    = pi0;
+                inode          = node0;
                 third_point_ll = pi0_ll;
                 csp2node.emplace_back( node0 );
                 node2csp[node0].emplace_back( cspol_id );
             }
             else {
                 third_point    = pi1;
+                inode          = node1;
                 third_point_ll = pi1_ll;
                 csp2node.emplace_back( node1 );
                 node2csp[node1].emplace_back( cspol_id );
@@ -299,7 +305,7 @@ std::vector<CSPolygon> ConservativeMethod::get_polygons_nodedata( Mesh& mesh, st
             pts_ll[1] = iedge_mid_ll;
             pts_ll[2] = third_point_ll;
             pts_ll[3] = xyz2ll( jedge_mid );
-            cspolygons.emplace_back( CSPolygon( pts_ll ) );
+            cspolygons.emplace_back( CSPolygon( pts_ll ), part( inode ) );
             cspol_id++;
         }
     }
@@ -316,37 +322,42 @@ void ConservativeMethod::do_setup( const Grid& src_grid, const Grid& tgt_grid ) 
     if ( mpi::size() > 1 ) {
         ATLAS_NOTIMPLEMENTED;
     }
-    auto src_mesh_config = src_grid.meshgenerator();
-    auto tgt_mesh_config = tgt_grid.meshgenerator();
+    const idx_t halo_size = 1;
+    auto src_mesh_config  = src_grid.meshgenerator();
+    auto tgt_mesh_config  = tgt_grid.meshgenerator();
     src_mesh_config.set( "include_pole", true );
     tgt_mesh_config.set( "include_pole", true );
     src_mesh_ = MeshGenerator( src_mesh_config ).generate( src_grid );
+    functionspace::NodeColumns tmp_src_fs( src_mesh_, option::halo( halo_size ) );
     tgt_mesh_ = MeshGenerator( tgt_mesh_config ).generate( tgt_grid );
+    functionspace::NodeColumns tmp_tgt_ts( tgt_mesh_, option::halo( halo_size ) );
+    //  mesh::actions::build_halo( src_mesh_, 1 );
+    //  mesh::actions::build_halo( tgt_mesh_, 0 );
     mesh::actions::build_edges( src_mesh_, util::Config( "pole_edges", false ) );
     if ( not src_cell_data_ ) {
         mesh::actions::build_node_to_edge_connectivity( src_mesh_ );
     }
     mesh::actions::build_edges( tgt_mesh_, util::Config( "pole_edges", false ) );
 
-    std::vector<CSPolygon> src_csp;
-    std::vector<CSPolygon> tgt_csp;
+    std::vector<std::pair<CSPolygon, int>> src_csp;
+    std::vector<std::pair<CSPolygon, int>> tgt_csp;
     if ( src_cell_data_ ) {
-        functionspace::CellColumns src_fs( src_mesh_ );
+        functionspace::CellColumns src_fs( src_mesh_, option::halo( halo_size ) );
         src_fs_ = src_fs;
         src_csp = get_polygons_celldata( src_mesh_ );
     }
     else {
-        functionspace::NodeColumns src_fs( src_mesh_ );
+        functionspace::NodeColumns src_fs( src_mesh_, option::halo( halo_size ) );
         src_fs_ = src_fs;
         src_csp = get_polygons_nodedata( src_mesh_, src_csp2node_, src_node2csp_ );
     }
     if ( tgt_cell_data_ ) {
-        functionspace::CellColumns tgt_fs( tgt_mesh_ );
+        functionspace::CellColumns tgt_fs( tgt_mesh_, option::halo( halo_size ) );
         tgt_fs_ = tgt_fs;
         tgt_csp = get_polygons_celldata( tgt_mesh_ );
     }
     else {
-        functionspace::NodeColumns tgt_fs( tgt_mesh_ );
+        functionspace::NodeColumns tgt_fs( tgt_mesh_, option::halo( halo_size ) );
         tgt_fs_ = tgt_fs;
         tgt_csp = get_polygons_nodedata( tgt_mesh_, tgt_csp2node_, tgt_node2csp_ );
     }
@@ -360,8 +371,8 @@ void ConservativeMethod::do_setup( const Grid& src_grid, const Grid& tgt_grid ) 
     tgt_areas_.resize( n_tpoints_ );
     if ( src_cell_data_ ) {
         for ( idx_t spt = 0; spt < n_spoints_; ++spt ) {
-            src_points_[spt] = src_csp[spt].centroid();
-            src_areas_[spt]  = src_csp[spt].area();
+            src_points_[spt] = src_csp[spt].first.centroid();
+            src_areas_[spt]  = src_csp[spt].first.area();
         }
     }
     else {
@@ -372,14 +383,14 @@ void ConservativeMethod::do_setup( const Grid& src_grid, const Grid& tgt_grid ) 
             src_areas_[spt] = 0.;
             for ( idx_t isubcell = 0; isubcell < src_node2csp_[spt].size(); ++isubcell ) {
                 idx_t subcell = src_node2csp_[spt][isubcell];
-                src_areas_[spt] += src_csp[subcell].area();
+                src_areas_[spt] += src_csp[subcell].first.area();
             }
         }
     }
     if ( tgt_cell_data_ ) {
         for ( idx_t spt = 0; spt < n_tpoints_; ++spt ) {
-            tgt_points_[spt] = tgt_csp[spt].centroid();
-            tgt_areas_[spt]  = tgt_csp[spt].area();
+            tgt_points_[spt] = tgt_csp[spt].first.centroid();
+            tgt_areas_[spt]  = tgt_csp[spt].first.area();
         }
     }
     else {
@@ -390,25 +401,26 @@ void ConservativeMethod::do_setup( const Grid& src_grid, const Grid& tgt_grid ) 
             tgt_areas_[spt] = 0.;
             for ( idx_t isubcell = 0; isubcell < tgt_node2csp_[spt].size(); ++isubcell ) {
                 idx_t subcell = tgt_node2csp_[spt][isubcell];
-                tgt_areas_[spt] += tgt_csp[subcell].area();
+                tgt_areas_[spt] += tgt_csp[subcell].first.area();
             }
         }
     }
-    mesh::actions::build_halo( src_mesh_, 0 );
     setup_1st_order_matrix();
     setup_2nd_order_matrix();
 }
 
 
-void ConservativeMethod::intersect_polygons( const std::vector<CSPolygon>& src_csp,
-                                             const std::vector<CSPolygon>& tgt_csp ) {
+void ConservativeMethod::intersect_polygons( const std::vector<std::pair<CSPolygon, int>>& src_csp,
+                                             const std::vector<std::pair<CSPolygon, int>>& tgt_csp ) {
     util::KDTree<idx_t> kdt_search;
     kdt_search.reserve( tgt_csp.size() );
 
     double max_tgtcell_rad = 0.;
     for ( idx_t jcell = 0; jcell < tgt_csp.size(); ++jcell ) {
-        kdt_search.insert( tgt_csp[jcell].centroid(), jcell );
-        max_tgtcell_rad = std::max( max_tgtcell_rad, tgt_csp[jcell].cell_radius() );
+        if ( not tgt_csp[jcell].second ) {
+            kdt_search.insert( tgt_csp[jcell].first.centroid(), jcell );
+            max_tgtcell_rad = std::max( max_tgtcell_rad, tgt_csp[jcell].first.cell_radius() );
+        }
     }
     kdt_search.build();
 
@@ -420,36 +432,39 @@ void ConservativeMethod::intersect_polygons( const std::vector<CSPolygon>& src_c
     eckit::ProgressTimer progress( "Intersecting polygons ", src_csp.size(), " cell", double( 10 ),
                                    src_csp.size() > 50 ? Log::info() : blackhole );
     for ( idx_t scell = 0; scell < src_csp.size(); ++scell, ++progress ) {
-        const auto& s_csp   = src_csp[scell];
+        if ( src_csp[scell].second ) {
+            continue;
+        }
+        const auto& s_csp   = src_csp[scell].first;
         double covered_area = 0.;
         auto tgt_cells =
             kdt_search.closestPointsWithinRadius( s_csp.centroid(), s_csp.cell_radius() + max_tgtcell_rad );
         for ( idx_t ttcell = 0; ttcell < tgt_cells.size(); ++ttcell ) {
             auto tcell      = tgt_cells[ttcell].payload();
-            CSPolygon csp_i = s_csp.intersect( tgt_csp[tcell] );
+            CSPolygon csp_i = s_csp.intersect( tgt_csp[tcell].first );
             if ( csp_i.area() > 0. ) {
                 iparam_[scell].tcell_id.emplace_back( tcell );
                 iparam_[scell].weights.emplace_back( csp_i.area() );
-                iparam_[scell].sweights.emplace_back( csp_i.area() / tgt_csp[tcell].area() );
+                iparam_[scell].sweights.emplace_back( csp_i.area() / tgt_csp[tcell].first.area() );
                 iparam_[scell].centroids.emplace_back( csp_i.centroid() );
                 covered_area += csp_i.area();
             }
         }
-        const double loc_csp_error = std::abs( src_csp[scell].area() - covered_area );
+        const double loc_csp_error = std::abs( src_csp[scell].first.area() - covered_area );
         src_area_notcovered += loc_csp_error;
         if ( iparam_[scell].tcell_id.size() == 0. ) {
             ++nonintersect;
         }
         if ( normalise_intersections_ ) {
-            double wfactor = src_csp[scell].area() / ( covered_area > 1e-10 ? covered_area : 1. );
+            double wfactor = src_csp[scell].first.area() / ( covered_area > 1e-10 ? covered_area : 1. );
             for ( idx_t i = 0; i < iparam_[scell].weights.size(); i++ ) {
                 iparam_[scell].weights[i] *= wfactor;
                 iparam_[scell].sweights[i] *= wfactor;
             }
         }
-        if ( false && loc_csp_error > 1e-8 ) {
+        if ( false && loc_csp_error > 1e-5 ) {
             Log::info() << "* src cell area NOT covered: " << loc_csp_error << "\n";
-            dump_intersection( src_csp[scell], tgt_csp, tgt_cells );
+            dump_intersection( src_csp[scell].first, tgt_csp, tgt_cells );
             ATLAS_ASSERT( false );
         }
         n_icsp += iparam_[scell].weights.size();
@@ -464,7 +479,7 @@ void ConservativeMethod::intersect_polygons( const std::vector<CSPolygon>& src_c
     geo_err_linf_  = 0.;
     size_t no_iplg = 0;
     for ( idx_t scell = 0; scell < src_csp.size(); ++scell ) {
-        double diff_cell = src_csp[scell].area();
+        double diff_cell = src_csp[scell].first.area();
         for ( idx_t icell = 0; icell < iparam_[scell].weights.size(); ++icell ) {
             diff_cell -= iparam_[scell].weights[icell];
         }
@@ -556,16 +571,22 @@ void ConservativeMethod::setup_2nd_order_matrix() {
         return;
     }
     ATLAS_TRACE( "ConservativeMethod::setup: build cons-2 interpolant matrix" );
-    //const auto halo     = array::make_view<int, 1>( src_mesh_.cells().halo() );
     Triplets triplets;
     size_t triplets_size = 0;
     if ( src_cell_data_ ) {
+        const auto halo = array::make_view<int, 1>( src_mesh_.cells().halo() );
         for ( idx_t scell = 0; scell < n_spoints_; ++scell ) {
+            if ( halo( scell ) ) {
+                continue;
+            }
             const auto nb_cells = get_cell_neighbours( src_mesh_, scell );
             triplets_size += ( 2 * nb_cells.size() + 1 ) * iparam_[scell].centroids.size();
         }
         triplets.reserve( triplets_size );
         for ( idx_t scell = 0; scell < n_spoints_; ++scell ) {
+            if ( halo( scell ) ) {
+                continue;
+            }
             const auto nb_cells = get_cell_neighbours( src_mesh_, scell );
             const auto& iparam  = iparam_[scell];
             if ( iparam.centroids.size() == 0 ) {
@@ -647,7 +668,11 @@ void ConservativeMethod::setup_2nd_order_matrix() {
         }
     }
     else {  // if ( not src_cell_data_ )
+        const auto ghost = array::make_view<int, 1>( src_mesh_.nodes().ghost() );
         for ( idx_t snode = 0; snode < n_spoints_; ++snode ) {
+            if ( ghost( snode ) ) {
+                continue;
+            }
             const auto nb_nodes = get_node_neighbours( src_mesh_, snode );
             for ( idx_t isubcell = 0; isubcell < src_node2csp_[snode].size(); ++isubcell ) {
                 idx_t subcell = src_node2csp_[snode][isubcell];
@@ -656,6 +681,9 @@ void ConservativeMethod::setup_2nd_order_matrix() {
         }
         triplets.reserve( triplets_size );
         for ( idx_t snode = 0; snode < n_spoints_; ++snode ) {
+            if ( ghost( snode ) ) {
+                continue;
+            }
             const auto nb_nodes = get_node_neighbours( src_mesh_, snode );
             const auto& Ns      = src_points_[snode];
             // compute gradient from nodes
@@ -703,8 +731,8 @@ void ConservativeMethod::setup_2nd_order_matrix() {
                 Aik.resize( iparam.centroids.size() );
                 for ( idx_t icell = 0; icell < iparam.centroids.size(); ++icell ) {
                     const PointXYZ& Csk   = iparam.centroids[icell];
-                    const PointXYZ Csk_Cs = Csk - Cs;
-                    Aik[icell]            = Csk_Cs - PointXYZ::mul( Cs, PointXYZ::dot( Cs, Csk_Cs ) );
+                    const PointXYZ Csk_Cs = Csk - Ns;
+                    Aik[icell]            = Csk_Cs - PointXYZ::mul( Ns, PointXYZ::dot( Ns, Csk_Cs ) );
                     Aik[icell]            = PointXYZ::mul( Aik[icell], iparam.sweights[icell] * dual_area_inv );
                 }
                 if ( tgt_cell_data_ ) {
@@ -756,13 +784,20 @@ void ConservativeMethod::do_execute( const Field& src_field, Field& tgt_field ) 
 
     const auto src_vals = array::make_view<double, 1>( src_field );
     auto tgt_vals       = array::make_view<double, 1>( tgt_field );
-    //const auto halo     = array::make_view<int, 1>( src_mesh_.cells().halo() );
 
     const auto& src_cell2edge = src_mesh_.cells().edge_connectivity();
     const auto& src_edge2cell = src_mesh_.edges().cell_connectivity();
     const auto& src_edge2node = src_mesh_.edges().node_connectivity();
 
+    {
+        ATLAS_TRACE( "halo exchange source" );
+        src_field.set_dirty( true );
+        src_field.haloExchange();
+    }
+
+
     if ( order_ == 1 ) {
+        ATLAS_TRACE( "order 1" );
         if ( matrix_free_ ) {
             for ( idx_t tcell = 0; tcell < tgt_vals.size(); ++tcell ) {
                 tgt_vals( tcell ) = 0.;
@@ -782,6 +817,7 @@ void ConservativeMethod::do_execute( const Field& src_field, Field& tgt_field ) 
         }
     }
     else if ( order_ == 2 ) {
+        ATLAS_TRACE( "order 2" );
         if ( matrix_free_ ) {
             for ( idx_t tcell = 0; tcell < tgt_vals.size(); ++tcell ) {
                 tgt_vals( tcell ) = 0.;
@@ -848,10 +884,16 @@ void ConservativeMethod::do_execute( const Field& src_field, Field& tgt_field ) 
             Method::do_execute( src_field, tgt_field );
         }
     }
+
+    {
+        ATLAS_TRACE( "halo exchange target" );
+        tgt_field.set_dirty( true );
+        tgt_field.haloExchange();
+    }
 }
 
 template <class TargetCellsIDs>
-void ConservativeMethod::dump_intersection( const CSPolygon& s_csp, const std::vector<CSPolygon>& tgt_csp,
+void ConservativeMethod::dump_intersection( const CSPolygon& s_csp, const PolygonArray& tgt_csp,
                                             const TargetCellsIDs& tgt_cells ) const {
     Log::info().flush();
     Log::info() << "\n === DEBUG ===\n\n";
@@ -860,9 +902,10 @@ void ConservativeMethod::dump_intersection( const CSPolygon& s_csp, const std::v
     double area_ncov = s_csp.area();
     for ( int i = 0; i < tgt_cells.size(); ++i ) {
         const auto tcell  = tgt_cells[i].payload();
-        const auto& t_csp = tgt_csp[tcell];
+        const auto& t_csp = tgt_csp[tcell].first;
         Log::info() << "* src cell: " << s_csp << "\n";
-        Log::info() << "* tgt cell: " << t_csp << "\n";
+        Log::info() << "* tgt cell, tgt_cell_part, tgt_centroid : " << t_csp << " " << tgt_csp[tcell].second << " "
+                    << tgt_csp[tcell].first.centroid() << "\n";
         auto iplg          = s_csp.intersect( t_csp );
         auto jplg          = t_csp.intersect( s_csp );
         const double darea = std::abs( iplg.area() - jplg.area() );
