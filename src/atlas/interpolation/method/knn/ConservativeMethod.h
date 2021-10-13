@@ -66,17 +66,20 @@ public:
         order_ = order;
         if ( order == 2 ) {
             mesh::actions::build_edges( src_mesh_, util::Config( "pole_edges", false ) );
+            setup_2nd_order_matrix();
         }
-        setup_1st_order_matrix();
-        setup_2nd_order_matrix();
+        if ( order == 1 ) {
+            setup_1st_order_matrix();
+        }
     }
+    void stat( double& geo_create_err ) const;
     int order() const { return order_; }
     Mesh src_mesh() const { return src_mesh_; }
     Mesh tgt_mesh() const { return tgt_mesh_; }
     void setup_1st_order_matrix();
     void setup_2nd_order_matrix();
-    double geo_err_l1() const { return geo_err_l1_; }
-    double geo_err_linf() const { return geo_err_linf_; }
+    double geo_err_intsc_l1() const { return geo_err_intsc_l1_; }
+    double geo_err_intsc_linf() const { return geo_err_intsc_linf_; }
 
 private:
     template <class TargetCellsIDs>
@@ -109,8 +112,8 @@ protected:
     std::vector<double> src_areas_;
     std::vector<double> tgt_areas_;
     std::vector<InterpolationParameters> iparam_;  // TODO: remove
-    double geo_err_l1_;                            // error in polygon intersections
-    double geo_err_linf_;                          // error in polygon intersections
+    double geo_err_intsc_l1_;                      // error in polygon intersections
+    double geo_err_intsc_linf_;                    // error in polygon intersections
     std::vector<idx_t> src_csp2node_;
     std::vector<idx_t> tgt_csp2node_;
     std::vector<std::vector<idx_t>> src_node2csp_;

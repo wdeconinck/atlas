@@ -148,9 +148,7 @@ std::vector<idx_t> ConservativeMethod::get_node_neighbours( Mesh& mesh, idx_t no
     const auto& edge2node  = mesh.edges().node_connectivity();
     auto n2e_missval       = node2edge.missing_value();
     const auto& edges_sort = sort_node_edges( mesh, node_id );
-    //const auto edges_sort = node2edge.row( node_id );
     const int nedges = node2edge.cols( node_id );
-    //const auto glb_idx     = array::make_view<gidx_t,1>( mesh.nodes().global_index() );
     std::vector<idx_t> nbr_nodes;
     nbr_nodes.reserve( nedges );
     for ( idx_t iedge = 0; iedge < nedges; ++iedge ) {
@@ -167,11 +165,6 @@ std::vector<idx_t> ConservativeMethod::get_node_neighbours( Mesh& mesh, idx_t no
         }
     }
     ATLAS_ASSERT( nedges == nbr_nodes.size() );
-    //std::cout << "      node, nedges, edges_size, edges: " << glb_idx(node_id) << " " << nedges << " " << nbr_nodes.size() << " -- ";
-    //for ( int i = 0; i < nbr_nodes.size(); i++ ) {
-    //	std::cout << " " << glb_idx(nbr_nodes[i]);
-    //}
-    //std::cout << std::endl;
     return nbr_nodes;
 }
 
@@ -331,8 +324,6 @@ void ConservativeMethod::do_setup( const Grid& src_grid, const Grid& tgt_grid ) 
     functionspace::NodeColumns tmp_src_fs( src_mesh_, option::halo( halo_size ) );
     tgt_mesh_ = MeshGenerator( tgt_mesh_config ).generate( tgt_grid );
     functionspace::NodeColumns tmp_tgt_ts( tgt_mesh_, option::halo( halo_size ) );
-    //  mesh::actions::build_halo( src_mesh_, 1 );
-    //  mesh::actions::build_halo( tgt_mesh_, 0 );
     mesh::actions::build_edges( src_mesh_, util::Config( "pole_edges", false ) );
     if ( not src_cell_data_ ) {
         mesh::actions::build_node_to_edge_connectivity( src_mesh_ );
@@ -475,21 +466,24 @@ void ConservativeMethod::intersect_polygons( const std::vector<std::pair<CSPolyg
                 << " source mesh polygons do NOT intersect any other polygon.\n";
     Log::info() << "ConservativeMethod::intersect_polygons : " << src_area_notcovered
                 << " area of source mesh NOT covered by target mesh.\n";
-    geo_err_l1_    = 0.;
-    geo_err_linf_  = 0.;
-    size_t no_iplg = 0;
+    geo_err_intsc_l1_   = 0.;
+    geo_err_intsc_linf_ = 0.;
+    size_t no_iplg      = 0;
     for ( idx_t scell = 0; scell < src_csp.size(); ++scell ) {
+        if ( src_csp[scell].second ) {
+            continue;
+        }
         double diff_cell = src_csp[scell].first.area();
         for ( idx_t icell = 0; icell < iparam_[scell].weights.size(); ++icell ) {
             diff_cell -= iparam_[scell].weights[icell];
         }
         no_iplg += iparam_[scell].weights.size();
-        geo_err_l1_ += std::abs( diff_cell );
-        geo_err_linf_ = std::max( geo_err_linf_, std::abs( diff_cell ) );
+        geo_err_intsc_l1_ += std::abs( diff_cell );
+        geo_err_intsc_linf_ = std::max( geo_err_intsc_linf_, std::abs( diff_cell ) );
     }
-    geo_err_l1_ *= 0.25 * M_1_PI;
-    Log::info() << "ConservativeMethod::intersect_polygons : cons err in polygon intersect  : (L1) " << geo_err_l1_
-                << " (Lmax) " << geo_err_linf_ << "\n";
+    geo_err_intsc_l1_ *= 0.25 * M_1_PI;
+    Log::info() << "ConservativeMethod::intersect_polygons : cons err in polygon intersect  : (L1) "
+                << geo_err_intsc_l1_ << " (Lmax) " << geo_err_intsc_linf_ << "\n";
 }
 
 void ConservativeMethod::setup_1st_order_matrix() {
@@ -890,6 +884,19 @@ void ConservativeMethod::do_execute( const Field& src_field, Field& tgt_field ) 
         tgt_field.set_dirty( true );
         tgt_field.haloExchange();
     }
+}
+
+void ConservativeMethod::stat( double& geo_create_err ) const {
+    double src_sum = 0.;
+    double tgt_sum = 0.;
+    for ( idx_t spt = 0; spt < src_areas_.size(); ++spt ) {
+        src_sum += src_areas_[spt];
+    }
+    for ( idx_t tpt = 0; tpt < tgt_areas_.size(); ++tpt ) {
+        tgt_sum += tgt_areas_[tpt];
+    }
+    geo_create_err = std::abs( src_sum - tgt_sum ) * 0.25 * M_1_PI;
+    Log::info() << " ConservativeMethod::stat : global error in polygon create   : " << geo_create_err << "\n";
 }
 
 template <class TargetCellsIDs>

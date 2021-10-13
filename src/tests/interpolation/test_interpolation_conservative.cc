@@ -49,22 +49,6 @@ Grid localgrid( int nx, int ny ) {
     return Grid{gridspec};
 }
 
-void compute_geom_errors( const FieldArray& src_vals, const FieldArray& tgt_vals, ConservativeMethod& consMethod,
-                          double func( const PointLonLat& ), std::ofstream& outfile ) {
-    double src_sum = 0.;
-    double tgt_sum = 0.;
-    for ( idx_t scell = 0; scell < src_vals.size(); ++scell ) {
-        src_sum += consMethod.src_area( scell );
-    }
-    for ( idx_t tcell = 0; tcell < tgt_vals.size(); ++tcell ) {
-        tgt_sum += consMethod.tgt_area( tcell );
-    }
-    outfile << std::setw( 10 ) << std::abs( src_sum - tgt_sum ) * 0.25 * M_1_PI;
-    Log::info() << "    cons err in polygon create     : " << std::abs( src_sum - tgt_sum ) * 0.25 * M_1_PI << "\n";
-    outfile << std::setw( 10 ) << std::abs( src_sum - tgt_sum ) * 0.25 * M_1_PI;
-    outfile << std::setw( 10 ) << consMethod.geo_err_l1() << std::setw( 10 ) << consMethod.geo_err_linf();
-}
-
 void compute_field_errors( const FieldArray& src_vals, const FieldArray& tgt_vals, FieldArray& diff_vals,
                            ConservativeMethod& consMethod, double func( const PointLonLat& ), std::ofstream& outfile ) {
     double global_cons_err = 0;
@@ -102,14 +86,13 @@ void do_remapping_test( Grid src_grid, Grid tgt_grid, double func( const PointLo
     util::Config config;
     config.set( "include_pole", true );
     config.set( "matrix_free", false );
-    config.set( "normalise_intersections", 1 );
+    config.set( "normalise_intersections", true );
     config.set( "triangulate", false );
     config.set( "src_cell_data", true );
-    config.set( "tgt_cell_data", false );
+    config.set( "tgt_cell_data", true );
+    ConservativeMethod consMethod( config );
 
     outfile << std::setw( 10 ) << src_grid.name() << std::setw( 10 ) << tgt_grid.name();
-
-    ConservativeMethod consMethod( config );
 
     auto start = std::chrono::system_clock::now();
     consMethod.do_setup( src_grid, tgt_grid );
@@ -127,8 +110,12 @@ void do_remapping_test( Grid src_grid, Grid tgt_grid, double func( const PointLo
     auto src_vals        = array::make_view<double, 1>( src_field );
     auto tgt_vals        = array::make_view<double, 1>( tgt_field );
 
-    compute_geom_errors( src_vals, tgt_vals, consMethod, func, outfile );
-    output::Gmsh( "cons-remap_srcmesh.msh", util::Config( "coordinates", "lonlat" ) ).write( consMethod.src_mesh() );
+    double gl_create_err;
+    consMethod.stat( gl_create_err );
+    outfile << std::setw( 10 ) << gl_create_err;
+    outfile << std::setw( 10 ) << consMethod.geo_err_intsc_l1() << std::setw( 10 ) << consMethod.geo_err_intsc_linf();
+    output::Gmsh( "cons-remap_srcmesh.msh", util::Config( "coordinates", "lonlat" )( "ghost", true ) )
+        .write( consMethod.src_mesh() );
     output::Gmsh( "cons-remap_tgtmesh.msh", util::Config( "coordinates", "lonlat" ) ).write( consMethod.tgt_mesh() );
 
     if ( consMethod.src_cell_data() ) {
@@ -223,7 +210,7 @@ CASE( "test_interpolation_conservative" ) {
             return 2. + cos * cos * std::cos( 2 * 0.025 * p[1] );
         };
 
-        do_remapping_test( Grid( "H16" ), Grid( "O256" ), func, outfile );
+        do_remapping_test( Grid( "H8" ), Grid( "H32" ), func, outfile );
         return;
 
         const int start_res            = 32;
