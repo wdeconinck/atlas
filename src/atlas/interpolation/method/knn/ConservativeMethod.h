@@ -31,6 +31,7 @@ class ConservativeMethod : public Method {
 public:
     typedef util::ConvexSphericalPolygon CSPolygon;
     typedef std::vector<std::pair<CSPolygon, int>> PolygonArray;
+    typedef array::ArrayView<double, 1> FieldArray;
 
     struct InterpolationParameters {
         std::vector<idx_t> tcell_id;
@@ -45,23 +46,8 @@ public:
     void do_setup( const FunctionSpace& src_fs, const FunctionSpace& tgt_fs ) { ATLAS_NOTIMPLEMENTED; }
     void do_setup( const Grid& src_grid, const Grid& tgt_grid );
     void do_setup( const Grid& src_grid, const Grid& tgt_grid, const Cache& ) { ATLAS_NOTIMPLEMENTED; }
-
-    void intersect_polygons( const PolygonArray& src_csp, const PolygonArray& tgt_scp );
-
     void do_execute( const Field& src_field, Field& tgt_field );
 
-    void print( std::ostream& out ) const { out << "ConservativeMethod[]"; }
-
-    bool src_cell_data() const { return src_cell_data_; }
-    bool tgt_cell_data() const { return tgt_cell_data_; }
-    const FunctionSpace& source() const { return src_fs_; }
-    const FunctionSpace& target() const { return tgt_fs_; }
-
-    inline const std::vector<InterpolationParameters>& iparam() const { return iparam_; }
-    inline const PointXYZ& src_points( size_t id ) const { return src_points_[id]; }
-    inline const PointXYZ& tgt_points( size_t id ) const { return tgt_points_[id]; }
-    inline const double& src_area( size_t id ) const { return src_areas_[id]; }
-    inline const double& tgt_area( size_t id ) const { return tgt_areas_[id]; }
     void set_order( int order ) {
         order_ = order;
         if ( order == 2 ) {
@@ -72,14 +58,33 @@ public:
             setup_1st_order_matrix();
         }
     }
-    void stat( double& geo_create_err ) const;
+    void setup_stat( double& geo_create_err ) const;
+    void remap_stat( const FieldArray& src_field, const FieldArray& tgt_field, FieldArray& diff_field,
+                     double& global_cons_err, double func( const PointLonLat& ), double& remap_error_l2,
+                     double& remap_error_linf ) const;
+    void print( std::ostream& out ) const { out << "ConservativeMethod[]"; }
+
+    bool src_cell_data() const { return src_cell_data_; }
+    bool tgt_cell_data() const { return tgt_cell_data_; }
+    const FunctionSpace& source() const { return src_fs_; }
+    const FunctionSpace& target() const { return tgt_fs_; }
     int order() const { return order_; }
     Mesh src_mesh() const { return src_mesh_; }
     Mesh tgt_mesh() const { return tgt_mesh_; }
-    void setup_1st_order_matrix();
-    void setup_2nd_order_matrix();
+    double remap_err_l1() const { return remap_err_l1_; }
+    double remap_err_linf() const { return remap_err_linf_; }
     double geo_err_intsc_l1() const { return geo_err_intsc_l1_; }
     double geo_err_intsc_linf() const { return geo_err_intsc_linf_; }
+    inline const std::vector<InterpolationParameters>& iparam() const { return iparam_; }
+    inline const PointXYZ& src_points( size_t id ) const { return src_points_[id]; }
+    inline const PointXYZ& tgt_points( size_t id ) const { return tgt_points_[id]; }
+    inline const double& src_area( size_t id ) const { return src_areas_[id]; }
+    inline const double& tgt_area( size_t id ) const { return tgt_areas_[id]; }
+
+protected:
+    void intersect_polygons( const PolygonArray& src_csp, const PolygonArray& tgt_scp );
+    void setup_1st_order_matrix();
+    void setup_2nd_order_matrix();
 
 private:
     template <class TargetCellsIDs>
@@ -111,13 +116,15 @@ protected:
     std::vector<PointXYZ> tgt_points_;
     std::vector<double> src_areas_;
     std::vector<double> tgt_areas_;
-    std::vector<InterpolationParameters> iparam_;  // TODO: remove
-    double geo_err_intsc_l1_;                      // error in polygon intersections
-    double geo_err_intsc_linf_;                    // error in polygon intersections
-    std::vector<idx_t> src_csp2node_;
-    std::vector<idx_t> tgt_csp2node_;
-    std::vector<std::vector<idx_t>> src_node2csp_;
-    std::vector<std::vector<idx_t>> tgt_node2csp_;
+    std::vector<InterpolationParameters> iparam_;   // TODO: remove
+    double geo_err_intsc_l1_;                       // error in polygon intersections
+    double geo_err_intsc_linf_;                     // error in polygon intersections
+    double remap_err_l1_;                           // error in remapping
+    double remap_err_linf_;                         // error in remapping
+    std::vector<idx_t> src_csp2node_;               // TODO: remove
+    std::vector<idx_t> tgt_csp2node_;               // TODO: remove
+    std::vector<std::vector<idx_t>> src_node2csp_;  // TODO: remove
+    std::vector<std::vector<idx_t>> tgt_node2csp_;  // TODO: remove
 };
 
 

@@ -148,7 +148,7 @@ std::vector<idx_t> ConservativeMethod::get_node_neighbours( Mesh& mesh, idx_t no
     const auto& edge2node  = mesh.edges().node_connectivity();
     auto n2e_missval       = node2edge.missing_value();
     const auto& edges_sort = sort_node_edges( mesh, node_id );
-    const int nedges = node2edge.cols( node_id );
+    const int nedges       = node2edge.cols( node_id );
     std::vector<idx_t> nbr_nodes;
     nbr_nodes.reserve( nedges );
     for ( idx_t iedge = 0; iedge < nedges; ++iedge ) {
@@ -776,23 +776,18 @@ void ConservativeMethod::setup_2nd_order_matrix() {
 void ConservativeMethod::do_execute( const Field& src_field, Field& tgt_field ) {
     ATLAS_TRACE( "ConservativeMethod::do_execute()" );
 
-    const auto src_vals = array::make_view<double, 1>( src_field );
-    auto tgt_vals       = array::make_view<double, 1>( tgt_field );
-
-    const auto& src_cell2edge = src_mesh_.cells().edge_connectivity();
-    const auto& src_edge2cell = src_mesh_.edges().cell_connectivity();
-    const auto& src_edge2node = src_mesh_.edges().node_connectivity();
-
     {
         ATLAS_TRACE( "halo exchange source" );
         src_field.set_dirty( true );
         src_field.haloExchange();
     }
 
-
     if ( order_ == 1 ) {
         ATLAS_TRACE( "order 1" );
         if ( matrix_free_ ) {
+            const auto src_vals = array::make_view<double, 1>( src_field );
+            auto tgt_vals       = array::make_view<double, 1>( tgt_field );
+
             for ( idx_t tcell = 0; tcell < tgt_vals.size(); ++tcell ) {
                 tgt_vals( tcell ) = 0.;
             }
@@ -813,6 +808,11 @@ void ConservativeMethod::do_execute( const Field& src_field, Field& tgt_field ) 
     else if ( order_ == 2 ) {
         ATLAS_TRACE( "order 2" );
         if ( matrix_free_ ) {
+            const auto src_vals       = array::make_view<double, 1>( src_field );
+            auto tgt_vals             = array::make_view<double, 1>( tgt_field );
+            const auto& src_cell2edge = src_mesh_.cells().edge_connectivity();
+            const auto& src_edge2cell = src_mesh_.edges().cell_connectivity();
+            const auto& src_edge2node = src_mesh_.edges().node_connectivity();
             for ( idx_t tcell = 0; tcell < tgt_vals.size(); ++tcell ) {
                 tgt_vals( tcell ) = 0.;
             }
@@ -886,7 +886,7 @@ void ConservativeMethod::do_execute( const Field& src_field, Field& tgt_field ) 
     }
 }
 
-void ConservativeMethod::stat( double& geo_create_err ) const {
+void ConservativeMethod::setup_stat( double& geo_create_err ) const {
     double src_sum = 0.;
     double tgt_sum = 0.;
     for ( idx_t spt = 0; spt < src_areas_.size(); ++spt ) {
@@ -897,6 +897,58 @@ void ConservativeMethod::stat( double& geo_create_err ) const {
     }
     geo_create_err = std::abs( src_sum - tgt_sum ) * 0.25 * M_1_PI;
     Log::info() << " ConservativeMethod::stat : global error in polygon create   : " << geo_create_err << "\n";
+}
+
+void ConservativeMethod::remap_stat( const FieldArray& src_vals, const FieldArray& tgt_vals, FieldArray& diff_vals,
+                                     double& global_cons_err, double func( const PointLonLat& ), double& remap_error_l2,
+                                     double& remap_error_linf ) const {
+    const auto& cell_halo  = array::make_view<int, 1>( src_mesh_.cells().halo() );
+    const auto& node_ghost = array::make_view<int, 1>( src_mesh_.nodes().ghost() );
+    global_cons_err        = 0;
+    if ( src_cell_data_ ) {
+        for ( idx_t spt = 0; spt < src_vals.size(); ++spt ) {
+            if ( cell_halo( spt ) ) {
+                continue;
+            }
+            diff_vals( spt ) = src_vals( spt ) * src_areas_[spt];
+            global_cons_err += diff_vals( spt );
+            const auto& iparam = iparam_[spt];
+            for ( idx_t icell = 0; icell < iparam.weights.size(); ++icell ) {
+                diff_vals( spt ) -= tgt_vals( iparam.tcell_id[icell] ) * iparam.weights[icell];
+            }
+            diff_vals( spt ) = std::abs( diff_vals( spt ) ) / src_areas_[spt];
+        }
+    }
+    else {
+        for ( idx_t spt = 0; spt < src_vals.size(); ++spt ) {
+            diff_vals( spt ) = src_vals( spt ) * src_areas_[spt];
+            global_cons_err += diff_vals( spt );
+            const auto& node2csp = src_node2csp_[spt];
+            for ( idx_t subcell = 0; subcell < node2csp.size(); ++subcell ) {
+                const auto& iparam = iparam_[subcell];
+                for ( idx_t icell = 0; icell < iparam.weights.size(); ++icell ) {
+                    diff_vals( spt ) -= tgt_vals( iparam.tcell_id[icell] ) * iparam.weights[icell];
+                }
+            }
+            diff_vals( spt ) = std::abs( diff_vals( spt ) ) / src_areas_[spt];
+        }
+    }
+    remap_error_l2   = 0.;
+    remap_error_linf = 0.;
+    for ( idx_t tpt = 0; tpt < tgt_vals.size(); ++tpt ) {
+        if ( tgt_cell_data_ and cell_halo( tpt ) ) {
+            continue;
+        }
+        global_cons_err -= tgt_vals( tpt ) * tgt_areas_[tpt];
+        auto p = tgt_points_[tpt];
+        PointLonLat pll;
+        eckit::geometry::Sphere::convertCartesianToSpherical( 1., p, pll );
+        double err_l = std::abs( tgt_vals( tpt ) - func( pll ) );
+        remap_error_l2 += err_l * err_l * tgt_areas_[tpt];
+        remap_error_linf = std::max( remap_error_linf, err_l );
+    }
+    remap_error_l2  = std::sqrt( remap_error_l2 * 0.25 * M_1_PI );
+    global_cons_err = std::sqrt( std::abs( global_cons_err ) * 0.25 * M_1_PI );
 }
 
 template <class TargetCellsIDs>
