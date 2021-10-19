@@ -78,8 +78,6 @@ public:
     inline const std::vector<InterpolationParameters>& iparam() const { return iparam_; }
     inline const PointXYZ& src_points( size_t id ) const { return src_points_[id]; }
     inline const PointXYZ& tgt_points( size_t id ) const { return tgt_points_[id]; }
-    inline const double& src_area( size_t id ) const { return src_areas_[id]; }
-    inline const double& tgt_area( size_t id ) const { return tgt_areas_[id]; }
 
 protected:
     void intersect_polygons( const PolygonArray& src_csp, const PolygonArray& tgt_scp );
@@ -114,13 +112,13 @@ protected:
     bool matrix_free_;
     std::vector<PointXYZ> src_points_;
     std::vector<PointXYZ> tgt_points_;
-    std::vector<double> src_areas_;
-    std::vector<double> tgt_areas_;
-    std::vector<InterpolationParameters> iparam_;   // TODO: remove
+    Field src_areas_;
+    Field tgt_areas_;
     double geo_err_intsc_l1_;                       // error in polygon intersections
     double geo_err_intsc_linf_;                     // error in polygon intersections
     double remap_err_l1_;                           // error in remapping
     double remap_err_linf_;                         // error in remapping
+    std::vector<InterpolationParameters> iparam_;   // TODO: remove
     std::vector<idx_t> src_csp2node_;               // TODO: remove
     std::vector<idx_t> tgt_csp2node_;               // TODO: remove
     std::vector<std::vector<idx_t>> src_node2csp_;  // TODO: remove
