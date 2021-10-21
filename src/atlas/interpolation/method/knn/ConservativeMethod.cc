@@ -640,15 +640,15 @@ void ConservativeMethod::setup_2nd_order_matrix() {
             }
             if ( tgt_cell_data_ ) {
                 for ( idx_t icell = 0; icell < iparam.centroids.size(); ++icell ) {
+                    const idx_t tcell = iparam.tcell_id[icell];
                     for ( idx_t j = 0; j < nb_cells.size(); ++j ) {
                         idx_t nj  = ( j != nb_cells.size() - 1 ) ? j + 1 : 0;
                         idx_t sj  = nb_cells[j];
                         idx_t nsj = nb_cells[nj];
-                        triplets.emplace_back( iparam.tcell_id[icell], sj, 0.5 * PointXYZ::dot( Rsj[j], Aik[icell] ) );
-                        triplets.emplace_back( iparam.tcell_id[icell], nsj, 0.5 * PointXYZ::dot( Rsj[j], Aik[icell] ) );
+                        triplets.emplace_back( tcell, sj, 0.5 * PointXYZ::dot( Rsj[j], Aik[icell] ) );
+                        triplets.emplace_back( tcell, nsj, 0.5 * PointXYZ::dot( Rsj[j], Aik[icell] ) );
                     }
-                    triplets.emplace_back( iparam.tcell_id[icell], scell,
-                                           iparam.sweights[icell] - PointXYZ::dot( Rs, Aik[icell] ) );
+                    triplets.emplace_back( tcell, scell, iparam.sweights[icell] - PointXYZ::dot( Rs, Aik[icell] ) );
                 }
             }
             else {
@@ -741,17 +741,15 @@ void ConservativeMethod::setup_2nd_order_matrix() {
                 }
                 if ( tgt_cell_data_ ) {
                     for ( idx_t icell = 0; icell < iparam.centroids.size(); ++icell ) {
+                        const idx_t tcell = iparam.tcell_id[icell];
                         for ( idx_t j = 0; j < nb_nodes.size(); ++j ) {
                             idx_t nj  = ( j != nb_nodes.size() - 1 ) ? j + 1 : 0;
                             idx_t sj  = nb_nodes[j];
                             idx_t snj = nb_nodes[nj];
-                            triplets.emplace_back( iparam.tcell_id[icell], sj,
-                                                   0.5 * PointXYZ::dot( Rsj[j], Aik[icell] ) );
-                            triplets.emplace_back( iparam.tcell_id[icell], snj,
-                                                   0.5 * PointXYZ::dot( Rsj[j], Aik[icell] ) );
+                            triplets.emplace_back( tcell, sj, 0.5 * PointXYZ::dot( Rsj[j], Aik[icell] ) );
+                            triplets.emplace_back( tcell, snj, 0.5 * PointXYZ::dot( Rsj[j], Aik[icell] ) );
                         }
-                        triplets.emplace_back( iparam.tcell_id[icell], snode,
-                                               iparam.sweights[icell] - PointXYZ::dot( Rs, Aik[icell] ) );
+                        triplets.emplace_back( tcell, snode, iparam.sweights[icell] - PointXYZ::dot( Rs, Aik[icell] ) );
                     }
                 }
                 else {
