@@ -965,7 +965,7 @@ void ConservativeMethod::remap_stat( const FieldArray& src_vals, const FieldArra
                 for ( idx_t icell = 0; icell < iparam.weights.size(); ++icell ) {
                     diff_vals( spt ) -= tgt_vals( iparam.tcell_id[icell] ) * iparam.weights[icell];
                 }
-                diff_vals( spt ) = std::abs( diff_vals( spt ) );
+                diff_vals( spt ) = std::abs( diff_vals( spt ) ) / src_areas_v( spt );
             }
             else {
                 for ( idx_t icell = 0; icell < iparam.weights.size(); ++icell ) {
@@ -973,7 +973,7 @@ void ConservativeMethod::remap_stat( const FieldArray& src_vals, const FieldArra
                     idx_t tnode = tgt_csp2node_[tcell];
                     diff_vals( spt ) -= tgt_vals( tnode ) * iparam.weights[icell];
                 }
-                diff_vals( spt ) = std::abs( diff_vals( spt ) );
+                diff_vals( spt ) = std::abs( diff_vals( spt ) ) / src_areas_v( spt );
             }
         }
     }
@@ -1000,7 +1000,7 @@ void ConservativeMethod::remap_stat( const FieldArray& src_vals, const FieldArra
                     }
                 }
             }
-            diff_vals( spt ) = std::abs( diff_vals( spt ) );
+            diff_vals( spt ) = std::abs( diff_vals( spt ) ) / src_areas_v( spt );
         }
     }
     remap_error_l2   = 0.;
