@@ -715,6 +715,18 @@ void ConservativeMethod::setup_2nd_order_matrix() {
             for ( idx_t j = 0; j < nb_nodes.size(); ++j ) {
                 Rs = Rs + Rsj[j];
             }
+            // get the barycentre of the dual cell
+            PointXYZ Cs = {0., 0., 0.};
+            for ( idx_t isubcell = 0; isubcell < src_node2csp_[snode].size(); ++isubcell ) {
+                idx_t subcell      = src_node2csp_[snode][isubcell];
+                const auto& iparam = iparam_[subcell];
+                for ( idx_t icell = 0; icell < iparam.centroids.size(); ++icell ) {
+                    Cs = Cs + PointXYZ::mul( iparam.centroids[icell], iparam.weights[icell] );
+                }
+            }
+            const double Cs_norm = PointXYZ::norm( Cs );
+            ATLAS_ASSERT( Cs_norm > 0. );
+            Cs = PointXYZ::div( Cs, Cs_norm );
             // now, assemble the matrix
             for ( idx_t isubcell = 0; isubcell < src_node2csp_[snode].size(); ++isubcell ) {
                 idx_t subcell      = src_node2csp_[snode][isubcell];
@@ -724,19 +736,12 @@ void ConservativeMethod::setup_2nd_order_matrix() {
                                 << "\n";
                     continue;
                 }
-                PointXYZ Cs = {0., 0., 0.};
-                for ( idx_t icell = 0; icell < iparam.centroids.size(); ++icell ) {
-                    Cs = Cs + PointXYZ::mul( iparam.centroids[icell], iparam.weights[icell] );
-                }
-                const double Cs_norm = PointXYZ::norm( Cs );
-                ATLAS_ASSERT( Cs_norm > 0. );
-                Cs = PointXYZ::div( Cs, Cs_norm );
                 std::vector<PointXYZ> Aik;
                 Aik.resize( iparam.centroids.size() );
                 for ( idx_t icell = 0; icell < iparam.centroids.size(); ++icell ) {
                     const PointXYZ& Csk   = iparam.centroids[icell];
-                    const PointXYZ Csk_Cs = Csk - Ns;
-                    Aik[icell]            = Csk_Cs - PointXYZ::mul( Ns, PointXYZ::dot( Ns, Csk_Cs ) );
+                    const PointXYZ Csk_Cs = Csk - Cs;
+                    Aik[icell]            = Csk_Cs - PointXYZ::mul( Cs, PointXYZ::dot( Cs, Csk_Cs ) );
                     Aik[icell]            = PointXYZ::mul( Aik[icell], iparam.sweights[icell] * dual_area_inv );
                 }
                 if ( tgt_cell_data_ ) {
