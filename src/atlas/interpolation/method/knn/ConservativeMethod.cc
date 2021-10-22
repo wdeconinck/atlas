@@ -958,23 +958,22 @@ void ConservativeMethod::remap_stat( const FieldArray& src_vals, const FieldArra
             if ( src_cell_halo( spt ) ) {
                 continue;
             }
-            diff_vals( spt ) = src_vals( spt ) * src_areas_v( spt );
-            global_cons_err += diff_vals( spt );
+            double diff = src_vals( spt ) * src_areas_v( spt );
+            global_cons_err += diff;
             const auto& iparam = iparam_[spt];
             if ( tgt_cell_data_ ) {
                 for ( idx_t icell = 0; icell < iparam.weights.size(); ++icell ) {
-                    diff_vals( spt ) -= tgt_vals( iparam.tcell_id[icell] ) * iparam.weights[icell];
+                    diff -= tgt_vals( iparam.tcell_id[icell] ) * iparam.weights[icell];
                 }
-                diff_vals( spt ) = std::abs( diff_vals( spt ) ) / src_areas_v( spt );
             }
             else {
                 for ( idx_t icell = 0; icell < iparam.weights.size(); ++icell ) {
                     idx_t tcell = iparam.tcell_id[icell];
                     idx_t tnode = tgt_csp2node_[tcell];
-                    diff_vals( spt ) -= tgt_vals( tnode ) * iparam.weights[icell];
+                    diff -= tgt_vals( tnode ) * iparam.weights[icell];
                 }
-                diff_vals( spt ) = std::abs( diff_vals( spt ) ) / src_areas_v( spt );
             }
+            diff_vals( spt ) = std::abs( diff ) / src_areas_v( spt );
         }
     }
     else {
@@ -982,25 +981,25 @@ void ConservativeMethod::remap_stat( const FieldArray& src_vals, const FieldArra
             if ( src_node_ghost( spt ) ) {
                 continue;
             }
-            diff_vals( spt ) = src_vals( spt ) * src_areas_v( spt );
-            global_cons_err += diff_vals( spt );
+            double diff = src_vals( spt ) * src_areas_v( spt );
+            global_cons_err += diff;
             const auto& node2csp = src_node2csp_[spt];
             for ( idx_t subcell = 0; subcell < node2csp.size(); ++subcell ) {
                 const auto& iparam = iparam_[node2csp[subcell]];
                 if ( tgt_cell_data_ ) {
                     for ( idx_t icell = 0; icell < iparam.weights.size(); ++icell ) {
-                        diff_vals( spt ) -= tgt_vals( iparam.tcell_id[icell] ) * iparam.weights[icell];
+                        diff -= tgt_vals( iparam.tcell_id[icell] ) * iparam.weights[icell];
                     }
                 }
                 else {
                     for ( idx_t icell = 0; icell < iparam.weights.size(); ++icell ) {
                         idx_t tcell = iparam.tcell_id[icell];
                         idx_t tnode = tgt_csp2node_[tcell];
-                        diff_vals( spt ) -= tgt_vals( tnode ) * iparam.weights[icell];
+                        diff -= tgt_vals( tnode ) * iparam.weights[icell];
                     }
                 }
             }
-            diff_vals( spt ) = std::abs( diff_vals( spt ) ) / src_areas_v( spt );
+            diff_vals( spt ) = std::abs( diff ) / src_areas_v( spt );
         }
     }
     remap_error_l2   = 0.;
