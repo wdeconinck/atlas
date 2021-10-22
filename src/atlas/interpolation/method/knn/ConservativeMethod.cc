@@ -789,7 +789,6 @@ void ConservativeMethod::setup_2nd_order_matrix() {
 
 void ConservativeMethod::do_execute( const Field& src_field, Field& tgt_field ) {
     ATLAS_TRACE( "ConservativeMethod::do_execute()" );
-
     {
         ATLAS_TRACE( "halo exchange source" );
         src_field.set_dirty( true );
@@ -801,6 +800,10 @@ void ConservativeMethod::do_execute( const Field& src_field, Field& tgt_field ) 
     if ( order_ == 1 ) {
         ATLAS_TRACE( "order 1" );
         if ( matrix_free_ ) {
+            if ( not src_cell_data_ or not tgt_cell_data_ ) {
+                ATLAS_NOTIMPLEMENTED;
+            }
+
             const auto src_vals = array::make_view<double, 1>( src_field );
             auto tgt_vals       = array::make_view<double, 1>( tgt_field );
 
@@ -824,18 +827,22 @@ void ConservativeMethod::do_execute( const Field& src_field, Field& tgt_field ) 
     else if ( order_ == 2 ) {
         ATLAS_TRACE( "order 2" );
         if ( matrix_free_ ) {
+            if ( not src_cell_data_ or not tgt_cell_data_ ) {
+                ATLAS_NOTIMPLEMENTED;
+            }
             const auto src_vals       = array::make_view<double, 1>( src_field );
             auto tgt_vals             = array::make_view<double, 1>( tgt_field );
             const auto& src_cell2edge = src_mesh_.cells().edge_connectivity();
             const auto& src_edge2cell = src_mesh_.edges().cell_connectivity();
             const auto& src_edge2node = src_mesh_.edges().node_connectivity();
+            const auto halo           = array::make_view<int, 1>( src_mesh_.cells().halo() );
             for ( idx_t tcell = 0; tcell < tgt_vals.size(); ++tcell ) {
                 tgt_vals( tcell ) = 0.;
             }
             for ( idx_t scell = 0; scell < src_vals.size(); ++scell ) {
-                //if ( halo( scell ) ) {
-                //    continue;
-                //}
+                if ( halo( scell ) ) {
+                    continue;
+                }
                 const auto& iparam       = iparam_[scell];
                 const PointXYZ& P        = src_points_[scell];
                 PointXYZ grad            = {0., 0., 0.};
