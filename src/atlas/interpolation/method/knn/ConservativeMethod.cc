@@ -126,7 +126,7 @@ std::vector<idx_t> ConservativeMethod::get_cell_neighbours( Mesh& mesh, idx_t ce
     std::vector<idx_t> nbr_cells;
     nbr_cells.reserve( nedges );
 
-    for ( idx_t iedge = 0, inbr = 0; iedge < nedges; ++iedge ) {
+    for ( idx_t iedge = 0; iedge < nedges; ++iedge ) {
         const idx_t edge  = edges_sort[iedge];
         const idx_t c1_id = edge2cell( edge, 0 );
         if ( c1_id != c2e_missval && c1_id != cell_id ) {
@@ -317,8 +317,6 @@ void ConservativeMethod::do_setup( const Grid& src_grid, const Grid& tgt_grid ) 
     const idx_t tgt_halo_size = 1;
     auto src_mesh_config      = src_grid.meshgenerator();
     auto tgt_mesh_config      = tgt_grid.meshgenerator();
-    src_mesh_config.set( "include_pole", true );
-    tgt_mesh_config.set( "include_pole", true );
     src_mesh_ = MeshGenerator( src_mesh_config ).generate( src_grid );
     functionspace::NodeColumns tmp_src_fs( src_mesh_, option::halo( src_halo_size ) );
     if ( mpi::size() > 1 ) {
