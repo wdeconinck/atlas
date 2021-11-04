@@ -313,11 +313,12 @@ void ConservativeMethod::do_setup( const Grid& src_grid, const Grid& tgt_grid ) 
     ATLAS_TRACE( "ConservativeMethod::do_setup()" );
     ATLAS_ASSERT( src_grid );
     ATLAS_ASSERT( tgt_grid );
-    const idx_t src_halo_size = 1;
-    const idx_t tgt_halo_size = 1;
+    const idx_t src_halo_size = 2;
+    const idx_t tgt_halo_size = 0;
     auto src_mesh_config      = src_grid.meshgenerator();
     auto tgt_mesh_config      = tgt_grid.meshgenerator();
-    src_mesh_ = MeshGenerator( src_mesh_config ).generate( src_grid );
+//	src_mesh_config.set( "built_edges_for_halo", 1 );
+    src_mesh_                 = MeshGenerator( src_mesh_config ).generate( src_grid );
     functionspace::NodeColumns tmp_src_fs( src_mesh_, option::halo( src_halo_size ) );
     if ( mpi::size() > 1 ) {
         tgt_mesh_ = MeshGenerator( tgt_mesh_config ).generate( tgt_grid, grid::MatchingPartitioner( src_mesh_ ) );
@@ -417,11 +418,9 @@ void ConservativeMethod::intersect_polygons( const CSPolygonArray& src_csp, cons
 
     double max_tgtcell_rad = 0.;
     for ( idx_t jcell = 0; jcell < tgt_csp.size(); ++jcell ) {
-        if ( not std::get<1>( tgt_csp[jcell] ) ) {
-            const auto& t_csp = std::get<0>( tgt_csp[jcell] );
-            kdt_search.insert( t_csp.centroid(), jcell );
-            max_tgtcell_rad = std::max( max_tgtcell_rad, t_csp.cell_radius() );
-        }
+        const auto& t_csp = std::get<0>( tgt_csp[jcell] );
+        kdt_search.insert( t_csp.centroid(), jcell );
+        max_tgtcell_rad = std::max( max_tgtcell_rad, t_csp.cell_radius() );
     }
     kdt_search.build();
 
@@ -433,9 +432,9 @@ void ConservativeMethod::intersect_polygons( const CSPolygonArray& src_csp, cons
     eckit::ProgressTimer progress( "Intersecting polygons ", src_csp.size(), " cell", double( 10 ),
                                    src_csp.size() > 50 ? Log::info() : blackhole );
     for ( idx_t scell = 0; scell < src_csp.size(); ++scell, ++progress ) {
-        if ( std::get<1>( src_csp[scell] ) ) {
-            continue;
-        }
+        //        if ( std::get<1>( src_csp[scell] ) ) {
+        //          continue;
+        //    }
         const auto& s_csp   = std::get<0>( src_csp[scell] );
         double covered_area = 0.;
         auto tgt_cells =
@@ -452,12 +451,12 @@ void ConservativeMethod::intersect_polygons( const CSPolygonArray& src_csp, cons
                 covered_area += csp_i.area();
             }
         }
-        const double loc_csp_error = std::abs( s_csp.area() - covered_area );
+        const double loc_csp_error = std::abs( s_csp.area() - covered_area ) / s_csp.area();
         src_area_notcovered += loc_csp_error;
         if ( iparam_[scell].tcell_id.size() == 0. ) {
             ++nonintersect;
         }
-        if ( normalise_intersections_ ) {
+        if ( normalise_intersections_ && loc_csp_error < 1e-4 ) {
             double wfactor = s_csp.area() / ( covered_area > 1e-10 ? covered_area : 1. );
             for ( idx_t i = 0; i < iparam_[scell].weights.size(); i++ ) {
                 iparam_[scell].weights[i] *= wfactor;
@@ -466,8 +465,8 @@ void ConservativeMethod::intersect_polygons( const CSPolygonArray& src_csp, cons
         }
         if ( false && loc_csp_error > 1e-5 ) {
             Log::info() << "* src cell area NOT covered: " << loc_csp_error << "\n";
-            dump_intersection( s_csp, tgt_csp, tgt_cells );
-            ATLAS_ASSERT( false );
+            //dump_intersection( s_csp, tgt_csp, tgt_cells );
+            //ATLAS_ASSERT( false );
         }
         n_icsp += iparam_[scell].weights.size();
     }
@@ -481,9 +480,9 @@ void ConservativeMethod::intersect_polygons( const CSPolygonArray& src_csp, cons
     geo_err_intsc_linf_ = 0.;
     size_t no_iplg      = 0;
     for ( idx_t scell = 0; scell < src_csp.size(); ++scell ) {
-        if ( std::get<1>( src_csp[scell] ) ) {
-            continue;
-        }
+        //    if ( std::get<1>( src_csp[scell] ) ) {
+        //          continue;
+        //        }
         double diff_cell = std::get<0>( src_csp[scell] ).area();
         for ( idx_t icell = 0; icell < iparam_[scell].weights.size(); ++icell ) {
             diff_cell -= iparam_[scell].weights[icell];
@@ -593,23 +592,26 @@ void ConservativeMethod::setup_2nd_order_matrix() {
         }
         triplets.reserve( triplets_size );
         for ( idx_t scell = 0; scell < n_spoints_; ++scell ) {
-            if ( halo( scell ) ) {
-                continue;
-            }
+            //            if ( halo( scell ) ) {
+            //              continue;
+            //        }
             const auto nb_cells = get_cell_neighbours( src_mesh_, scell );
             const auto& iparam  = iparam_[scell];
-            if ( iparam.centroids.size() == 0 ) {
-                Log::info() << " WARNING source cell " << scell << " not covered "
+            if ( iparam.centroids.size() == 0 && not halo( scell ) ) {
+                Log::info() << " WARNING source cell " << scell << " not covered"
                             << "\n";
                 continue;
             }
             PointXYZ Cs = {0., 0., 0.};
+            /*
             for ( idx_t icell = 0; icell < iparam.centroids.size(); ++icell ) {
                 Cs = Cs + PointXYZ::mul( iparam.centroids[icell], iparam.weights[icell] );
             }
             const double Cs_norm = PointXYZ::norm( Cs );
-            ATLAS_ASSERT( Cs_norm > 0. );
             Cs = PointXYZ::div( Cs, Cs_norm );
+            ATLAS_ASSERT( Cs_norm > 0. );
+			*/
+            Cs = src_points_[scell];
             // compute gradient from cells
             double dual_area_inv = 0.;
             std::vector<PointXYZ> Rsj;
