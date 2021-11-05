@@ -317,16 +317,15 @@ void ConservativeMethod::do_setup( const Grid& src_grid, const Grid& tgt_grid ) 
     const idx_t tgt_halo_size = 0;
     auto src_mesh_config      = src_grid.meshgenerator();
     auto tgt_mesh_config      = tgt_grid.meshgenerator();
-//	src_mesh_config.set( "built_edges_for_halo", 1 );
-    src_mesh_                 = MeshGenerator( src_mesh_config ).generate( src_grid );
-    functionspace::NodeColumns tmp_src_fs( src_mesh_, option::halo( src_halo_size ) );
+    tgt_mesh_                 = MeshGenerator( tgt_mesh_config ).generate( tgt_grid );
+    functionspace::NodeColumns tmp_tgt_fs( tgt_mesh_, option::halo( tgt_halo_size ) );
     if ( mpi::size() > 1 ) {
-        tgt_mesh_ = MeshGenerator( tgt_mesh_config ).generate( tgt_grid, grid::MatchingPartitioner( src_mesh_ ) );
+        src_mesh_ = MeshGenerator( src_mesh_config ).generate( src_grid, grid::MatchingPartitioner( tgt_mesh_ ) );
     }
     else {
-        tgt_mesh_ = MeshGenerator( tgt_mesh_config ).generate( tgt_grid );
+        src_mesh_ = MeshGenerator( src_mesh_config ).generate( src_grid );
     }
-    functionspace::NodeColumns tmp_tgt_fs( tgt_mesh_, option::halo( tgt_halo_size ) );
+    functionspace::NodeColumns tmp_src_fs( src_mesh_, option::halo( src_halo_size ) );
     mesh::actions::build_edges( src_mesh_, util::Config( "pole_edges", false ) );
     if ( not src_cell_data_ ) {
         mesh::actions::build_node_to_edge_connectivity( src_mesh_ );
@@ -679,11 +678,8 @@ void ConservativeMethod::setup_2nd_order_matrix() {
         }
     }
     else {  // if ( not src_cell_data_ )
-        const auto ghost = array::make_view<int, 1>( src_mesh_.nodes().ghost() );
+        const auto src_halo = array::make_view<int, 1>( src_mesh_.nodes().halo() );
         for ( idx_t snode = 0; snode < n_spoints_; ++snode ) {
-            if ( ghost( snode ) ) {
-                continue;
-            }
             const auto nb_nodes = get_node_neighbours( src_mesh_, snode );
             for ( idx_t isubcell = 0; isubcell < src_node2csp_[snode].size(); ++isubcell ) {
                 idx_t subcell = src_node2csp_[snode][isubcell];
@@ -692,16 +688,30 @@ void ConservativeMethod::setup_2nd_order_matrix() {
         }
         triplets.reserve( triplets_size );
         for ( idx_t snode = 0; snode < n_spoints_; ++snode ) {
-            if ( ghost( snode ) ) {
+            const auto nb_nodes = get_node_neighbours( src_mesh_, snode );
+            if ( nb_nodes.size() < 2 ) {
                 continue;
             }
-            const auto nb_nodes = get_node_neighbours( src_mesh_, snode );
             const auto& Ns      = src_points_[snode];
+            // get the barycentre of the dual cell
+            PointXYZ Cs = {0., 0., 0.};
+            for ( idx_t isubcell = 0; isubcell < src_node2csp_[snode].size(); ++isubcell ) {
+                idx_t subcell      = src_node2csp_[snode][isubcell];
+                const auto& iparam = iparam_[subcell];
+                for ( idx_t icell = 0; icell < iparam.centroids.size(); ++icell ) {
+                    Cs = Cs + PointXYZ::mul( iparam.centroids[icell], iparam.weights[icell] );
+                }
+            }
+            const double Cs_norm = PointXYZ::norm( Cs );
+            if ( Cs_norm < 1e-14 ) {
+                continue;
+            }
+            ATLAS_ASSERT( Cs_norm > 0. );
+            Cs = PointXYZ::div( Cs, Cs_norm );
             // compute gradient from nodes
             double dual_area_inv = 0.;
             std::vector<PointXYZ> Rsj;
             Rsj.resize( nb_nodes.size() );
-            ATLAS_ASSERT( nb_nodes.size() > 1 );
             for ( idx_t j = 0; j < nb_nodes.size(); ++j ) {
                 idx_t nj         = ( j != nb_nodes.size() - 1 ) ? j + 1 : 0;
                 idx_t sj         = nb_nodes[j];
@@ -722,23 +732,11 @@ void ConservativeMethod::setup_2nd_order_matrix() {
             for ( idx_t j = 0; j < nb_nodes.size(); ++j ) {
                 Rs = Rs + Rsj[j];
             }
-            // get the barycentre of the dual cell
-            PointXYZ Cs = {0., 0., 0.};
-            for ( idx_t isubcell = 0; isubcell < src_node2csp_[snode].size(); ++isubcell ) {
-                idx_t subcell      = src_node2csp_[snode][isubcell];
-                const auto& iparam = iparam_[subcell];
-                for ( idx_t icell = 0; icell < iparam.centroids.size(); ++icell ) {
-                    Cs = Cs + PointXYZ::mul( iparam.centroids[icell], iparam.weights[icell] );
-                }
-            }
-            const double Cs_norm = PointXYZ::norm( Cs );
-            ATLAS_ASSERT( Cs_norm > 0. );
-            Cs = PointXYZ::div( Cs, Cs_norm );
             // now, assemble the matrix
             for ( idx_t isubcell = 0; isubcell < src_node2csp_[snode].size(); ++isubcell ) {
                 idx_t subcell      = src_node2csp_[snode][isubcell];
                 const auto& iparam = iparam_[subcell];
-                if ( iparam.centroids.size() == 0 ) {
+                if ( iparam.centroids.size() == 0 and not src_halo( snode ) ) {
                     Log::info() << " WARNING source subcell around node " << snode << " not covered "
                                 << "\n";
                     continue;
@@ -992,7 +990,7 @@ void ConservativeMethod::remap_stat( const FieldArray& src_vals, const FieldArra
     }
     else {
         for ( idx_t spt = 0; spt < src_vals.size(); ++spt ) {
-            if ( src_node_ghost( spt ) ) {
+            if ( src_node_ghost( spt ) or src_areas_v( spt ) < 1e-14 ) {
                 continue;
             }
             double diff = src_vals( spt ) * src_areas_v( spt );
