@@ -315,9 +315,10 @@ void ConservativeMethod::do_setup( const Grid& src_grid, const Grid& tgt_grid ) 
     ATLAS_ASSERT( tgt_grid );
     const idx_t src_halo_size = 2;
     const idx_t tgt_halo_size = 0;
-    auto src_mesh_config      = src_grid.meshgenerator();
-    auto tgt_mesh_config      = tgt_grid.meshgenerator();
-    tgt_mesh_                 = MeshGenerator( tgt_mesh_config ).generate( tgt_grid );
+    ASSERT( tgt_halo_size == 0 );
+    auto src_mesh_config = src_grid.meshgenerator();
+    auto tgt_mesh_config = tgt_grid.meshgenerator();
+    tgt_mesh_            = MeshGenerator( tgt_mesh_config ).generate( tgt_grid );
     functionspace::NodeColumns tmp_tgt_fs( tgt_mesh_, option::halo( tgt_halo_size ) );
     if ( mpi::size() > 1 ) {
         src_mesh_ = MeshGenerator( src_mesh_config ).generate( src_grid, grid::MatchingPartitioner( tgt_mesh_ ) );
@@ -397,13 +398,16 @@ void ConservativeMethod::do_setup( const Grid& src_grid, const Grid& tgt_grid ) 
     }
     else {
         const auto lonlat = array::make_view<double, 2>( tgt_mesh_.nodes().lonlat() );
-        for ( idx_t spt = 0; spt < n_tpoints_; ++spt ) {
-            auto p = PointLonLat{lonlat( spt, 0 ), lonlat( spt, 1 )};
-            eckit::geometry::Sphere::convertSphericalToCartesian( 1., p, tgt_points_[spt] );
-            tgt_areas_v( spt ) = 0.;
-            for ( idx_t isubcell = 0; isubcell < tgt_node2csp_[spt].size(); ++isubcell ) {
-                idx_t subcell = tgt_node2csp_[spt][isubcell];
-                tgt_areas_v( spt ) += std::get<0>( tgt_csp[subcell] ).area();
+        for ( idx_t tpt = 0; tpt < n_tpoints_; ++tpt ) {
+            auto p = PointLonLat{lonlat( tpt, 0 ), lonlat( tpt, 1 )};
+            eckit::geometry::Sphere::convertSphericalToCartesian( 1., p, tgt_points_[tpt] );
+            tgt_points_[tpt]   = PointXYZ{0., 0., 0.};
+            tgt_areas_v( tpt ) = 0.;
+            for ( idx_t isubcell = 0; isubcell < tgt_node2csp_[tpt].size(); ++isubcell ) {
+                idx_t subcell     = tgt_node2csp_[tpt][isubcell];
+                const auto& t_csp = std::get<0>( tgt_csp[subcell] );
+                tgt_areas_v( tpt ) += t_csp.area();
+                tgt_points_[tpt] = tgt_points_[tpt] + PointXYZ::mul( t_csp.centroid(), t_csp.area() );
             }
         }
     }
@@ -436,9 +440,6 @@ void ConservativeMethod::intersect_polygons( const CSPolygonArray& src_csp, cons
     eckit::ProgressTimer progress( "Intersecting polygons ", src_csp.size(), " cell", double( 10 ),
                                    src_csp.size() > 50 ? Log::info() : blackhole );
     for ( idx_t scell = 0; scell < src_csp.size(); ++scell, ++progress ) {
-        //        if ( std::get<1>( src_csp[scell] ) ) {
-        //          continue;
-        //    }
         const auto& s_csp   = std::get<0>( src_csp[scell] );
         double covered_area = 0.;
         auto tgt_cells =
@@ -484,9 +485,6 @@ void ConservativeMethod::intersect_polygons( const CSPolygonArray& src_csp, cons
     geo_err_intsc_linf_ = 0.;
     size_t no_iplg      = 0;
     for ( idx_t scell = 0; scell < src_csp.size(); ++scell ) {
-        //    if ( std::get<1>( src_csp[scell] ) ) {
-        //          continue;
-        //        }
         double diff_cell = std::get<0>( src_csp[scell] ).area();
         for ( idx_t icell = 0; icell < iparam_[scell].weights.size(); ++icell ) {
             diff_cell -= iparam_[scell].weights[icell];
