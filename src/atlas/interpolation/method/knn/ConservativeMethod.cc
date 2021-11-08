@@ -374,11 +374,16 @@ void ConservativeMethod::do_setup( const Grid& src_grid, const Grid& tgt_grid ) 
         for ( idx_t spt = 0; spt < n_spoints_; ++spt ) {
             auto p = PointLonLat{lonlat( spt, 0 ), lonlat( spt, 1 )};
             eckit::geometry::Sphere::convertSphericalToCartesian( 1., p, src_points_[spt] );
+            src_points_[spt]   = PointXYZ{0., 0., 0.};
             src_areas_v( spt ) = 0.;
             for ( idx_t isubcell = 0; isubcell < src_node2csp_[spt].size(); ++isubcell ) {
-                idx_t subcell = src_node2csp_[spt][isubcell];
-                src_areas_v( spt ) += std::get<0>( src_csp[subcell] ).area();
+                idx_t subcell     = src_node2csp_[spt][isubcell];
+                const auto& s_csp = std::get<0>( src_csp[subcell] );
+                src_areas_v( spt ) += s_csp.area();
+                src_points_[spt] = src_points_[spt] + PointXYZ::mul( s_csp.centroid(), s_csp.area() );
             }
+            double src_point_norm = PointXYZ::norm( src_points_[spt] );
+            src_points_[spt]      = PointXYZ::div( src_points_[spt], ( src_point_norm > 1e-16 ? src_point_norm : 1. ) );
         }
     }
     tgt_areas_       = tgt_fs_.createField<double>();
@@ -689,11 +694,11 @@ void ConservativeMethod::setup_2nd_order_matrix() {
         triplets.reserve( triplets_size );
         for ( idx_t snode = 0; snode < n_spoints_; ++snode ) {
             const auto nb_nodes = get_node_neighbours( src_mesh_, snode );
-            if ( nb_nodes.size() < 2 ) {
-                continue;
+            if ( nb_nodes.size() < 1 ) {
+                //    continue;
             }
-            const auto& Ns      = src_points_[snode];
             // get the barycentre of the dual cell
+            /*
             PointXYZ Cs = {0., 0., 0.};
             for ( idx_t isubcell = 0; isubcell < src_node2csp_[snode].size(); ++isubcell ) {
                 idx_t subcell      = src_node2csp_[snode][isubcell];
@@ -701,6 +706,7 @@ void ConservativeMethod::setup_2nd_order_matrix() {
                 for ( idx_t icell = 0; icell < iparam.centroids.size(); ++icell ) {
                     Cs = Cs + PointXYZ::mul( iparam.centroids[icell], iparam.weights[icell] );
                 }
+				
             }
             const double Cs_norm = PointXYZ::norm( Cs );
             if ( Cs_norm < 1e-14 ) {
@@ -708,10 +714,13 @@ void ConservativeMethod::setup_2nd_order_matrix() {
             }
             ATLAS_ASSERT( Cs_norm > 0. );
             Cs = PointXYZ::div( Cs, Cs_norm );
+*/
+            const PointXYZ& Cs = src_points_[snode];
             // compute gradient from nodes
             double dual_area_inv = 0.;
             std::vector<PointXYZ> Rsj;
             Rsj.resize( nb_nodes.size() );
+            const auto& Ns = src_points_[snode];
             for ( idx_t j = 0; j < nb_nodes.size(); ++j ) {
                 idx_t nj         = ( j != nb_nodes.size() - 1 ) ? j + 1 : 0;
                 idx_t sj         = nb_nodes[j];
