@@ -581,7 +581,6 @@ void ConservativeMethod::setup_2nd_order_matrix() {
     ATLAS_TRACE( "ConservativeMethod::setup: build cons-2 interpolant matrix" );
     Triplets triplets;
     size_t triplets_size = 0;
-    //const auto src_areas_v      = array::make_view<double, 1>( src_areas_ );
     const auto tgt_areas_v = array::make_view<double, 1>( tgt_areas_ );
     if ( src_cell_data_ ) {
         const auto halo = array::make_view<int, 1>( src_mesh_.cells().halo() );
@@ -594,9 +593,6 @@ void ConservativeMethod::setup_2nd_order_matrix() {
         }
         triplets.reserve( triplets_size );
         for ( idx_t scell = 0; scell < n_spoints_; ++scell ) {
-            //            if ( halo( scell ) ) {
-            //              continue;
-            //        }
             const auto nb_cells = get_cell_neighbours( src_mesh_, scell );
             const auto& iparam  = iparam_[scell];
             if ( iparam.centroids.size() == 0 && not halo( scell ) ) {
@@ -604,8 +600,8 @@ void ConservativeMethod::setup_2nd_order_matrix() {
                             << "\n";
                 continue;
             }
+            /* // better conservation
             PointXYZ Cs = {0., 0., 0.};
-            /*
             for ( idx_t icell = 0; icell < iparam.centroids.size(); ++icell ) {
                 Cs = Cs + PointXYZ::mul( iparam.centroids[icell], iparam.weights[icell] );
             }
@@ -613,7 +609,7 @@ void ConservativeMethod::setup_2nd_order_matrix() {
             Cs = PointXYZ::div( Cs, Cs_norm );
             ATLAS_ASSERT( Cs_norm > 0. );
 			*/
-            Cs = src_points_[scell];
+            const PointXYZ& Cs = src_points_[scell];
             // compute gradient from cells
             double dual_area_inv = 0.;
             std::vector<PointXYZ> Rsj;
@@ -696,7 +692,7 @@ void ConservativeMethod::setup_2nd_order_matrix() {
                 //    continue;
             }
             // get the barycentre of the dual cell
-            /*
+            /* // better conservation
             PointXYZ Cs = {0., 0., 0.};
             for ( idx_t isubcell = 0; isubcell < src_node2csp_[snode].size(); ++isubcell ) {
                 idx_t subcell      = src_node2csp_[snode][isubcell];
@@ -704,12 +700,8 @@ void ConservativeMethod::setup_2nd_order_matrix() {
                 for ( idx_t icell = 0; icell < iparam.centroids.size(); ++icell ) {
                     Cs = Cs + PointXYZ::mul( iparam.centroids[icell], iparam.weights[icell] );
                 }
-				
             }
             const double Cs_norm = PointXYZ::norm( Cs );
-            if ( Cs_norm < 1e-14 ) {
-                continue;
-            }
             ATLAS_ASSERT( Cs_norm > 0. );
             Cs = PointXYZ::div( Cs, Cs_norm );
 */
@@ -806,7 +798,6 @@ void ConservativeMethod::do_execute( const Field& src_field, Field& tgt_field ) 
         src_field.set_dirty( true );
         src_field.haloExchange();
     }
-    //const auto src_areas_v      = array::make_view<double, 1>( src_areas_ );
     const auto tgt_areas_v = array::make_view<double, 1>( tgt_areas_ );
 
     if ( order_ == 1 ) {
@@ -873,8 +864,6 @@ void ConservativeMethod::do_execute( const Field& src_field, Field& tgt_field ) 
                         if ( csp.area() < std::numeric_limits<double>::epsilon() ) {
                             csp = CSPolygon( {Pn, P, Pnn} );
                         }
-                        //auto orientation = ( csp.leftOf( Pnn, P, Pn ) ? -1 : 1 );
-                        //ATLAS_ASSERT( orientation == -1 ); // orientation changes !
                         val *= ( csp.leftOf( Pnn, P, Pn, 1e-16, 0 ) ? -1 : 1 );
                         dual_area += std::abs( csp.area() );
                         grad = grad + PointXYZ::mul( PointXYZ::cross( Pn, Pnn ), val );
