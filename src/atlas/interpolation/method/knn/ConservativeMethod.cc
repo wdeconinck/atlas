@@ -409,6 +409,8 @@ void ConservativeMethod::do_setup( const Grid& src_grid, const Grid& tgt_grid ) 
                 tgt_areas_v( tpt ) += t_csp.area();
                 tgt_points_[tpt] = tgt_points_[tpt] + PointXYZ::mul( t_csp.centroid(), t_csp.area() );
             }
+            double tgt_point_norm = PointXYZ::norm( tgt_points_[tpt] );
+            tgt_points_[tpt]      = PointXYZ::div( tgt_points_[tpt], ( tgt_point_norm > 1e-16 ? tgt_point_norm : 1. ) );
         }
     }
     //src_areas_.set_dirty( true );
