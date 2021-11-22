@@ -176,7 +176,7 @@ CSPolygonArray ConservativeMethod::get_polygons_celldata( Mesh& mesh ) const {
     cspolygons.resize( n_cells );
     const auto& cell2node = mesh.cells().node_connectivity();
     const auto lonlat     = array::make_view<double, 2>( mesh.nodes().lonlat() );
-    const auto part       = array::make_view<int, 1>( mesh.cells().halo() );
+    const auto cell_halo  = array::make_view<int, 1>( mesh.cells().halo() );
     std::vector<PointLonLat> pts_ll;
     for ( idx_t icell = 0; icell < n_cells; ++icell ) {
         const idx_t n_nodes = cell2node.cols( icell );
@@ -187,7 +187,7 @@ CSPolygonArray ConservativeMethod::get_polygons_celldata( Mesh& mesh ) const {
             pts_ll[jnode] = PointLonLat{lonlat( inode, 0 ), lonlat( inode, 1 )};
         }
         std::get<0>( cspolygons[icell] ) = CSPolygon( pts_ll );
-        std::get<1>( cspolygons[icell] ) = part( icell );
+        std::get<1>( cspolygons[icell] ) = cell_halo( icell );
     }
     return cspolygons;
 }
@@ -201,13 +201,12 @@ CSPolygonArray ConservativeMethod::get_polygons_nodedata( Mesh& mesh, std::vecto
     csp2node.clear();
     node2csp.clear();
     node2csp.resize( mesh.nodes().size() );
-    const auto xy           = array::make_view<double, 2>( mesh.nodes().xy() );
-    const auto nodes_ll     = array::make_view<double, 2>( mesh.nodes().lonlat() );
-    auto edge_flags         = array::make_view<int, 1>( mesh.edges().flags() );
-    const auto& cell2edge   = mesh.cells().edge_connectivity();
-    const auto& edge2node   = mesh.edges().node_connectivity();
-    const auto& field_flags = array::make_view<int, 1>( mesh.cells().flags() );
-    const auto part         = array::make_view<int, 1>( mesh.nodes().ghost() );
+    const auto xy         = array::make_view<double, 2>( mesh.nodes().xy() );
+    const auto nodes_ll   = array::make_view<double, 2>( mesh.nodes().lonlat() );
+    auto edge_flags       = array::make_view<int, 1>( mesh.edges().flags() );
+    const auto& cell2edge = mesh.cells().edge_connectivity();
+    const auto& edge2node = mesh.edges().node_connectivity();
+    const auto& cell_halo = array::make_view<int, 1>( mesh.cells().halo() );
 
     auto xyz2ll = []( atlas::PointXYZ& p_xyz ) {
         PointLonLat p_ll;
@@ -299,13 +298,13 @@ CSPolygonArray ConservativeMethod::get_polygons_nodedata( Mesh& mesh, std::vecto
             pts_ll[1] = iedge_mid_ll;
             pts_ll[2] = third_point_ll;
             pts_ll[3] = xyz2ll( jedge_mid );
-            cspolygons.emplace_back( CSPolygon( pts_ll ), part( inode ) );
+            cspolygons.emplace_back( CSPolygon( pts_ll ), cell_halo( icell ) );
             cspol_id++;
         }
     }
     ( Log::info() << "ConservativeMethod::get_polygons_nodedata : Created " << cspolygons.size() << " CSPolygons from "
                   << mesh.cells().size() << " mesh cells\n" )
-        .flush();
+        .flush();  // TODO: do not flush
     return cspolygons;
 }
 
@@ -314,8 +313,7 @@ void ConservativeMethod::do_setup( const Grid& src_grid, const Grid& tgt_grid ) 
     ATLAS_ASSERT( src_grid );
     ATLAS_ASSERT( tgt_grid );
     const idx_t src_halo_size = 2;
-    const idx_t tgt_halo_size = 0;
-    ASSERT( tgt_halo_size == 0 );
+    const idx_t tgt_halo_size = 15;
     auto src_mesh_config = src_grid.meshgenerator();
     auto tgt_mesh_config = tgt_grid.meshgenerator();
     tgt_mesh_            = MeshGenerator( tgt_mesh_config ).generate( tgt_grid );
@@ -404,10 +402,12 @@ void ConservativeMethod::do_setup( const Grid& src_grid, const Grid& tgt_grid ) 
             tgt_points_[tpt]   = PointXYZ{0., 0., 0.};
             tgt_areas_v( tpt ) = 0.;
             for ( idx_t isubcell = 0; isubcell < tgt_node2csp_[tpt].size(); ++isubcell ) {
-                idx_t subcell     = tgt_node2csp_[tpt][isubcell];
-                const auto& t_csp = std::get<0>( tgt_csp[subcell] );
-                tgt_areas_v( tpt ) += t_csp.area();
-                tgt_points_[tpt] = tgt_points_[tpt] + PointXYZ::mul( t_csp.centroid(), t_csp.area() );
+                idx_t subcell = tgt_node2csp_[tpt][isubcell];
+                if ( not std::get<1>( tgt_csp[subcell] ) ) {
+                    const auto& t_csp = std::get<0>( tgt_csp[subcell] );
+                    tgt_areas_v( tpt ) += t_csp.area();
+                    tgt_points_[tpt] = tgt_points_[tpt] + PointXYZ::mul( t_csp.centroid(), t_csp.area() );
+                }
             }
             double tgt_point_norm = PointXYZ::norm( tgt_points_[tpt] );
             tgt_points_[tpt]      = PointXYZ::div( tgt_points_[tpt], ( tgt_point_norm > 1e-16 ? tgt_point_norm : 1. ) );
@@ -428,9 +428,11 @@ void ConservativeMethod::intersect_polygons( const CSPolygonArray& src_csp, cons
 
     double max_tgtcell_rad = 0.;
     for ( idx_t jcell = 0; jcell < tgt_csp.size(); ++jcell ) {
-        const auto& t_csp = std::get<0>( tgt_csp[jcell] );
-        kdt_search.insert( t_csp.centroid(), jcell );
-        max_tgtcell_rad = std::max( max_tgtcell_rad, t_csp.cell_radius() );
+        if ( not std::get<1>( tgt_csp[jcell] ) ) {
+            const auto& t_csp = std::get<0>( tgt_csp[jcell] );
+            kdt_search.insert( t_csp.centroid(), jcell );
+            max_tgtcell_rad = std::max( max_tgtcell_rad, t_csp.cell_radius() );
+        }
     }
     kdt_search.build();
 
@@ -582,7 +584,7 @@ void ConservativeMethod::setup_2nd_order_matrix() {
     }
     ATLAS_TRACE( "ConservativeMethod::setup: build cons-2 interpolant matrix" );
     Triplets triplets;
-    size_t triplets_size = 0;
+    size_t triplets_size   = 0;
     const auto tgt_areas_v = array::make_view<double, 1>( tgt_areas_ );
     if ( src_cell_data_ ) {
         const auto halo = array::make_view<int, 1>( src_mesh_.cells().halo() );
@@ -956,6 +958,7 @@ void ConservativeMethod::setup_stat( double& geo_create_err ) const {
 void ConservativeMethod::remap_stat( const FieldArray& src_vals, const FieldArray& tgt_vals, FieldArray& diff_vals,
                                      double& global_cons_err, double func( const PointLonLat& ), double& remap_error_l2,
                                      double& remap_error_linf ) const {
+    return;
     const auto& src_cell_halo  = array::make_view<int, 1>( src_mesh_.cells().halo() );
     const auto& src_node_ghost = array::make_view<int, 1>( src_mesh_.nodes().ghost() );
     const auto& tgt_cell_halo  = array::make_view<int, 1>( tgt_mesh_.cells().halo() );
