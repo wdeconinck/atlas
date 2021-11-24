@@ -25,6 +25,7 @@
 #include "atlas/runtime/Trace.h"
 #include "atlas/util/ConvexSphericalPolygon.h"
 #include "atlas/util/KDTree.h"
+#include "atlas/util/Topology.h"
 
 
 namespace atlas {
@@ -174,9 +175,11 @@ CSPolygonArray ConservativeMethod::get_polygons_celldata( Mesh& mesh ) const {
     CSPolygonArray cspolygons;
     const idx_t n_cells = mesh.cells().size();
     cspolygons.resize( n_cells );
-    const auto& cell2node = mesh.cells().node_connectivity();
-    const auto lonlat     = array::make_view<double, 2>( mesh.nodes().lonlat() );
-    const auto cell_halo  = array::make_view<int, 1>( mesh.cells().halo() );
+    const auto& cell2node  = mesh.cells().node_connectivity();
+    const auto lonlat      = array::make_view<double, 2>( mesh.nodes().lonlat() );
+    const auto cell_halo   = array::make_view<int, 1>( mesh.cells().halo() );
+    const auto& cell_flags = array::make_view<int, 1>( mesh.cells().flags() );
+    const auto& cell_part  = array::make_view<int, 1>( mesh.cells().partition() );
     std::vector<PointLonLat> pts_ll;
     for ( idx_t icell = 0; icell < n_cells; ++icell ) {
         const idx_t n_nodes = cell2node.cols( icell );
@@ -187,7 +190,11 @@ CSPolygonArray ConservativeMethod::get_polygons_celldata( Mesh& mesh ) const {
             pts_ll[jnode] = PointLonLat{lonlat( inode, 0 ), lonlat( inode, 1 )};
         }
         std::get<0>( cspolygons[icell] ) = CSPolygon( pts_ll );
-        std::get<1>( cspolygons[icell] ) = cell_halo( icell );
+        int halo_type                    = cell_halo( icell );
+        if ( util::Bitflags::view( cell_flags( icell ) ).check( util::Topology::PERIODIC ) ) {
+            halo_type = -1;
+        }
+        std::get<1>( cspolygons[icell] ) = halo_type;
     }
     return cspolygons;
 }
@@ -201,12 +208,14 @@ CSPolygonArray ConservativeMethod::get_polygons_nodedata( Mesh& mesh, std::vecto
     csp2node.clear();
     node2csp.clear();
     node2csp.resize( mesh.nodes().size() );
-    const auto xy         = array::make_view<double, 2>( mesh.nodes().xy() );
-    const auto nodes_ll   = array::make_view<double, 2>( mesh.nodes().lonlat() );
-    auto edge_flags       = array::make_view<int, 1>( mesh.edges().flags() );
-    const auto& cell2edge = mesh.cells().edge_connectivity();
-    const auto& edge2node = mesh.edges().node_connectivity();
-    const auto& cell_halo = array::make_view<int, 1>( mesh.cells().halo() );
+    const auto xy          = array::make_view<double, 2>( mesh.nodes().xy() );
+    const auto nodes_ll    = array::make_view<double, 2>( mesh.nodes().lonlat() );
+    auto edge_flags        = array::make_view<int, 1>( mesh.edges().flags() );
+    const auto& cell2edge  = mesh.cells().edge_connectivity();
+    const auto& edge2node  = mesh.edges().node_connectivity();
+    const auto& cell_halo  = array::make_view<int, 1>( mesh.cells().halo() );
+    const auto& cell_flags = array::make_view<int, 1>( mesh.cells().flags() );
+    const auto& cell_part  = array::make_view<int, 1>( mesh.cells().partition() );
 
     auto xyz2ll = []( atlas::PointXYZ& p_xyz ) {
         PointLonLat p_ll;
@@ -294,17 +303,20 @@ CSPolygonArray ConservativeMethod::get_polygons_nodedata( Mesh& mesh, std::vecto
                 }
             }
             std::vector<PointLonLat> pts_ll( 4 );
-            pts_ll[0] = cell_ll;
-            pts_ll[1] = iedge_mid_ll;
-            pts_ll[2] = third_point_ll;
-            pts_ll[3] = xyz2ll( jedge_mid );
-            cspolygons.emplace_back( CSPolygon( pts_ll ), cell_halo( icell ) );
+            pts_ll[0]     = cell_ll;
+            pts_ll[1]     = iedge_mid_ll;
+            pts_ll[2]     = third_point_ll;
+            pts_ll[3]     = xyz2ll( jedge_mid );
+            int halo_type = cell_halo( icell );
+            if ( util::Bitflags::view( cell_flags( icell ) ).check( util::Topology::PERIODIC ) ) {
+                halo_type = -1;
+            }
+            cspolygons.emplace_back( CSPolygon( pts_ll ), halo_type );
             cspol_id++;
         }
     }
-    ( Log::info() << "ConservativeMethod::get_polygons_nodedata : Created " << cspolygons.size() << " CSPolygons from "
-                  << mesh.cells().size() << " mesh cells\n" )
-        .flush();  // TODO: do not flush
+    Log::info() << "ConservativeMethod::get_polygons_nodedata : Created " << cspolygons.size() << " CSPolygons from "
+                << mesh.cells().size() << " mesh cells\n";
     return cspolygons;
 }
 
@@ -313,10 +325,10 @@ void ConservativeMethod::do_setup( const Grid& src_grid, const Grid& tgt_grid ) 
     ATLAS_ASSERT( src_grid );
     ATLAS_ASSERT( tgt_grid );
     const idx_t src_halo_size = 2;
-    const idx_t tgt_halo_size = 15;
-    auto src_mesh_config = src_grid.meshgenerator();
-    auto tgt_mesh_config = tgt_grid.meshgenerator();
-    tgt_mesh_            = MeshGenerator( tgt_mesh_config ).generate( tgt_grid );
+    const idx_t tgt_halo_size = 5;
+    auto src_mesh_config      = src_grid.meshgenerator();
+    auto tgt_mesh_config      = tgt_grid.meshgenerator();
+    tgt_mesh_                 = MeshGenerator( tgt_mesh_config ).generate( tgt_grid );
     functionspace::NodeColumns tmp_tgt_fs( tgt_mesh_, option::halo( tgt_halo_size ) );
     if ( mpi::size() > 1 ) {
         src_mesh_ = MeshGenerator( src_mesh_config ).generate( src_grid, grid::MatchingPartitioner( tgt_mesh_ ) );
@@ -403,7 +415,7 @@ void ConservativeMethod::do_setup( const Grid& src_grid, const Grid& tgt_grid ) 
             tgt_areas_v( tpt ) = 0.;
             for ( idx_t isubcell = 0; isubcell < tgt_node2csp_[tpt].size(); ++isubcell ) {
                 idx_t subcell = tgt_node2csp_[tpt][isubcell];
-                if ( not std::get<1>( tgt_csp[subcell] ) ) {
+                if ( std::get<1>( tgt_csp[subcell] ) == 0 ) {
                     const auto& t_csp = std::get<0>( tgt_csp[subcell] );
                     tgt_areas_v( tpt ) += t_csp.area();
                     tgt_points_[tpt] = tgt_points_[tpt] + PointXYZ::mul( t_csp.centroid(), t_csp.area() );
@@ -428,7 +440,7 @@ void ConservativeMethod::intersect_polygons( const CSPolygonArray& src_csp, cons
 
     double max_tgtcell_rad = 0.;
     for ( idx_t jcell = 0; jcell < tgt_csp.size(); ++jcell ) {
-        if ( not std::get<1>( tgt_csp[jcell] ) ) {
+        if ( std::get<1>( tgt_csp[jcell] ) == 0 ) {
             const auto& t_csp = std::get<0>( tgt_csp[jcell] );
             kdt_search.insert( t_csp.centroid(), jcell );
             max_tgtcell_rad = std::max( max_tgtcell_rad, t_csp.cell_radius() );
@@ -444,6 +456,9 @@ void ConservativeMethod::intersect_polygons( const CSPolygonArray& src_csp, cons
     eckit::ProgressTimer progress( "Intersecting polygons ", src_csp.size(), " cell", double( 10 ),
                                    src_csp.size() > 50 ? Log::info() : blackhole );
     for ( idx_t scell = 0; scell < src_csp.size(); ++scell, ++progress ) {
+        if ( std::get<1>( src_csp[scell] ) == -1 ) {
+            continue;
+        }
         const auto& s_csp   = std::get<0>( src_csp[scell] );
         double covered_area = 0.;
         auto tgt_cells =
