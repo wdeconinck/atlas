@@ -14,6 +14,7 @@
 #include "eckit/log/ProgressTimer.h"
 
 #include "atlas/grid.h"
+#include "atlas/interpolation/method/MethodFactory.h"
 #include "atlas/interpolation/method/knn/ConservativeMethod.h"
 #include "atlas/mesh/actions/BuildDualMesh.h"
 #include "atlas/mesh/actions/BuildEdges.h"
@@ -34,7 +35,11 @@ namespace method {
 using CSPolygon      = util::ConvexSphericalPolygon;
 using CSPolygonArray = ConservativeMethod::CSPolygonArray;
 
-ConservativeMethod::ConservativeMethod( const util::Config& config ) : Method( config ) {
+namespace {
+MethodBuilder<ConservativeMethod> __builder( "conservative" );
+}
+
+ConservativeMethod::ConservativeMethod( const Config& config ) : Method( config ) {
     config.get( "order", order_ = 1 );
     config.get( "normalise_intersections", normalise_intersections_ = 1 );
     config.get( "field_value_type", fvtype_ = 0 );
@@ -314,9 +319,9 @@ void ConservativeMethod::do_setup( const Grid& src_grid, const Grid& tgt_grid ) 
     ATLAS_ASSERT( tgt_grid );
     const idx_t src_halo_size = 2;
     const idx_t tgt_halo_size = 15;
-    auto src_mesh_config = src_grid.meshgenerator();
-    auto tgt_mesh_config = tgt_grid.meshgenerator();
-    tgt_mesh_            = MeshGenerator( tgt_mesh_config ).generate( tgt_grid );
+    auto src_mesh_config      = src_grid.meshgenerator();
+    auto tgt_mesh_config      = tgt_grid.meshgenerator();
+    tgt_mesh_                 = MeshGenerator( tgt_mesh_config ).generate( tgt_grid );
     functionspace::NodeColumns tmp_tgt_fs( tgt_mesh_, option::halo( tgt_halo_size ) );
     if ( mpi::size() > 1 ) {
         src_mesh_ = MeshGenerator( src_mesh_config ).generate( src_grid, grid::MatchingPartitioner( tgt_mesh_ ) );
