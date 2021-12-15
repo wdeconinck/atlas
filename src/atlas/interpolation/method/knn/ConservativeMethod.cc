@@ -314,22 +314,84 @@ CSPolygonArray ConservativeMethod::get_polygons_nodedata( Mesh& mesh, std::vecto
 }
 
 void ConservativeMethod::do_setup( const Grid& src_grid, const Grid& tgt_grid ) {
-    ATLAS_TRACE( "ConservativeMethod::do_setup()" );
+    ATLAS_TRACE( "ConservativeMethod::do_setup( Grid, Grid )" );
     ATLAS_ASSERT( src_grid );
     ATLAS_ASSERT( tgt_grid );
-    const idx_t src_halo_size = 2;
-    const idx_t tgt_halo_size = 15;
-    auto src_mesh_config      = src_grid.meshgenerator();
-    auto tgt_mesh_config      = tgt_grid.meshgenerator();
-    tgt_mesh_                 = MeshGenerator( tgt_mesh_config ).generate( tgt_grid );
-    functionspace::NodeColumns tmp_tgt_fs( tgt_mesh_, option::halo( tgt_halo_size ) );
+    auto src_mesh_config = src_grid.meshgenerator();
+    auto tgt_mesh_config = tgt_grid.meshgenerator();
+    tgt_mesh_            = MeshGenerator( tgt_mesh_config ).generate( tgt_grid );
+    functionspace::NodeColumns tmp_tgt_fs( tgt_mesh_, option::halo( 0 ) );
     if ( mpi::size() > 1 ) {
         src_mesh_ = MeshGenerator( src_mesh_config ).generate( src_grid, grid::MatchingPartitioner( tgt_mesh_ ) );
     }
     else {
         src_mesh_ = MeshGenerator( src_mesh_config ).generate( src_grid );
     }
-    functionspace::NodeColumns tmp_src_fs( src_mesh_, option::halo( src_halo_size ) );
+    functionspace::NodeColumns tmp_src_fs( src_mesh_, option::halo( 2 ) );
+    mesh::actions::build_edges( src_mesh_, util::Config( "pole_edges", false ) );
+    if ( not src_cell_data_ ) {
+        mesh::actions::build_node_to_edge_connectivity( src_mesh_ );
+    }
+    mesh::actions::build_edges( tgt_mesh_, util::Config( "pole_edges", false ) );
+    if ( src_cell_data_ ) {
+        functionspace::CellColumns src_fs( src_mesh_, option::halo( 2 ) );
+        src_fs_ = src_fs;
+    }
+    else {
+        functionspace::NodeColumns src_fs( src_mesh_, option::halo( 2 ) );
+        src_fs_ = src_fs;
+    }
+    if ( tgt_cell_data_ ) {
+        functionspace::CellColumns tgt_fs( tgt_mesh_, option::halo( 0 ) );
+        tgt_fs_ = tgt_fs;
+    }
+    else {
+        functionspace::NodeColumns tgt_fs( tgt_mesh_, option::halo( 0 ) );
+        tgt_fs_ = tgt_fs;
+    }
+    do_setup( src_fs_, tgt_fs_ );
+}
+
+void ConservativeMethod::do_setup( const FunctionSpace& src_fs, const FunctionSpace& tgt_fs ) {
+    ATLAS_TRACE( "ConservativeMethod::do_setup( FunctionSpace, FunctionSpace )" );
+    ATLAS_ASSERT( src_fs );
+    ATLAS_ASSERT( tgt_fs );
+    if ( functionspace::CellColumns( src_fs ) ) {
+        src_cell_data_ = true;
+        src_fs_        = functionspace::CellColumns( src_fs );
+        src_mesh_      = functionspace::CellColumns( src_fs ).mesh();
+    }
+    else if ( functionspace::NodeColumns( src_fs ) ) {
+        src_cell_data_ = false;
+        src_fs_        = functionspace::NodeColumns( src_fs );
+        src_mesh_      = functionspace::NodeColumns( src_fs ).mesh();
+    }
+    else {
+        ATLAS_NOTIMPLEMENTED;
+    }
+    if ( functionspace::CellColumns( tgt_fs ) ) {
+        tgt_cell_data_ = true;
+        tgt_fs_        = functionspace::CellColumns( tgt_fs );
+        tgt_mesh_      = functionspace::CellColumns( tgt_fs ).mesh();
+    }
+    else if ( functionspace::NodeColumns( tgt_fs ) ) {
+        tgt_cell_data_ = false;
+        tgt_fs_        = functionspace::NodeColumns( tgt_fs );
+        tgt_mesh_      = functionspace::NodeColumns( tgt_fs ).mesh();
+    }
+    else {
+        ATLAS_NOTIMPLEMENTED;
+    }
+    functionspace::NodeColumns tmp_tgt_fs( tgt_mesh_, option::halo( 0 ) );
+    auto src_grid        = src_mesh_.grid();
+    auto src_mesh_config = src_grid.meshgenerator();
+    if ( mpi::size() > 1 ) {
+        src_mesh_ = MeshGenerator( src_mesh_config ).generate( src_grid, grid::MatchingPartitioner( tgt_mesh_ ) );
+    }
+    else {
+        src_mesh_ = MeshGenerator( src_mesh_config ).generate( src_grid );
+    }
+    functionspace::NodeColumns tmp_src_fs( src_mesh_, option::halo( 2 ) );
     mesh::actions::build_edges( src_mesh_, util::Config( "pole_edges", false ) );
     if ( not src_cell_data_ ) {
         mesh::actions::build_node_to_edge_connectivity( src_mesh_ );
@@ -339,22 +401,22 @@ void ConservativeMethod::do_setup( const Grid& src_grid, const Grid& tgt_grid ) 
     CSPolygonArray src_csp;
     CSPolygonArray tgt_csp;
     if ( src_cell_data_ ) {
-        functionspace::CellColumns src_fs( src_mesh_, option::halo( src_halo_size ) );
+        functionspace::CellColumns src_fs( src_mesh_, option::halo( 2 ) );
         src_fs_ = src_fs;
         src_csp = get_polygons_celldata( src_mesh_ );
     }
     else {
-        functionspace::NodeColumns src_fs( src_mesh_, option::halo( src_halo_size ) );
+        functionspace::NodeColumns src_fs( src_mesh_, option::halo( 2 ) );
         src_fs_ = src_fs;
         src_csp = get_polygons_nodedata( src_mesh_, src_csp2node_, src_node2csp_ );
     }
     if ( tgt_cell_data_ ) {
-        functionspace::CellColumns tgt_fs( tgt_mesh_, option::halo( tgt_halo_size ) );
+        functionspace::CellColumns tgt_fs( tgt_mesh_, option::halo( 0 ) );
         tgt_fs_ = tgt_fs;
         tgt_csp = get_polygons_celldata( tgt_mesh_ );
     }
     else {
-        functionspace::NodeColumns tgt_fs( tgt_mesh_, option::halo( tgt_halo_size ) );
+        functionspace::NodeColumns tgt_fs( tgt_mesh_, option::halo( 0 ) );
         tgt_fs_ = tgt_fs;
         tgt_csp = get_polygons_nodedata( tgt_mesh_, tgt_csp2node_, tgt_node2csp_ );
     }

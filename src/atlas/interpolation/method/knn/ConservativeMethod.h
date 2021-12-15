@@ -43,7 +43,7 @@ public:
     ConservativeMethod( const Config& = util::NoConfig() );
 
     using Method::do_setup;
-    void do_setup( const FunctionSpace& src_fs, const FunctionSpace& tgt_fs ) { ATLAS_NOTIMPLEMENTED; }
+    void do_setup( const FunctionSpace& src_fs, const FunctionSpace& tgt_fs );
     void do_setup( const Grid& src_grid, const Grid& tgt_grid );
     void do_setup( const Grid& src_grid, const Grid& tgt_grid, const Cache& ) { ATLAS_NOTIMPLEMENTED; }
     void do_execute( const Field& src_field, Field& tgt_field );
