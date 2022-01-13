@@ -329,14 +329,6 @@ void ConservativeMethod::do_setup( const Grid& src_grid, const Grid& tgt_grid ) 
     ATLAS_TRACE( "ConservativeMethod::do_setup( Grid, Grid )" );
     ATLAS_ASSERT( src_grid );
     ATLAS_ASSERT( tgt_grid );
-<<<<<<< HEAD
-    const idx_t src_halo_size = 2;
-    const idx_t tgt_halo_size = 5;
-    auto src_mesh_config      = src_grid.meshgenerator();
-    auto tgt_mesh_config      = tgt_grid.meshgenerator();
-    tgt_mesh_                 = MeshGenerator( tgt_mesh_config ).generate( tgt_grid );
-    functionspace::NodeColumns tmp_tgt_fs( tgt_mesh_, option::halo( tgt_halo_size ) );
-=======
     auto src_mesh_config = src_grid.meshgenerator();
     auto tgt_mesh_config = tgt_grid.meshgenerator();
     tgt_mesh_            = MeshGenerator( tgt_mesh_config ).generate( tgt_grid );
@@ -405,7 +397,6 @@ void ConservativeMethod::do_setup( const FunctionSpace& src_fs, const FunctionSp
     functionspace::NodeColumns tmp_tgt_fs( tgt_mesh_, option::halo( 0 ) );
     auto src_grid        = src_mesh_.grid();
     auto src_mesh_config = src_grid.meshgenerator();
->>>>>>> fb23e2c823448a33ad3952c3cef426bf7ad2535f
     if ( mpi::size() > 1 ) {
         src_mesh_ = MeshGenerator( src_mesh_config ).generate( src_grid, grid::MatchingPartitioner( tgt_mesh_ ) );
     }
