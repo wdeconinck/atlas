@@ -457,6 +457,7 @@ void ConservativeMethod::intersect_polygons( const CSPolygonArray& src_csp, cons
                                    src_csp.size() > 50 ? Log::info() : blackhole );
     for ( idx_t scell = 0; scell < src_csp.size(); ++scell, ++progress ) {
         if ( std::get<1>( src_csp[scell] ) == -1 ) {
+			// skip periodic cells
             continue;
         }
         const auto& s_csp   = std::get<0>( src_csp[scell] );
@@ -504,6 +505,11 @@ void ConservativeMethod::intersect_polygons( const CSPolygonArray& src_csp, cons
     geo_err_intsc_linf_ = 0.;
     size_t no_iplg      = 0;
     for ( idx_t scell = 0; scell < src_csp.size(); ++scell ) {
+		const int cell_flag = std::get<1>( src_csp[scell] );
+        if ( cell_flag == -1 or cell_flag > 0 ) {
+			// skip periodic cells
+            continue;
+        }
         double diff_cell = std::get<0>( src_csp[scell] ).area();
         for ( idx_t icell = 0; icell < iparam_[scell].weights.size(); ++icell ) {
             diff_cell -= iparam_[scell].weights[icell];
@@ -619,7 +625,7 @@ void ConservativeMethod::setup_2nd_order_matrix() {
                             << "\n";
                 continue;
             }
-            /* // better conservation
+            /* // better conservation after Kritsikis et al. (2017)
             PointXYZ Cs = {0., 0., 0.};
             for ( idx_t icell = 0; icell < iparam.centroids.size(); ++icell ) {
                 Cs = Cs + PointXYZ::mul( iparam.centroids[icell], iparam.weights[icell] );
@@ -653,7 +659,7 @@ void ConservativeMethod::setup_2nd_order_matrix() {
             for ( idx_t j = 0; j < nb_cells.size(); ++j ) {
                 Rs = Rs + Rsj[j];
             }
-            // now, assemble the matrix
+            // assemble the matrix
             std::vector<PointXYZ> Aik;
             Aik.resize( iparam.centroids.size() );
             for ( idx_t icell = 0; icell < iparam.centroids.size(); ++icell ) {
@@ -697,6 +703,7 @@ void ConservativeMethod::setup_2nd_order_matrix() {
     }
     else {  // if ( not src_cell_data_ )
         const auto src_halo = array::make_view<int, 1>( src_mesh_.nodes().halo() );
+ //       const auto glidx = array::make_view<gidx_t, 1>( src_mesh_.nodes().global_index() );
         for ( idx_t snode = 0; snode < n_spoints_; ++snode ) {
             const auto nb_nodes = get_node_neighbours( src_mesh_, snode );
             for ( idx_t isubcell = 0; isubcell < src_node2csp_[snode].size(); ++isubcell ) {
@@ -707,6 +714,8 @@ void ConservativeMethod::setup_2nd_order_matrix() {
         triplets.reserve( triplets_size );
         for ( idx_t snode = 0; snode < n_spoints_; ++snode ) {
             const auto nb_nodes = get_node_neighbours( src_mesh_, snode );
+//			std::cout << " --- " << mpi::rank() << ": Node " << snode << " has neighbours: "
+//				<< nb_nodes << std::endl;
             if ( nb_nodes.size() < 1 ) {
                 //    continue;
             }
@@ -750,7 +759,7 @@ void ConservativeMethod::setup_2nd_order_matrix() {
             for ( idx_t j = 0; j < nb_nodes.size(); ++j ) {
                 Rs = Rs + Rsj[j];
             }
-            // now, assemble the matrix
+            // assemble the matrix
             for ( idx_t isubcell = 0; isubcell < src_node2csp_[snode].size(); ++isubcell ) {
                 idx_t subcell      = src_node2csp_[snode][isubcell];
                 const auto& iparam = iparam_[subcell];
@@ -973,7 +982,6 @@ void ConservativeMethod::setup_stat( double& geo_create_err ) const {
 void ConservativeMethod::remap_stat( const FieldArray& src_vals, const FieldArray& tgt_vals, FieldArray& diff_vals,
                                      double& global_cons_err, double func( const PointLonLat& ), double& remap_error_l2,
                                      double& remap_error_linf ) const {
-    return;
     const auto& src_cell_halo  = array::make_view<int, 1>( src_mesh_.cells().halo() );
     const auto& src_node_ghost = array::make_view<int, 1>( src_mesh_.nodes().ghost() );
     const auto& tgt_cell_halo  = array::make_view<int, 1>( tgt_mesh_.cells().halo() );
@@ -991,7 +999,10 @@ void ConservativeMethod::remap_stat( const FieldArray& src_vals, const FieldArra
             const auto& iparam = iparam_[spt];
             if ( tgt_cell_data_ ) {
                 for ( idx_t icell = 0; icell < iparam.weights.size(); ++icell ) {
-                    diff -= tgt_vals( iparam.tcell_id[icell] ) * iparam.weights[icell];
+                    idx_t tcell = iparam.tcell_id[icell];
+					if ( tgt_cell_halo( tcell ) ) {
+                    	diff -= tgt_vals( iparam.tcell_id[icell] ) * iparam.weights[icell];
+					}
                 }
             }
             else {
