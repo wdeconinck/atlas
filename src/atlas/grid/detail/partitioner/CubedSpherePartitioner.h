@@ -10,6 +10,7 @@
 
 #pragma once
 
+#include <array>
 #include <vector>
 
 #include "atlas/grid/detail/partitioner/Partitioner.h"
@@ -23,14 +24,14 @@ class CubedSpherePartitioner : public Partitioner {
 public:
     CubedSpherePartitioner();
 
-    CubedSpherePartitioner( int N );  // N is the number of parts (aka MPI tasks)
-    CubedSpherePartitioner( int N, const eckit::Parametrisation& );
+    CubedSpherePartitioner(int N);  // N is the number of parts (aka MPI tasks)
+    CubedSpherePartitioner(int N, const eckit::Parametrisation&);
 
-    CubedSpherePartitioner( const int N, const std::vector<int>& globalProcStartPE,
-                            const std::vector<int>& globalProcEndPE, const std::vector<int>& nprocx,
-                            const std::vector<int>& nprocy );
+    CubedSpherePartitioner(const int N, const std::vector<int>& globalProcStartPE,
+                           const std::vector<int>& globalProcEndPE, const std::vector<int>& nprocx,
+                           const std::vector<int>& nprocy);
 
-    CubedSpherePartitioner( const int N, const bool regularGrid );
+    CubedSpherePartitioner(const int N, const bool regularGrid);
 
 
     // Cell struct that holds the x and y and t indices
@@ -42,18 +43,16 @@ public:
 
     struct CubedSphere {
         std::array<atlas::idx_t, 6> nproc;
-        std::array<atlas::idx_t, 6> nprocx{1, 1, 1,
-                                           1, 1, 1};  // number of PEs in the x direction of xy space on each tile.
-        std::array<atlas::idx_t, 6> nprocy{1, 1, 1,
-                                           1, 1, 1};    // number of PEs in the y direction of xy space on each tile.
+        std::array<atlas::idx_t, 6> nprocx;             // number of PEs in the x direction of xy space on each tile.
+        std::array<atlas::idx_t, 6> nprocy;             // number of PEs in the y direction of xy space on each tile.
         std::array<atlas::idx_t, 6> globalProcStartPE;  // lowest global mpi rank on each tile;
         std::array<atlas::idx_t, 6> globalProcEndPE;    // final global mpi rank on each tile;
             // note that mpi ranks on each tile are vary contiguously from globalProcStartPE to
             // globalProcEndPE.
 
+        // grid dimensions on each tile - for all cell-centered grids they will be same.
         std::array<atlas::idx_t, 6> nx;
-        std::array<atlas::idx_t, 6>
-            ny;  // grid dimensions on each tile - for all cell-centered grids they will be same.
+        std::array<atlas::idx_t, 6> ny;
 
         // these are the offsets in the x and y directions
         // they are allocated in "void partition(CubedSphere& cb, int nb_nodes, CellInt nodes[], int part[] );"
@@ -62,22 +61,29 @@ public:
 
         // the two variables below are for now the main options
         // in the future this will be extended
-        std::array<atlas::idx_t, 6> startingCornerOnTile{
-            0, 0, 0, 0, 0, 0};  // for now bottom left corner (0) default. Could be configurable to
-                                // top left (1), top right(2) bottom right(3)
-        std::array<atlas::idx_t, 6> xFirst{1, 1, 1,
-                                           1, 1, 1};  // if 1 then x is leading index - if 0 y is leading index;
+        std::array<atlas::idx_t, 6> startingCornerOnTile;
+        // for now bottom left corner (0) default.
+        // Could be configurable to top left (1), top right(2) bottom right(3)
+
+        std::array<atlas::idx_t, 6> xFirst;  // if 1 then x is leading index - if 0 y is leading index;
+
+        CubedSphere() {
+            nprocx               = std::array<atlas::idx_t, 6>{1, 1, 1, 1, 1, 1};
+            nprocy               = std::array<atlas::idx_t, 6>{1, 1, 1, 1, 1, 1};
+            startingCornerOnTile = std::array<atlas::idx_t, 6>{0, 0, 0, 0, 0, 0};
+            xFirst               = std::array<atlas::idx_t, 6>{1, 1, 1, 1, 1, 1};
+        }
     };
 
-    CubedSphere cubedsphere( const Grid& ) const;
+    CubedSphere cubedsphere(const Grid&) const;
 
-    void partition( CubedSphere& cb, const int nb_nodes, const CellInt nodes[], int part[] ) const;
+    void partition(CubedSphere& cb, const int nb_nodes, const CellInt nodes[], int part[]) const;
 
     virtual std::string type() const { return "cubedsphere"; }
 
 private:
     using Partitioner::partition;
-    virtual void partition( const Grid&, int part[] ) const;
+    virtual void partition(const Grid&, int part[]) const;
 
     void check() const;
 

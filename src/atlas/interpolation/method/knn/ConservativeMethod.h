@@ -40,29 +40,29 @@ public:
         std::vector<double> sweights;
     };
 
-    ConservativeMethod( const Config& = util::NoConfig() );
+    ConservativeMethod(const Config& = util::NoConfig());
 
     using Method::do_setup;
-    void do_setup( const FunctionSpace& src_fs, const FunctionSpace& tgt_fs );
-    void do_setup( const Grid& src_grid, const Grid& tgt_grid );
-    void do_setup( const Grid& src_grid, const Grid& tgt_grid, const Cache& ) { ATLAS_NOTIMPLEMENTED; }
-    void do_execute( const Field& src_field, Field& tgt_field );
+    void do_setup(const FunctionSpace& src_fs, const FunctionSpace& tgt_fs);
+    void do_setup(const Grid& src_grid, const Grid& tgt_grid);
+    void do_setup(const Grid& src_grid, const Grid& tgt_grid, const Cache&) { ATLAS_NOTIMPLEMENTED; }
+    void do_execute(const Field& src_field, Field& tgt_field);
 
-    void set_order( int order ) {
+    void set_order(int order) {
         order_ = order;
-        if ( order == 2 ) {
-            mesh::actions::build_edges( src_mesh_, util::Config( "pole_edges", false ) );
+        if (order == 2) {
+            mesh::actions::build_edges(src_mesh_, util::Config("pole_edges", false));
             setup_2nd_order_matrix();
         }
-        if ( order == 1 ) {
+        if (order == 1) {
             setup_1st_order_matrix();
         }
     }
-    void setup_stat( double& geo_create_err ) const;
-    void remap_stat( const FieldArray& src_field, const FieldArray& tgt_field, FieldArray& diff_field,
-                     double& global_cons_err, double func( const PointLonLat& ), double& remap_error_l2,
-                     double& remap_error_linf ) const;
-    void print( std::ostream& out ) const { out << "ConservativeMethod[]"; }
+    void setup_stat(double& geo_create_err) const;
+    void remap_stat(const FieldArray& src_field, const FieldArray& tgt_field, FieldArray& diff_field,
+                    double& global_cons_err, double func(const PointLonLat&), double& remap_error_l2,
+                    double& remap_error_linf) const;
+    void print(std::ostream& out) const { out << "ConservativeMethod[]"; }
 
     bool src_cell_data() const { return src_cell_data_; }
     bool tgt_cell_data() const { return tgt_cell_data_; }
@@ -76,26 +76,26 @@ public:
     double geo_err_intsc_l1() const { return geo_err_intsc_l1_; }
     double geo_err_intsc_linf() const { return geo_err_intsc_linf_; }
     inline const std::vector<InterpolationParameters>& iparam() const { return iparam_; }
-    inline const PointXYZ& src_points( size_t id ) const { return src_points_[id]; }
-    inline const PointXYZ& tgt_points( size_t id ) const { return tgt_points_[id]; }
+    inline const PointXYZ& src_points(size_t id) const { return src_points_[id]; }
+    inline const PointXYZ& tgt_points(size_t id) const { return tgt_points_[id]; }
 
 protected:
-    void intersect_polygons( const CSPolygonArray& src_csp, const CSPolygonArray& tgt_scp );
+    void intersect_polygons(const CSPolygonArray& src_csp, const CSPolygonArray& tgt_scp);
     void setup_1st_order_matrix();
     void setup_2nd_order_matrix();
 
 private:
     template <class TargetCellsIDs>
-    void dump_intersection( const util::ConvexSphericalPolygon& s_csp, const CSPolygonArray& tgt_csp,
-                            const TargetCellsIDs& tgt_cells ) const;
+    void dump_intersection(const util::ConvexSphericalPolygon& s_csp, const CSPolygonArray& tgt_csp,
+                           const TargetCellsIDs& tgt_cells) const;
 
-    std::vector<idx_t> sort_cell_edges( Mesh& mesh, idx_t cell_id ) const;
-    std::vector<idx_t> sort_node_edges( Mesh& mesh, idx_t cell_id ) const;
-    std::vector<idx_t> get_cell_neighbours( Mesh& mesh, idx_t jcell ) const;
-    std::vector<idx_t> get_node_neighbours( Mesh& mesh, idx_t jcell ) const;
-    CSPolygonArray get_polygons_celldata( Mesh& mesh ) const;
-    CSPolygonArray get_polygons_nodedata( Mesh& mesh, std::vector<idx_t>& csp2node,
-                                          std::vector<std::vector<idx_t>>& node2csp ) const;
+    std::vector<idx_t> sort_cell_edges(Mesh& mesh, idx_t cell_id) const;
+    std::vector<idx_t> sort_node_edges(Mesh& mesh, idx_t cell_id) const;
+    std::vector<idx_t> get_cell_neighbours(Mesh& mesh, idx_t jcell) const;
+    std::vector<idx_t> get_node_neighbours(Mesh& mesh, idx_t jcell) const;
+    CSPolygonArray get_polygons_celldata(Mesh& mesh) const;
+    CSPolygonArray get_polygons_nodedata(Mesh& mesh, std::vector<idx_t>& csp2node,
+                                         std::vector<std::vector<idx_t>>& node2csp) const;
 
 protected:
     bool src_cell_data_;

@@ -28,10 +28,10 @@ public:
     static constexpr int MAX_SIZE           = 2 * MAX_GRIDCELL_EDGES + 1;
 
     ConvexSphericalPolygon();
-    ConvexSphericalPolygon( const std::vector<PointLonLat>& points );
+    ConvexSphericalPolygon(const std::vector<PointLonLat>& points);
     //ConvexSphericalPolygon( const PartitionPolygon& );
 
-    ConvexSphericalPolygon( const std::vector<PointXYZ>& points, const bool debug = false );
+    ConvexSphericalPolygon(const std::vector<PointXYZ>& points, const bool debug = false);
 
     operator bool() const { return valid_; }
 
@@ -39,22 +39,21 @@ public:
 
     const PointXYZ& centroid() const { return centroid_; }
 
-    static double norm_max( const PointXYZ& p, const PointXYZ& q );
+    static double norm_max(const PointXYZ& p, const PointXYZ& q);
 
     /*
    * @brief Point-on-segment test on great circle segments
    * @param[in] P given point in (x,y,z) coordinates
    * @return 
    */
-    static bool between( const PointXYZ& p, const PointXYZ& p1, const PointXYZ& p2, const int debug = 0 );
+    static bool between(const PointXYZ& p, const PointXYZ& p1, const PointXYZ& p2, const int debug = 0);
 
     /*
    * Point left of [p1,p2]
    * @param[in] P, p1, p2 given point in xyz-coordinates
    * @return 0:P_right_of_[p1,p2], -1:overlap_of_[P,p1]_and_[P,p2], 1:P_left_of_[p1,p2]
    */
-    static int leftOf( const PointXYZ& P, const PointXYZ& p1, const PointXYZ& p2, const double tol,
-                       const int debug = 0 );
+    static int leftOf(const PointXYZ& P, const PointXYZ& p1, const PointXYZ& p2, const double tol, const int debug = 0);
 
     /*
    * @brief Segment-sph_polygon intersection
@@ -63,21 +62,21 @@ public:
    * @param[out] ip intersection point or nullptr
    * @return 0:no_intersection, 1:
    */
-    int intersect( const PointXYZ& s1, const PointXYZ& s2, PointXYZ& ip, const int start,
-                   const bool debug = false ) const;
-    static PointXYZ common( const PointXYZ& s1, const PointXYZ& s2, const PointXYZ& p1, const PointXYZ& p2,
-                            const int debug = 0 );
+    int intersect(const PointXYZ& s1, const PointXYZ& s2, PointXYZ& ip, const int start,
+                  const bool debug = false) const;
+    static PointXYZ common(const PointXYZ& s1, const PointXYZ& s2, const PointXYZ& p1, const PointXYZ& p2,
+                           const int debug = 0);
 
-    void clip( const PointXYZ& s1, const PointXYZ& s2, const int debug = 0 );
-    void clip( const PointLonLat& s1, const PointLonLat& s2, const int debug = 0 );
-    ConvexSphericalPolygon intersect( const ConvexSphericalPolygon& pol, const int debug = 0 ) const;
+    void clip(const PointXYZ& s1, const PointXYZ& s2, const int debug = 0);
+    void clip(const PointLonLat& s1, const PointLonLat& s2, const int debug = 0);
+    ConvexSphericalPolygon intersect(const ConvexSphericalPolygon& pol, const int debug = 0) const;
 
     /*
    * @brief check if two spherical polygons area equal
    * @param[in] P given point in (x,y,z) coordinates
    * @return true if equal vertices
    */
-    bool equals( const ConvexSphericalPolygon& plg, const double deg_prec = 1e-10 ) const;
+    bool equals(const ConvexSphericalPolygon& plg, const double deg_prec = 1e-10) const;
 
     /*
    * @return true:polygon is convex
@@ -88,21 +87,21 @@ public:
 
     double cell_radius() const { return cell_radius_; }
 
-    void print( std::ostream& ) const;
+    void print(std::ostream&) const;
 
-    friend std::ostream& operator<<( std::ostream& out, const ConvexSphericalPolygon& p ) {
-        p.print( out );
+    friend std::ostream& operator<<(std::ostream& out, const ConvexSphericalPolygon& p) {
+        p.print(out);
         return out;
     }
 
-    const PointXYZ& operator[]( idx_t n ) const {
-        ATLAS_ASSERT( n < size_ );
+    const PointXYZ& operator[](idx_t n) const {
+        ATLAS_ASSERT(n < size_);
         return sph_coords_[n];
     }
 
     //private:
 
-    void compute_area( const int debug = 0 );
+    void compute_area(const int debug = 0);
 
 private:
     std::array<PointXYZ, MAX_SIZE> sph_coords_;
