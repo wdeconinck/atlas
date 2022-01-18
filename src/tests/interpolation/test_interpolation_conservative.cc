@@ -63,21 +63,31 @@ void compute_field_errors(const FieldArray& src_vals, const FieldArray& tgt_vals
 }
 
 void do_remapping_test(Grid src_grid, Grid tgt_grid, double func(const PointLonLat&), std::ofstream& outfile) {
-    std::string gmsh_outgrid = "xyz";
+    util::Config gmsh_config;
+    // Allow command-line argument to change coordinates output to lonlat; e.g.
+    //    <program> --coordinates lonlat
+    gmsh_config.set("coordinates", eckit::Resource<std::string>("--coordinates","xyz"));
+    gmsh_config.set("ghost", true);
     util::Config config;
     config.set("matrix_free", false);
     config.set("normalise_intersections", true);
-    config.set("src_cell_data", true);
-    config.set("tgt_cell_data", true);
+    auto cell_data = [](const std::string& resource, const Grid& grid) -> bool {
+        bool resource_default = grid.name()[0] == 'H' ? true : false;
+        bool retval = eckit::Resource<bool>(resource,resource_default);
+        return retval;
+    };
+    config.set("src_cell_data", cell_data("--src-cell-data",src_grid));
+    config.set("tgt_cell_data", cell_data("--tgt-cell-data",tgt_grid));
     ConservativeMethod consMethod(config);
 
     outfile << std::setw(10) << src_grid.name() << std::setw(10) << tgt_grid.name();
 
+    Log::info() << "REMAPPING: " << src_grid.name() << " --> " << tgt_grid.name() << std::endl;
+    Log::info().indent();
     auto start = std::chrono::system_clock::now();
     consMethod.do_setup(src_grid, tgt_grid);
     std::chrono::duration<double> elapsed_seconds = std::chrono::system_clock::now() - start;
-    Log::info() << "REMAPPING: " << src_grid.name() << " --> " << tgt_grid.name() << "\n";
-    Log::info() << "  Setup (computing supermesh) took " << elapsed_seconds.count() << " seconds.\n";
+    Log::info() << "Setup (computing supermesh) took " << elapsed_seconds.count() << " seconds.\n";
     outfile << std::setw(10) << elapsed_seconds.count();
 
     const auto& src_mesh = consMethod.src_mesh();
@@ -93,8 +103,8 @@ void do_remapping_test(Grid src_grid, Grid tgt_grid, double func(const PointLonL
     consMethod.setup_stat(geo_create_err);
     outfile << std::setw(10) << geo_create_err;
     outfile << std::setw(10) << consMethod.geo_err_intsc_l1() << std::setw(10) << consMethod.geo_err_intsc_linf();
-    output::Gmsh("cons-remap_srcmesh.msh", util::Config("coordinates", gmsh_outgrid)).write(consMethod.src_mesh());
-    output::Gmsh("cons-remap_tgtmesh.msh", util::Config("coordinates", gmsh_outgrid)).write(consMethod.tgt_mesh());
+    output::Gmsh("cons-remap_srcmesh.msh", gmsh_config).write(consMethod.src_mesh());
+    output::Gmsh("cons-remap_tgtmesh.msh", gmsh_config).write(consMethod.tgt_mesh());
 
     if (consMethod.src_cell_data()) {
         for (idx_t scell = 0; scell < src_vals.size(); ++scell) {
@@ -111,7 +121,7 @@ void do_remapping_test(Grid src_grid, Grid tgt_grid, double func(const PointLonL
             src_vals(snode) = func(pll);
         }
     }
-    output::Gmsh("cons-remap_srcfield.msh", util::Config("coordinates", gmsh_outgrid)).write(src_field);
+    output::Gmsh("cons-remap_srcfield.msh", gmsh_config).write(src_field);
 
     consMethod.set_order(1);
     start = std::chrono::system_clock::now();
@@ -119,12 +129,12 @@ void do_remapping_test(Grid src_grid, Grid tgt_grid, double func(const PointLonL
     elapsed_seconds = std::chrono::system_clock::now() - start;
     Log::info() << "  1-order remap took " << elapsed_seconds.count() << " seconds.\n";
     outfile << std::setw(10) << elapsed_seconds.count();
-    output::Gmsh("cons-remap_tgtfield-1ord.msh", util::Config("coordinates", gmsh_outgrid)).write(tgt_field);
+    output::Gmsh("cons-remap_tgtfield-1ord.msh", gmsh_config).write(tgt_field);
 
     auto diff_field = src_fs.createField<double>();
     auto diff_vals  = array::make_view<double, 1>(diff_field);
     compute_field_errors(src_vals, tgt_vals, diff_vals, consMethod, func, outfile);
-    output::Gmsh("cons-remap_difffield-1ord.msh", util::Config("coordinates", gmsh_outgrid)).write(diff_field);
+    output::Gmsh("cons-remap_difffield-1ord.msh", gmsh_config).write(diff_field);
 
     consMethod.set_order(2);
     start = std::chrono::system_clock::now();
@@ -132,12 +142,14 @@ void do_remapping_test(Grid src_grid, Grid tgt_grid, double func(const PointLonL
     elapsed_seconds = std::chrono::system_clock::now() - start;
     Log::info() << "  2-order remap took " << elapsed_seconds.count() << " seconds.\n";
     outfile << std::setw(10) << elapsed_seconds.count();
-    output::Gmsh("cons-remap_tgtfield-2ord.msh", util::Config("coordinates", gmsh_outgrid)).write(tgt_field);
+    output::Gmsh("cons-remap_tgtfield-2ord.msh", gmsh_config).write(tgt_field);
 
     compute_field_errors(src_vals, tgt_vals, diff_vals, consMethod, func, outfile);
-    output::Gmsh("cons-remap_difffield-2ord.msh", util::Config("coordinates", gmsh_outgrid)).write(diff_field);
+    output::Gmsh("cons-remap_difffield-2ord.msh", gmsh_config).write(diff_field);
 
     (outfile << "\n").flush();
+    Log::info().unindent();
+
 }
 
 CASE("test_interpolation_conservative") {
@@ -188,7 +200,11 @@ CASE("test_interpolation_conservative") {
             return 2. + cos * cos * std::cos(2 * 0.025 * p[1]);
         };
 
-        do_remapping_test(Grid("H16"), Grid("H32"), func, outfile);
+        // Allow to override via command-line, e.g.
+        //     <program> --src-grid O16 --tgt-grid O32
+        auto src_grid = Grid{eckit::Resource<std::string>("--src-grid", "H16")};
+        auto tgt_grid = Grid{eckit::Resource<std::string>("--tgt-grid", "H32")};
+        do_remapping_test(src_grid, tgt_grid, func, outfile);
         return;
 
         const int start_res            = 32;

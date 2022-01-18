@@ -213,14 +213,21 @@ CSPolygonArray ConservativeMethod::get_polygons_nodedata(Mesh& mesh, std::vector
     csp2node.clear();
     node2csp.clear();
     node2csp.resize(mesh.nodes().size());
-    const auto xy          = array::make_view<double, 2>(mesh.nodes().xy());
-    const auto nodes_ll    = array::make_view<double, 2>(mesh.nodes().lonlat());
-    auto edge_flags        = array::make_view<int, 1>(mesh.edges().flags());
-    const auto& cell2edge  = mesh.cells().edge_connectivity();
-    const auto& edge2node  = mesh.edges().node_connectivity();
-    const auto& cell_halo  = array::make_view<int, 1>(mesh.cells().halo());
-    const auto& cell_flags = array::make_view<int, 1>(mesh.cells().flags());
-    const auto& cell_part  = array::make_view<int, 1>(mesh.cells().partition());
+    const auto xy         = array::make_view<double, 2>(mesh.nodes().xy());
+    const auto nodes_ll   = array::make_view<double, 2>(mesh.nodes().lonlat());
+    auto edge_flags       = array::make_view<int, 1>(mesh.edges().flags());
+    const auto& cell2edge = mesh.cells().edge_connectivity();
+    const auto& cell2node = mesh.cells().node_connectivity();
+    const auto& edge2node = mesh.edges().node_connectivity();
+    const auto cell_halo  = array::make_view<int, 1>(mesh.cells().halo());
+    const auto cell_flags = array::make_view<int, 1>(mesh.cells().flags());
+    const auto cell_part  = array::make_view<int, 1>(mesh.cells().partition());
+    const auto cell_gidx  = array::make_view<gidx_t, 1>(mesh.cells().global_index());
+    const auto nodes_gidx = array::make_view<gidx_t, 1>(mesh.nodes().global_index());
+    auto cell_patch       = [&cell_flags](idx_t e) {
+        using Topology = atlas::mesh::Nodes::Topology;
+        return Topology::check(cell_flags(e), Topology::PATCH);
+    };
 
     auto xyz2ll = [](atlas::PointXYZ& p_xyz) {
         PointLonLat p_ll;
@@ -232,10 +239,35 @@ CSPolygonArray ConservativeMethod::get_polygons_nodedata(Mesh& mesh, std::vector
 
     for (idx_t icell = 0; icell < mesh.cells().size(); ++icell) {
         // get cell centre
-        PointXYZ cell_mid   = PointXYZ{0., 0., 0.};
+        PointXYZ cell_mid = PointXYZ{0., 0., 0.};
+        ATLAS_ASSERT(icell < cell2edge.rows());
+        ATLAS_ASSERT(icell < cell2node.rows());
         const idx_t n_edges = cell2edge.cols(icell);
+        const idx_t n_nodes = cell2node.cols(icell);
         for (idx_t iedge = 0; iedge < n_edges; ++iedge) {
-            idx_t edge              = cell2edge(icell, iedge);
+            idx_t edge = cell2edge(icell, iedge);
+            ATLAS_ASSERT(edge < edge2node.rows());
+            if (edge == -1) {
+                /* This is the case for patch elements, e.g. present in the Gaussian grids.
+                 * See example https://sites.ecmwf.int/docs/atlas/tools/atlas-meshgen/#patching-the-poles
+                 */
+                ATLAS_DEBUG_VAR(icell);
+                ATLAS_DEBUG_VAR(cell_gidx(icell));
+                ATLAS_DEBUG_VAR(cell_halo(icell));
+                ATLAS_DEBUG_VAR(iedge);
+                std::vector<PointLonLat> node_points;
+                std::vector<gidx_t> node_gidx;
+                for (idx_t jnode = 0; jnode < n_nodes; ++jnode) {
+                    idx_t inode = cell2node(icell, jnode);
+                    ATLAS_ASSERT(inode > -1);
+                    ATLAS_ASSERT(inode < nodes_ll.shape(0));
+                    node_points.emplace_back(nodes_ll(inode, LON), nodes_ll(inode, LON));
+                    node_gidx.emplace_back(nodes_gidx(inode));
+                }
+                ATLAS_DEBUG_VAR(node_points);
+                ATLAS_DEBUG_VAR(node_gidx);
+                ATLAS_THROW_EXCEPTION("It's not possible to use edges of PATCH elements");
+            }
             idx_t node0             = edge2node(edge, 0);
             idx_t node1             = edge2node(edge, 1);
             const PointLonLat p0_ll = PointLonLat{nodes_ll(node0, 0), nodes_ll(node0, 1)};
@@ -244,7 +276,7 @@ CSPolygonArray ConservativeMethod::get_polygons_nodedata(Mesh& mesh, std::vector
             eckit::geometry::Sphere::convertSphericalToCartesian(1., p0_ll, p0);
             eckit::geometry::Sphere::convertSphericalToCartesian(1., p1_ll, p1);
             if (PointXYZ::norm(p0 - p1) < 1e-14) {
-                continue;  // pole edge
+                continue;  // edge that degenerates to single point in 3D
             }
             cell_mid = cell_mid + p0;
             cell_mid = cell_mid + p1;
@@ -394,7 +426,12 @@ void ConservativeMethod::do_setup(const FunctionSpace& src_fs, const FunctionSpa
     else {
         ATLAS_NOTIMPLEMENTED;
     }
-    functionspace::NodeColumns tmp_tgt_fs(tgt_mesh_, option::halo(0));
+
+    {
+        // TODO: Check if this is still required, and if so, work needs to be done to make it disappear
+        functionspace::NodeColumns tmp_tgt_fs(tgt_mesh_, option::halo(0));
+    }
+
     auto src_grid        = src_mesh_.grid();
     auto src_mesh_config = src_grid.meshgenerator();
     if (mpi::size() > 1) {
@@ -404,33 +441,44 @@ void ConservativeMethod::do_setup(const FunctionSpace& src_fs, const FunctionSpa
         src_mesh_ = MeshGenerator(src_mesh_config).generate(src_grid);
     }
     functionspace::NodeColumns tmp_src_fs(src_mesh_, option::halo(2));
-    mesh::actions::build_edges(src_mesh_, util::Config("pole_edges", false));
-    if (not src_cell_data_) {
-        mesh::actions::build_node_to_edge_connectivity(src_mesh_);
+
+    {
+        // TODO: make everything in this scope unnecessary, relying only on cells and nodes.
+        mesh::actions::build_edges(src_mesh_, util::Config("pole_edges", false));
+        if (not src_cell_data_) {
+            mesh::actions::build_node_to_edge_connectivity(src_mesh_);
+        }
+        mesh::actions::build_edges(tgt_mesh_, util::Config("pole_edges", false));
     }
-    mesh::actions::build_edges(tgt_mesh_, util::Config("pole_edges", false));
+
 
     CSPolygonArray src_csp;
     CSPolygonArray tgt_csp;
-    if (src_cell_data_) {
-        functionspace::CellColumns src_fs(src_mesh_, option::halo(2));
-        src_fs_ = src_fs;
-        src_csp = get_polygons_celldata(src_mesh_);
+    {
+        ATLAS_TRACE("Get source polygons");
+        if (src_cell_data_) {
+            functionspace::CellColumns src_fs(src_mesh_, option::halo(2));
+            src_fs_ = src_fs;
+            src_csp = get_polygons_celldata(src_mesh_);
+        }
+        else {
+            functionspace::NodeColumns src_fs(src_mesh_, option::halo(2));
+            src_fs_ = src_fs;
+            src_csp = get_polygons_nodedata(src_mesh_, src_csp2node_, src_node2csp_);
+        }
     }
-    else {
-        functionspace::NodeColumns src_fs(src_mesh_, option::halo(2));
-        src_fs_ = src_fs;
-        src_csp = get_polygons_nodedata(src_mesh_, src_csp2node_, src_node2csp_);
-    }
-    if (tgt_cell_data_) {
-        functionspace::CellColumns tgt_fs(tgt_mesh_, option::halo(0));
-        tgt_fs_ = tgt_fs;
-        tgt_csp = get_polygons_celldata(tgt_mesh_);
-    }
-    else {
-        functionspace::NodeColumns tgt_fs(tgt_mesh_, option::halo(0));
-        tgt_fs_ = tgt_fs;
-        tgt_csp = get_polygons_nodedata(tgt_mesh_, tgt_csp2node_, tgt_node2csp_);
+    {
+        ATLAS_TRACE("Get target polygons");
+        if (tgt_cell_data_) {
+            functionspace::CellColumns tgt_fs(tgt_mesh_, option::halo(0));
+            tgt_fs_ = tgt_fs;
+            tgt_csp = get_polygons_celldata(tgt_mesh_);
+        }
+        else {
+            functionspace::NodeColumns tgt_fs(tgt_mesh_, option::halo(0));
+            tgt_fs_ = tgt_fs;
+            tgt_csp = get_polygons_nodedata(tgt_mesh_, tgt_csp2node_, tgt_node2csp_);
+        }
     }
     intersect_polygons(src_csp, tgt_csp);
 
@@ -502,6 +550,7 @@ void ConservativeMethod::do_setup(const FunctionSpace& src_fs, const FunctionSpa
 
 
 void ConservativeMethod::intersect_polygons(const CSPolygonArray& src_csp, const CSPolygonArray& tgt_csp) {
+    ATLAS_TRACE();
     util::KDTree<idx_t> kdt_search;
     kdt_search.reserve(tgt_csp.size());
 
