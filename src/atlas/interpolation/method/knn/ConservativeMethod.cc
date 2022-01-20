@@ -5,7 +5,7 @@
  * which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
  * In applying this licence, ECMWF does not waive the privileges and immunities
  * granted to it by virtue of its status as an intergovernmental organisation
- * nor does it submit to any jurisdiction. and Interpolation
+ * nor does it submit to any jurisdiction.
  */
 
 #include <iomanip>
@@ -79,7 +79,6 @@ std::vector<idx_t> ConservativeMethod::sort_cell_edges(Mesh& mesh, idx_t cell_id
 std::vector<idx_t> ConservativeMethod::sort_node_edges(Mesh& mesh, idx_t node_id) const {
     const auto& node2edge = mesh.nodes().edge_connectivity();
     const auto& edge2cell = mesh.edges().cell_connectivity();
-    const auto& edge2node = mesh.edges().node_connectivity();
     const int nedges      = node2edge.cols(node_id);
     std::vector<idx_t> edges;
     edges.resize(nedges);
@@ -125,7 +124,6 @@ std::vector<idx_t> ConservativeMethod::sort_node_edges(Mesh& mesh, idx_t node_id
 std::vector<idx_t> ConservativeMethod::get_cell_neighbours(Mesh& mesh, idx_t cell_id) const {
     const auto& cell2edge  = mesh.cells().edge_connectivity();
     const auto& edge2cell  = mesh.edges().cell_connectivity();
-    const auto& edge2node  = mesh.edges().node_connectivity();
     auto c2e_missval       = cell2edge.missing_value();
     const auto& edges_sort = sort_cell_edges(mesh, cell_id);
     const idx_t nedges     = cell2edge.cols(cell_id);
@@ -151,7 +149,6 @@ std::vector<idx_t> ConservativeMethod::get_cell_neighbours(Mesh& mesh, idx_t cel
 // get cyclically sorted node neighbours
 std::vector<idx_t> ConservativeMethod::get_node_neighbours(Mesh& mesh, idx_t node_id) const {
     const auto& node2edge  = mesh.nodes().edge_connectivity();
-    const auto& edge2cell  = mesh.edges().cell_connectivity();
     const auto& edge2node  = mesh.edges().node_connectivity();
     auto n2e_missval       = node2edge.missing_value();
     const auto& edges_sort = sort_node_edges(mesh, node_id);
@@ -975,7 +972,6 @@ void ConservativeMethod::do_execute(const Field& src_field, Field& tgt_field) {
             const auto src_vals       = array::make_view<double, 1>(src_field);
             auto tgt_vals             = array::make_view<double, 1>(tgt_field);
             const auto& src_cell2edge = src_mesh_.cells().edge_connectivity();
-            const auto& src_edge2cell = src_mesh_.edges().cell_connectivity();
             const auto& src_edge2node = src_mesh_.edges().node_connectivity();
             const auto halo           = array::make_view<int, 1>(src_mesh_.cells().halo());
             for (idx_t tcell = 0; tcell < tgt_vals.size(); ++tcell) {
