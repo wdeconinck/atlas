@@ -17,7 +17,6 @@
 #include "atlas/interpolation/method/MethodFactory.h"
 #include "atlas/interpolation/method/knn/ConservativeMethod.h"
 #include "atlas/mesh/actions/BuildDualMesh.h"
-#include "atlas/mesh/actions/BuildEdges.h"
 #include "atlas/mesh/actions/BuildHalo.h"
 #include "atlas/meshgenerator.h"
 #include "atlas/parallel/mpi/mpi.h"
@@ -28,6 +27,13 @@
 #include "atlas/util/KDTree.h"
 #include "atlas/util/Topology.h"
 
+#define USE_EDGE_CONNECTIVITY 1
+
+#if USE_EDGE_CONNECTIVITY
+#include "atlas/mesh/actions/BuildNode2CellConnectivity.h"
+#else
+#include "atlas/mesh/actions/BuildEdges.h"
+#endif
 
 namespace atlas {
 namespace interpolation {
@@ -75,6 +81,8 @@ std::vector<idx_t> ConservativeMethod::sort_cell_edges(Mesh& mesh, idx_t cell_id
     return edges;
 }
 
+#if not USE_EDGE_CONNECTIVITY
+
 // get cyclically sorted edges from a node
 std::vector<idx_t> ConservativeMethod::sort_node_edges(Mesh& mesh, idx_t node_id) const {
     const auto& node2edge = mesh.nodes().edge_connectivity();
@@ -120,6 +128,8 @@ std::vector<idx_t> ConservativeMethod::sort_node_edges(Mesh& mesh, idx_t node_id
     return edges;
 }
 
+#endif
+
 // get cyclically sorted neighbours of a cell
 std::vector<idx_t> ConservativeMethod::get_cell_neighbours(Mesh& mesh, idx_t cell_id) const {
     const auto& cell2edge  = mesh.cells().edge_connectivity();
@@ -146,7 +156,9 @@ std::vector<idx_t> ConservativeMethod::get_cell_neighbours(Mesh& mesh, idx_t cel
     return nbr_cells;
 }
 
-// get cyclically sorted node neighbours
+#if not USE_EDGE_CONNECTIVITY
+
+// get cyclically sorted node neighbours using edge connectivity
 std::vector<idx_t> ConservativeMethod::get_node_neighbours(Mesh& mesh, idx_t node_id) const {
     const auto& node2edge  = mesh.nodes().edge_connectivity();
     const auto& edge2node  = mesh.edges().node_connectivity();
@@ -171,6 +183,119 @@ std::vector<idx_t> ConservativeMethod::get_node_neighbours(Mesh& mesh, idx_t nod
     ATLAS_ASSERT(nedges == nbr_nodes.size());
     return nbr_nodes;
 }
+
+#else 
+
+// get cyclically sorted node neighbours without using edge connectivity
+std::vector<idx_t> ConservativeMethod::get_node_neighbours(Mesh& mesh, idx_t node_id) const {
+    const auto& node2cell  = mesh.nodes().cell_connectivity();
+    const auto& cell2node  = mesh.cells().node_connectivity();
+    std::vector<idx_t> nbr_nodes;
+    std::vector<idx_t> nbr_nodes_od;
+    const int ncells       = node2cell.cols( node_id );
+	ATLAS_ASSERT( ncells > 0 );
+    idx_t cnodes[ncells][2];
+    nbr_nodes.reserve( ncells + 1 );
+    nbr_nodes_od.reserve( ncells + 1 );
+    for (idx_t icell = 0; icell < ncells; ++icell) {
+        const idx_t cell = node2cell( node_id, icell );
+		const int nnodes = cell2node.cols( cell );
+		idx_t cnode = 0;
+    	for (; cnode < nnodes; ++cnode) {
+			if ( node_id == cell2node( cell, cnode ) ) {
+				break;
+			}
+		}
+		cnodes[icell][0] = cell2node( cell, (cnode!=0 ? cnode-1 : nnodes-1) );
+		cnodes[icell][1] = cell2node( cell, (cnode!=nnodes-1 ? cnode+1 : 0) );
+    }
+	if ( ncells == 1 ) {
+		nbr_nodes.emplace_back( cnodes[0][0] );
+		nbr_nodes.emplace_back( cnodes[0][1] );
+		return nbr_nodes;
+	}
+	// cycle one direction
+	idx_t find = cnodes[0][1];
+	idx_t prev = cnodes[0][0];
+	nbr_nodes.emplace_back( prev );
+	nbr_nodes.emplace_back( find );
+    for (idx_t icycle = 0; nbr_nodes[0] != find; ) {
+		idx_t jcell = 0;
+    	for ( ; jcell < ncells; ++jcell) {
+			idx_t ocell = (icycle + jcell + 1)%ncells;
+			idx_t cand0 = cnodes[ocell][0];
+			idx_t cand1 = cnodes[ocell][1];
+			if ( find == cand0 && prev != cand1 ) {
+				if ( cand1 == nbr_nodes[0] ) {
+					return nbr_nodes;
+				}
+				nbr_nodes.emplace_back( cand1 );
+				prev = find;
+				find = cand1;
+				break;
+			}
+			if ( find == cand1 && prev != cand0 ) {
+				if ( cand0 == nbr_nodes[0] ) {
+					return nbr_nodes;
+				}
+				nbr_nodes.emplace_back( cand0 );
+				prev = find;
+				find = cand0;
+				break;
+			}
+		}
+		if ( jcell == ncells ) { // not found
+			if ( nbr_nodes[0] != find && find != nbr_nodes[ nbr_nodes.size()-1 ] ) {
+				nbr_nodes.emplace_back( find );
+			}
+			break;
+		}
+		else {
+			icycle++;
+		}
+	}
+	if ( nbr_nodes[0] == find ) {
+		return nbr_nodes;
+	}
+	// cycle the oposite direction
+	find = cnodes[0][0];
+	prev = cnodes[0][1];
+	nbr_nodes_od.emplace_back( prev );
+	nbr_nodes_od.emplace_back( find );
+    for (idx_t icycle = 0; nbr_nodes_od[0] != find; ) {
+		idx_t jcell = 0;
+    	for ( ; jcell < ncells; ++jcell) {
+			idx_t ocell = (icycle + jcell + 1)%ncells;
+			if ( find == cnodes[ocell][0] && prev != cnodes[ocell][1] ) {
+				nbr_nodes_od.emplace_back( cnodes[ocell][1] );
+				prev = find;
+				find = cnodes[ocell][1];
+				break;
+			}
+			if ( find == cnodes[ocell][1] && prev != cnodes[ocell][0] ) {
+				nbr_nodes_od.emplace_back( cnodes[ocell][0] );
+				prev = find;
+				find = cnodes[ocell][0];
+				break;
+			}
+		}
+		if ( jcell == ncells ) {
+			if ( find != nbr_nodes_od[ nbr_nodes_od.size()-1 ] ) {
+				nbr_nodes_od.emplace_back( find );
+			}
+			break;
+		}
+		icycle++;
+	}
+	// put together
+	int ow_size = nbr_nodes_od.size();
+	for( int i = 0; i < ow_size-2; i++ ) {
+		nbr_nodes.emplace_back( nbr_nodes_od[ ow_size - 1 - i] );
+	}
+    return nbr_nodes;
+}
+
+#endif
 
 // Create polygons for cell-centred data. Here, the polygons are mesh cells
 CSPolygonArray ConservativeMethod::get_polygons_celldata(Mesh& mesh) const {
@@ -448,6 +573,15 @@ void ConservativeMethod::do_setup(const FunctionSpace& src_fs, const FunctionSpa
         mesh::actions::build_edges(tgt_mesh_, util::Config("pole_edges", false));
     }
 
+	{
+		// todo: maybe do not need to build this connectivity in all cases
+		if ( not src_cell_data_ ) {
+    		mesh::actions::build_node_to_cell_connectivity(src_mesh_);
+		}
+		if ( not tgt_cell_data_ ) {
+    		mesh::actions::build_node_to_cell_connectivity(tgt_mesh_);
+		}
+	}
 
     CSPolygonArray src_csp;
     CSPolygonArray tgt_csp;
@@ -824,11 +958,6 @@ void ConservativeMethod::setup_2nd_order_matrix() {
         triplets.reserve(triplets_size);
         for (idx_t snode = 0; snode < n_spoints_; ++snode) {
             const auto nb_nodes = get_node_neighbours(src_mesh_, snode);
-            //			std::cout << " --- " << mpi::rank() << ": Node " << snode << " has neighbours: "
-            //				<< nb_nodes << std::endl;
-            if (nb_nodes.size() < 1) {
-                //    continue;
-            }
             // get the barycentre of the dual cell
             /* // better conservation
             PointXYZ Cs = {0., 0., 0.};
