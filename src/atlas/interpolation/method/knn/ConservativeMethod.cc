@@ -18,6 +18,7 @@
 #include "atlas/interpolation/method/knn/ConservativeMethod.h"
 #include "atlas/mesh/actions/BuildDualMesh.h"
 #include "atlas/mesh/actions/BuildHalo.h"
+#include "atlas/mesh/actions/BuildNode2CellConnectivity.h"
 #include "atlas/meshgenerator.h"
 #include "atlas/parallel/mpi/mpi.h"
 #include "atlas/runtime/Exception.h"
@@ -30,8 +31,6 @@
 #define USE_EDGE_CONNECTIVITY 1
 
 #if USE_EDGE_CONNECTIVITY
-#include "atlas/mesh/actions/BuildNode2CellConnectivity.h"
-#else
 #include "atlas/mesh/actions/BuildEdges.h"
 #endif
 
@@ -81,7 +80,7 @@ std::vector<idx_t> ConservativeMethod::sort_cell_edges(Mesh& mesh, idx_t cell_id
     return edges;
 }
 
-#if not USE_EDGE_CONNECTIVITY
+#if USE_EDGE_CONNECTIVITY
 
 // get cyclically sorted edges from a node
 std::vector<idx_t> ConservativeMethod::sort_node_edges(Mesh& mesh, idx_t node_id) const {
@@ -156,7 +155,7 @@ std::vector<idx_t> ConservativeMethod::get_cell_neighbours(Mesh& mesh, idx_t cel
     return nbr_cells;
 }
 
-#if not USE_EDGE_CONNECTIVITY
+#if USE_EDGE_CONNECTIVITY
 
 // get cyclically sorted node neighbours using edge connectivity
 std::vector<idx_t> ConservativeMethod::get_node_neighbours(Mesh& mesh, idx_t node_id) const {
@@ -388,7 +387,7 @@ CSPolygonArray ConservativeMethod::get_polygons_nodedata(Mesh& mesh, std::vector
                 }
                 ATLAS_DEBUG_VAR(node_points);
                 ATLAS_DEBUG_VAR(node_gidx);
-                ATLAS_THROW_EXCEPTION("It's not possible to use edges of PATCH elements");
+                //ATLAS_THROW_EXCEPTION("It's not possible to use edges of PATCH elements");
             }
             idx_t node0             = edge2node(edge, 0);
             idx_t node1             = edge2node(edge, 1);
