@@ -349,55 +349,27 @@ CSPolygonArray ConservativeMethod::get_polygons_nodedata(Mesh& mesh, std::vector
         using Topology = atlas::mesh::Nodes::Topology;
         return Topology::check(cell_flags(e), Topology::PATCH);
     };
-
     auto xyz2ll = [](atlas::PointXYZ& p_xyz) {
         PointLonLat p_ll;
         eckit::geometry::Sphere::convertCartesianToSpherical(1., p_xyz, p_ll);
         return p_ll;
     };
-
-    idx_t cspol_id = 0;
-
-    for (idx_t icell = 0; icell < mesh.cells().size(); ++icell) {
-        // get cell centre
-        PointXYZ cell_mid = PointXYZ{0., 0., 0.};
-        ATLAS_ASSERT(icell < cell2edge.rows());
-        ATLAS_ASSERT(icell < cell2node.rows());
-        const idx_t n_edges = cell2edge.cols(icell);
-        const idx_t n_nodes = cell2node.cols(icell);
-        for (idx_t iedge = 0; iedge < n_edges; ++iedge) {
-            idx_t edge = cell2edge(icell, iedge);
-            ATLAS_ASSERT(edge < edge2node.rows());
-            if (edge == -1) {
-                /* This is the case for patch elements, e.g. present in the Gaussian grids.
-                 * See example https://sites.ecmwf.int/docs/atlas/tools/atlas-meshgen/#patching-the-poles
-                 */
-                ATLAS_DEBUG_VAR(icell);
-                ATLAS_DEBUG_VAR(cell_gidx(icell));
-                ATLAS_DEBUG_VAR(cell_halo(icell));
-                ATLAS_DEBUG_VAR(iedge);
-                std::vector<PointLonLat> node_points;
-                std::vector<gidx_t> node_gidx;
-                for (idx_t jnode = 0; jnode < n_nodes; ++jnode) {
-                    idx_t inode = cell2node(icell, jnode);
-                    ATLAS_ASSERT(inode > -1);
-                    ATLAS_ASSERT(inode < nodes_ll.shape(0));
-                    node_points.emplace_back(nodes_ll(inode, LON), nodes_ll(inode, LON));
-                    node_gidx.emplace_back(nodes_gidx(inode));
-                }
-                ATLAS_DEBUG_VAR(node_points);
-                ATLAS_DEBUG_VAR(node_gidx);
-                //ATLAS_THROW_EXCEPTION("It's not possible to use edges of PATCH elements");
-            }
-            idx_t node0             = edge2node(edge, 0);
-            idx_t node1             = edge2node(edge, 1);
+    idx_t cspol_id = 0; // subpolygon enumeration
+    for (idx_t cell = 0; cell < mesh.cells().size(); ++cell) {
+        ATLAS_ASSERT(cell < cell2edge.rows());
+        ATLAS_ASSERT(cell < cell2node.rows());
+        const idx_t n_nodes = cell2node.cols(cell);
+        PointXYZ cell_mid(0., 0., 0.);	// cell centre
+        for (idx_t inode = 0; inode < n_nodes; ++inode) {
+            idx_t node0             = cell2node(cell, inode);
+            idx_t node1             = cell2node(cell, inode!=n_nodes-1 ? inode+1 : 0);
             const PointLonLat p0_ll = PointLonLat{nodes_ll(node0, 0), nodes_ll(node0, 1)};
             const PointLonLat p1_ll = PointLonLat{nodes_ll(node1, 0), nodes_ll(node1, 1)};
             PointXYZ p0, p1;
             eckit::geometry::Sphere::convertSphericalToCartesian(1., p0_ll, p0);
             eckit::geometry::Sphere::convertSphericalToCartesian(1., p1_ll, p1);
             if (PointXYZ::norm(p0 - p1) < 1e-14) {
-                continue;  // edge that degenerates to single point in 3D
+                continue;  // skip this edge, it is a pole point
             }
             cell_mid = cell_mid + p0;
             cell_mid = cell_mid + p1;
@@ -406,67 +378,43 @@ CSPolygonArray ConservativeMethod::get_polygons_nodedata(Mesh& mesh, std::vector
         PointLonLat cell_ll;
         eckit::geometry::Sphere::convertCartesianToSpherical(1., cell_mid, cell_ll);
         // get CSPolygon for each valid edge
-        for (idx_t iedge = 0; iedge < n_edges; ++iedge) {
-            idx_t edge               = cell2edge(icell, iedge);
-            idx_t node0              = edge2node(edge, 0);
-            idx_t node1              = edge2node(edge, 1);
+        for (idx_t inode = 0; inode < n_nodes; ++inode) {
+            idx_t node0              = cell2node(cell, inode);
+            idx_t node1              = cell2node(cell, inode!=n_nodes-1 ? inode+1 : 0);
             const PointLonLat pi0_ll = PointLonLat{nodes_ll(node0, 0), nodes_ll(node0, 1)};
             const PointLonLat pi1_ll = PointLonLat{nodes_ll(node1, 0), nodes_ll(node1, 1)};
             PointXYZ pi0, pi1;
             eckit::geometry::Sphere::convertSphericalToCartesian(1., pi0_ll, pi0);
             eckit::geometry::Sphere::convertSphericalToCartesian(1., pi1_ll, pi1);
-            PointXYZ iedge_mid = pi0 + pi1;
-            iedge_mid          = PointXYZ::div(iedge_mid, PointXYZ::norm(iedge_mid));
-            // get edge centre
-            if (PointXYZ::norm(iedge_mid - pi0) < 1e-14) {
+            if (PointXYZ::norm(pi0 - pi1) < 1e-14) {
                 continue;  // skip this edge, it is a pole point
             }
-            PointLonLat iedge_mid_ll = xyz2ll(iedge_mid);
-            PointXYZ third_point;
-            PointLonLat third_point_ll;
-            int inode;
-            if (util::ConvexSphericalPolygon::leftOf(pi0, cell_mid, iedge_mid, 1e-14)) {
-                third_point    = pi0;
-                inode          = node0;
-                third_point_ll = pi0_ll;
-                csp2node.emplace_back(node0);
-                node2csp[node0].emplace_back(cspol_id);
-            }
-            else {
-                third_point    = pi1;
-                inode          = node1;
-                third_point_ll = pi1_ll;
-                csp2node.emplace_back(node1);
-                node2csp[node1].emplace_back(cspol_id);
-            }
-            // find the other valid edge touching pi0
+            PointXYZ iedge_mid = pi0 + pi1;
+            iedge_mid          = PointXYZ::div(iedge_mid, PointXYZ::norm(iedge_mid));
+			csp2node.emplace_back(node1);
+			node2csp[node0].emplace_back(cspol_id);
+			idx_t node2 = cell2node(cell, inode<n_nodes-2 ? inode+2 : inode+2-n_nodes);	// the end point of the other real edge touching pi1
+			auto pi2_ll = PointLonLat{nodes_ll(node2, 0), nodes_ll(node2, 1)};
+			PointXYZ pi2;
+			eckit::geometry::Sphere::convertSphericalToCartesian(1., pi2_ll, pi2);
+			if ( PointXYZ::norm( pi1 - pi2 ) < 1e-14 ) { // we need real edge [pi1,pi2]
+				node2 = cell2node(cell, inode<n_nodes-3 ? inode+3 : inode+3-n_nodes); 
+				pi2_ll = PointLonLat{nodes_ll(node2, 0), nodes_ll(node2, 1)};
+				eckit::geometry::Sphere::convertSphericalToCartesian(1., pi2_ll, pi2);
+			}
+			if ( PointXYZ::norm( pi1 - pi2 ) < 1e-14 ) {
+				ATLAS_THROW_EXCEPTION("Three cell vertices on a same great arc!");
+			}
             PointXYZ jedge_mid;
-            for (idx_t jedge = 0; jedge < n_edges; ++jedge) {
-                idx_t edge               = cell2edge(icell, jedge);
-                idx_t j0                 = edge2node(edge, 0);
-                idx_t j1                 = edge2node(edge, 1);
-                const PointLonLat pj0_ll = PointLonLat{nodes_ll(j0, 0), nodes_ll(j0, 1)};
-                const PointLonLat pj1_ll = PointLonLat{nodes_ll(j1, 0), nodes_ll(j1, 1)};
-                PointXYZ pj0, pj1;
-                eckit::geometry::Sphere::convertSphericalToCartesian(1., pj0_ll, pj0);
-                eckit::geometry::Sphere::convertSphericalToCartesian(1., pj1_ll, pj1);
-                if (PointXYZ::norm(pj0 - pj1) < 1e-14) {
-                    continue;  // pole edge
-                }
-                if (jedge != iedge &&
-                    (PointXYZ::norm(third_point - pj0) < 1e-14 or PointXYZ::norm(third_point - pj1) < 1e-14)) {
-                    jedge_mid = pj0 + pj1;
-                    jedge_mid = PointXYZ::div(jedge_mid, PointXYZ::norm(jedge_mid));
-                    break;
-                }
-            }
+			jedge_mid = pi1 + pi2;
+            jedge_mid = PointXYZ::div(jedge_mid, PointXYZ::norm(jedge_mid));	
             std::vector<PointLonLat> pts_ll(4);
             pts_ll[0]     = cell_ll;
-            pts_ll[1]     = iedge_mid_ll;
-            pts_ll[2]     = third_point_ll;
+            pts_ll[1]     = xyz2ll(iedge_mid);
+            pts_ll[2]     = pi1_ll;
             pts_ll[3]     = xyz2ll(jedge_mid);
-            int halo_type = cell_halo(icell);
-            if (util::Bitflags::view(cell_flags(icell)).check(util::Topology::PERIODIC)) {
+            int halo_type = cell_halo(cell);
+            if (util::Bitflags::view(cell_flags(cell)).check(util::Topology::PERIODIC)) {
                 halo_type = -1;
             }
             cspolygons.emplace_back(CSPolygon(pts_ll), halo_type);
