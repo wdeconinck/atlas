@@ -28,12 +28,6 @@
 #include "atlas/util/KDTree.h"
 #include "atlas/util/Topology.h"
 
-#define USE_EDGE_CONNECTIVITY 1
-
-#if USE_EDGE_CONNECTIVITY
-#include "atlas/mesh/actions/BuildEdges.h"
-#endif
-
 namespace atlas {
 namespace interpolation {
 namespace method {
@@ -54,136 +48,48 @@ ConservativeMethod::ConservativeMethod(const Config& config): Method(config) {
     config.get("tgt_cell_data", tgt_cell_data_ = true);
 }
 
-// get cyclically sorted edges from a cell
-std::vector<idx_t> ConservativeMethod::sort_cell_edges(Mesh& mesh, idx_t cell_id) const {
-    const auto& cell2edge = mesh.cells().edge_connectivity();
-    const auto& cell2node = mesh.cells().node_connectivity();
-    const auto& edge2node = mesh.edges().node_connectivity();
-    const int nnodes      = cell2node.cols(cell_id);
-    const int nedges      = cell2edge.cols(cell_id);
-    std::vector<idx_t> edges;
-    edges.resize(nedges);
-    idx_t ii = 0;
-    for (int inode = 0; inode < nnodes; ++inode) {
-        idx_t node  = cell2node(cell_id, inode);
-        idx_t nnode = cell2node(cell_id, (inode != nnodes - 1 ? inode + 1 : 0));
-        for (int iedge = 0; iedge < nedges; ++iedge) {
-            const idx_t edge  = cell2edge(cell_id, iedge);
-            const idx_t node0 = edge2node(edge, 0);
-            const idx_t node1 = edge2node(edge, 1);
-            if ((node0 == node && node1 == nnode) or (node0 == nnode && node1 == node)) {
-                edges[ii++] = edge;
-                break;
-            }
-        }
-    }
-    return edges;
-}
-
-#if USE_EDGE_CONNECTIVITY
-
-// get cyclically sorted edges from a node
-std::vector<idx_t> ConservativeMethod::sort_node_edges(Mesh& mesh, idx_t node_id) const {
-    const auto& node2edge = mesh.nodes().edge_connectivity();
-    const auto& edge2cell = mesh.edges().cell_connectivity();
-    const int nedges      = node2edge.cols(node_id);
-    std::vector<idx_t> edges;
-    edges.resize(nedges);
-    if (nedges <= 2) {
-        for (int i = 0; i < nedges; i++) {
-            edges[i] = node2edge.row(node_id)(i);
-        }
-        return edges;
-    }
-    std::vector<std::array<idx_t, 3>> ecc;
-    ecc.resize(nedges);
-    idx_t count = 0;
-    for (int iedge = 0; iedge < nedges; ++iedge) {
-        edges[iedge] = -1;
-        idx_t edge   = node2edge(node_id, iedge);
-        ecc[count++] = std::array<idx_t, 3>({edge2cell(edge, 0), edge2cell(edge, 1), edge});
-    }
-    count          = 0;
-    edges[count++] = ecc[0][2];
-    idx_t prev     = ecc[0][0];  // previous cell
-    idx_t find     = ecc[0][1];  // search cell
-    idx_t ctrl     = 0;
-    for (; ctrl < nedges; ++ctrl) {
-        for (int i = 1; i < nedges; ++i) {
-            if (ecc[i][0] == find and ecc[i][1] != prev) {
-                edges[count++] = ecc[i][2];
-                prev           = find;
-                find           = ecc[i][1];
-                continue;
-            }
-            if (ecc[i][1] == find and ecc[i][0] != prev) {
-                edges[count++] = ecc[i][2];
-                prev           = find;
-                find           = ecc[i][0];
-                continue;
-            }
-        }
-    }
-    return edges;
-}
-
-#endif
-
-// get cyclically sorted neighbours of a cell
-std::vector<idx_t> ConservativeMethod::get_cell_neighbours(Mesh& mesh, idx_t cell_id) const {
-    const auto& cell2edge  = mesh.cells().edge_connectivity();
-    const auto& edge2cell  = mesh.edges().cell_connectivity();
-    auto c2e_missval       = cell2edge.missing_value();
-    const auto& edges_sort = sort_cell_edges(mesh, cell_id);
-    const idx_t nedges     = cell2edge.cols(cell_id);
+// get counter-clockwise sorted neighbours of a cell
+std::vector<idx_t> ConservativeMethod::get_cell_neighbours(Mesh& mesh, idx_t cell) const {
+    const auto& cell2node  = mesh.cells().node_connectivity();
+    const auto& node2cell  = mesh.nodes().cell_connectivity();
+    const auto& nodes_ll   = array::make_view<double, 2>(mesh.nodes().lonlat());
+    const auto n2c_missval = node2cell.missing_value();
+    const idx_t n_nodes    = cell2node.cols(cell);
+    const auto cell_gidx   = array::make_view<gidx_t, 1>(mesh.cells().global_index());
+    const auto node_gidx   = array::make_view<gidx_t, 1>(mesh.nodes().global_index());
     std::vector<idx_t> nbr_cells;
-    nbr_cells.reserve(nedges);
+    nbr_cells.reserve(n_nodes);
 
-    for (idx_t iedge = 0; iedge < nedges; ++iedge) {
-        const idx_t edge  = edges_sort[iedge];
-        const idx_t c1_id = edge2cell(edge, 0);
-        if (c1_id != c2e_missval && c1_id != cell_id) {
-            nbr_cells.emplace_back(c1_id);
-            continue;
-        }
-        const idx_t c2_id = edge2cell(edge, 1);
-        if (c2_id != c2e_missval && c2_id != cell_id) {
-            nbr_cells.emplace_back(c2_id);
-            continue;
-        }
+    for (idx_t inode = 0; inode < n_nodes; ++inode) {
+		idx_t node0             = cell2node(cell, inode);
+		idx_t node1             = cell2node(cell, inode!=n_nodes-1 ? inode+1 : 0);
+		const PointLonLat p0_ll = PointLonLat{nodes_ll(node0, 0), nodes_ll(node0, 1)};
+		const PointLonLat p1_ll = PointLonLat{nodes_ll(node1, 0), nodes_ll(node1, 1)};
+		PointXYZ p0, p1;
+		eckit::geometry::Sphere::convertSphericalToCartesian(1., p0_ll, p0);
+		eckit::geometry::Sphere::convertSphericalToCartesian(1., p1_ll, p1);
+		if (PointXYZ::norm(p0 - p1) < 1e-14) {
+			continue;  // edge = point
+		}
+		bool still_search = true; // still search the cell having vertices node0 & node1, not havin index "cell"
+		int n_cells0 = node2cell.cols( node0 );
+		int n_cells1 = node2cell.cols( node1 );
+		for( int icell0 = 0; still_search && icell0 < n_cells0; icell0++ ) {
+			int cell0 = node2cell( node0, icell0 );
+			if ( cell0 == cell ) {
+				continue;
+			}
+			for( int icell1 = 0; still_search && icell1 < n_cells1; icell1++ ) {
+				int cell1 = node2cell( node1, icell1 );
+				if ( cell0 == cell1 && cell0 != n2c_missval && cell0 != cell ) {
+					nbr_cells.emplace_back( cell0 );
+					still_search = false;
+				}
+			}
+		}
     }
     return nbr_cells;
 }
-
-#if USE_EDGE_CONNECTIVITY
-
-// get cyclically sorted node neighbours using edge connectivity
-std::vector<idx_t> ConservativeMethod::get_node_neighbours(Mesh& mesh, idx_t node_id) const {
-    const auto& node2edge  = mesh.nodes().edge_connectivity();
-    const auto& edge2node  = mesh.edges().node_connectivity();
-    auto n2e_missval       = node2edge.missing_value();
-    const auto& edges_sort = sort_node_edges(mesh, node_id);
-    const int nedges       = node2edge.cols(node_id);
-    std::vector<idx_t> nbr_nodes;
-    nbr_nodes.reserve(nedges);
-    for (idx_t iedge = 0; iedge < nedges; ++iedge) {
-        const idx_t edge  = edges_sort[iedge];
-        const idx_t n1_id = edge2node(edge, 0);
-        if (n1_id != n2e_missval && n1_id != node_id) {
-            nbr_nodes.emplace_back(n1_id);
-            continue;
-        }
-        const idx_t n2_id = edge2node(edge, 1);
-        if (n2_id != n2e_missval && n2_id != node_id) {
-            nbr_nodes.emplace_back(n2_id);
-            continue;
-        }
-    }
-    ATLAS_ASSERT(nedges == nbr_nodes.size());
-    return nbr_nodes;
-}
-
-#else 
 
 // get cyclically sorted node neighbours without using edge connectivity
 std::vector<idx_t> ConservativeMethod::get_node_neighbours(Mesh& mesh, idx_t node_id) const {
@@ -294,8 +200,6 @@ std::vector<idx_t> ConservativeMethod::get_node_neighbours(Mesh& mesh, idx_t nod
     return nbr_nodes;
 }
 
-#endif
-
 // Create polygons for cell-centred data. Here, the polygons are mesh cells
 CSPolygonArray ConservativeMethod::get_polygons_celldata(Mesh& mesh) const {
     CSPolygonArray cspolygons;
@@ -337,9 +241,7 @@ CSPolygonArray ConservativeMethod::get_polygons_nodedata(Mesh& mesh, std::vector
     const auto xy         = array::make_view<double, 2>(mesh.nodes().xy());
     const auto nodes_ll   = array::make_view<double, 2>(mesh.nodes().lonlat());
     auto edge_flags       = array::make_view<int, 1>(mesh.edges().flags());
-    const auto& cell2edge = mesh.cells().edge_connectivity();
     const auto& cell2node = mesh.cells().node_connectivity();
-    const auto& edge2node = mesh.edges().node_connectivity();
     const auto cell_halo  = array::make_view<int, 1>(mesh.cells().halo());
     const auto cell_flags = array::make_view<int, 1>(mesh.cells().flags());
     const auto cell_part  = array::make_view<int, 1>(mesh.cells().partition());
@@ -356,7 +258,6 @@ CSPolygonArray ConservativeMethod::get_polygons_nodedata(Mesh& mesh, std::vector
     };
     idx_t cspol_id = 0; // subpolygon enumeration
     for (idx_t cell = 0; cell < mesh.cells().size(); ++cell) {
-        ATLAS_ASSERT(cell < cell2edge.rows());
         ATLAS_ASSERT(cell < cell2node.rows());
         const idx_t n_nodes = cell2node.cols(cell);
         PointXYZ cell_mid(0., 0., 0.);	// cell centre
@@ -521,13 +422,8 @@ void ConservativeMethod::do_setup(const FunctionSpace& src_fs, const FunctionSpa
     }
 
 	{
-		// todo: maybe do not need to build this connectivity in all cases
-		if ( not src_cell_data_ ) {
-    		mesh::actions::build_node_to_cell_connectivity(src_mesh_);
-		}
-		if ( not tgt_cell_data_ ) {
-    		mesh::actions::build_node_to_cell_connectivity(tgt_mesh_);
-		}
+		mesh::actions::build_node_to_cell_connectivity(src_mesh_);
+		mesh::actions::build_node_to_cell_connectivity(tgt_mesh_);
 	}
 
     CSPolygonArray src_csp;
@@ -717,10 +613,9 @@ void ConservativeMethod::intersect_polygons(const CSPolygonArray& src_csp, const
 }
 
 void ConservativeMethod::setup_1st_order_matrix() {
-    if (order_ != 1 or matrix_free_) {
-        return;
-    }
     ATLAS_TRACE("ConservativeMethod::setup: build cons-1 interpolant matrix");
+	order_ = 1;
+	matrix_free_ = false;
     Triplets triplets;
     size_t triplets_size = 0;
     // determine the size of array of triplets used to define the sparse matrix
@@ -780,7 +675,9 @@ void ConservativeMethod::setup_1st_order_matrix() {
                 for (idx_t icell = 0; icell < iparam.centroids.size(); ++icell) {
                     idx_t tcell = iparam.tcell_id[icell];
                     idx_t tnode = tgt_csp2node_[tcell];
-                    triplets.emplace_back(tnode, snode, iparam.weights[icell] / tgt_areas_v(tnode));
+					double weight = tgt_areas_v(tnode);
+					weight = iparam.weights[icell] / (weight>0.? weight : 1.);
+                    triplets.emplace_back(tnode, snode, weight);
                 }
             }
         }
@@ -793,10 +690,9 @@ void ConservativeMethod::setup_1st_order_matrix() {
 }
 
 void ConservativeMethod::setup_2nd_order_matrix() {
-    if (order_ != 2 or matrix_free_) {
-        return;
-    }
     ATLAS_TRACE("ConservativeMethod::setup: build cons-2 interpolant matrix");
+	order_ = 2;
+	matrix_free_ = false;
     Triplets triplets;
     size_t triplets_size   = 0;
     const auto tgt_areas_v = array::make_view<double, 1>(tgt_areas_);
@@ -979,8 +875,9 @@ void ConservativeMethod::setup_2nd_order_matrix() {
                     for (idx_t icell = 0; icell < iparam.centroids.size(); ++icell) {
                         idx_t tcell = iparam.tcell_id[icell];
                         idx_t tnode = tgt_csp2node_[tcell];
-                        const double csp2node_coef =
-                            iparam.weights[icell] / iparam.sweights[icell] / tgt_areas_v(tnode);
+                        double csp2node_coef = tgt_areas_v(tnode);
+						csp2node_coef = ( csp2node_coef>0. ? csp2node_coef : 1. );
+                        csp2node_coef = iparam.weights[icell] / iparam.sweights[icell] / csp2node_coef;
                         for (idx_t j = 0; j < nb_nodes.size(); ++j) {
                             idx_t nj  = (j != nb_nodes.size() - 1) ? j + 1 : 0;
                             idx_t sj  = nb_nodes[j];
@@ -1047,8 +944,6 @@ void ConservativeMethod::do_execute(const Field& src_field, Field& tgt_field) {
             }
             const auto src_vals       = array::make_view<double, 1>(src_field);
             auto tgt_vals             = array::make_view<double, 1>(tgt_field);
-            const auto& src_cell2edge = src_mesh_.cells().edge_connectivity();
-            const auto& src_edge2node = src_mesh_.edges().node_connectivity();
             const auto halo           = array::make_view<int, 1>(src_mesh_.cells().halo());
             for (idx_t tcell = 0; tcell < tgt_vals.size(); ++tcell) {
                 tgt_vals(tcell) = 0.;
