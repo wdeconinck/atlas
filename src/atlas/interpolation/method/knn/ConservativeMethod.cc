@@ -55,8 +55,6 @@ std::vector<idx_t> ConservativeMethod::get_cell_neighbours(Mesh& mesh, idx_t cel
     const auto& nodes_ll   = array::make_view<double, 2>(mesh.nodes().lonlat());
     const auto n2c_missval = node2cell.missing_value();
     const idx_t n_nodes    = cell2node.cols(cell);
-    const auto cell_gidx   = array::make_view<gidx_t, 1>(mesh.cells().global_index());
-    const auto node_gidx   = array::make_view<gidx_t, 1>(mesh.nodes().global_index());
     std::vector<idx_t> nbr_cells;
     nbr_cells.reserve(n_nodes);
 
@@ -238,43 +236,42 @@ CSPolygonArray ConservativeMethod::get_polygons_nodedata(Mesh& mesh, std::vector
     csp2node.clear();
     node2csp.clear();
     node2csp.resize(mesh.nodes().size());
-    const auto xy         = array::make_view<double, 2>(mesh.nodes().xy());
     const auto nodes_ll   = array::make_view<double, 2>(mesh.nodes().lonlat());
-    auto edge_flags       = array::make_view<int, 1>(mesh.edges().flags());
     const auto& cell2node = mesh.cells().node_connectivity();
     const auto cell_halo  = array::make_view<int, 1>(mesh.cells().halo());
     const auto cell_flags = array::make_view<int, 1>(mesh.cells().flags());
     const auto cell_part  = array::make_view<int, 1>(mesh.cells().partition());
-    const auto cell_gidx  = array::make_view<gidx_t, 1>(mesh.cells().global_index());
-    const auto nodes_gidx = array::make_view<gidx_t, 1>(mesh.nodes().global_index());
-    auto cell_patch       = [&cell_flags](idx_t e) {
-        using Topology = atlas::mesh::Nodes::Topology;
-        return Topology::check(cell_flags(e), Topology::PATCH);
-    };
     auto xyz2ll = [](atlas::PointXYZ& p_xyz) {
         PointLonLat p_ll;
         eckit::geometry::Sphere::convertCartesianToSpherical(1., p_xyz, p_ll);
         return p_ll;
     };
     idx_t cspol_id = 0; // subpolygon enumeration
+    double total_csp_area_shoots = 0; // total over/undershoots in creation of subpolygons
+    double max_csp_area_shoots = 0; // max over/undershoots in creation of subpolygons
     for (idx_t cell = 0; cell < mesh.cells().size(); ++cell) {
         ATLAS_ASSERT(cell < cell2node.rows());
         const idx_t n_nodes = cell2node.cols(cell);
         PointXYZ cell_mid(0., 0., 0.);	// cell centre
+        std::vector<PointLonLat> pts_ll;
+        pts_ll.reserve( n_nodes );
         for (idx_t inode = 0; inode < n_nodes; ++inode) {
             idx_t node0             = cell2node(cell, inode);
             idx_t node1             = cell2node(cell, inode!=n_nodes-1 ? inode+1 : 0);
             const PointLonLat p0_ll = PointLonLat{nodes_ll(node0, 0), nodes_ll(node0, 1)};
             const PointLonLat p1_ll = PointLonLat{nodes_ll(node1, 0), nodes_ll(node1, 1)};
+            pts_ll.emplace_back( p0_ll );
             PointXYZ p0, p1;
             eckit::geometry::Sphere::convertSphericalToCartesian(1., p0_ll, p0);
             eckit::geometry::Sphere::convertSphericalToCartesian(1., p1_ll, p1);
             if (PointXYZ::norm(p0 - p1) < 1e-14) {
-                continue;  // skip this edge, it is a pole point
+                continue;  // skip this edge = a pole point
             }
             cell_mid = cell_mid + p0;
             cell_mid = cell_mid + p1;
         }
+        CSPolygon csp( pts_ll );
+        double loc_csp_area_shoot = csp.area();
         cell_mid = PointXYZ::div(cell_mid, PointXYZ::norm(cell_mid));
         PointLonLat cell_ll;
         eckit::geometry::Sphere::convertCartesianToSpherical(1., cell_mid, cell_ll);
@@ -288,7 +285,7 @@ CSPolygonArray ConservativeMethod::get_polygons_nodedata(Mesh& mesh, std::vector
             eckit::geometry::Sphere::convertSphericalToCartesian(1., pi0_ll, pi0);
             eckit::geometry::Sphere::convertSphericalToCartesian(1., pi1_ll, pi1);
             if (PointXYZ::norm(pi0 - pi1) < 1e-14) {
-                continue;  // skip this edge, it is a pole point
+                continue;  // skip this edge = a pole point
             }
             PointXYZ iedge_mid = pi0 + pi1;
             iedge_mid          = PointXYZ::div(iedge_mid, PointXYZ::norm(iedge_mid));
@@ -318,12 +315,18 @@ CSPolygonArray ConservativeMethod::get_polygons_nodedata(Mesh& mesh, std::vector
             if (util::Bitflags::view(cell_flags(cell)).check(util::Topology::PERIODIC)) {
                 halo_type = -1;
             }
-            cspolygons.emplace_back(CSPolygon(pts_ll), halo_type);
+            CSPolygon cspi(pts_ll);
+            loc_csp_area_shoot -= cspi.area();
+            cspolygons.emplace_back(cspi, halo_type);
             cspol_id++;
         }
+        total_csp_area_shoots = std::abs(loc_csp_area_shoot) + total_csp_area_shoots;
+        max_csp_area_shoots = std::max( std::abs(loc_csp_area_shoot), max_csp_area_shoots );
     }
-    Log::info() << "ConservativeMethod::get_polygons_nodedata : Created " << cspolygons.size() << " CSPolygons from "
-                << mesh.cells().size() << " mesh cells\n";
+    Log::info() << "Created " << cspolygons.size() << " polygons from "
+                << mesh.cells().size() << " mesh cells.\n";
+    Log::info() << " Total over/undershoots " << total_csp_area_shoots << ", max over/undershoots "
+                << max_csp_area_shoots << "\n";
     return cspolygons;
 }
 
@@ -553,7 +556,7 @@ void ConservativeMethod::intersect_polygons(const CSPolygonArray& src_csp, const
         }
         const double loc_csp_error = s_csp_area - covered_area;
         if ( loc_csp_error > 1e-5 ) {
-            Log::info() << "* src cell area NOT covered: " << loc_csp_error << "\n";
+            Log::info() << "WARNING src cell area NOT covered: " << loc_csp_error << "\n";
             //dump_intersection( s_csp, tgt_csp, tgt_cells );
             //ATLAS_ASSERT( false );
         }
@@ -562,7 +565,7 @@ void ConservativeMethod::intersect_polygons(const CSPolygonArray& src_csp, const
         if (iparam_[scell].tcell_id.size() == 0.) {
             ++nonintersect;
         }
-        if (normalise_intersections_ && loc_csp_error < 1e-4) {
+        if (normalise_intersections_ && loc_csp_error < 1e-5) {
             double wfactor = s_csp.area() / (covered_area > 1e-10 ? covered_area : 1.);
             for (idx_t i = 0; i < iparam_[scell].weights.size(); i++) {
                 iparam_[scell].weights[i] *= wfactor;
@@ -571,12 +574,12 @@ void ConservativeMethod::intersect_polygons(const CSPolygonArray& src_csp, const
         }
         n_icsp += iparam_[scell].weights.size();
     }
-    Log::info() << "ConservativeMethod::intersect_polygons : size of src_polygons, tgt_polygons, supermesh: " << src_csp.size()
+    Log::info() << "ConservativeMethod::intersect_polygons : src_polygons, tgt_polygons, supermesh: " << src_csp.size()
                 << " " << tgt_csp.size() << " " << n_icsp << "\n";
     Log::info() << "ConservativeMethod::intersect_polygons : " << nonintersect
                 << " source mesh polygons do NOT intersect any other polygon.\n";
     Log::info() << "ConservativeMethod::intersect_polygons : " << total_src_area_notcovered
-                << " total area of source mesh over- or under-covered by target mesh.\n";
+                << " total area of source mesh over/undercovered by target mesh.\n";
     Log::info() << "ConservativeMethod::intersect_polygons : " << max_src_area_notcovered
                 << " maximal area of a source mesh NOT covered by target mesh.\n";
     geo_err_intsc_l1_   = 0.;
@@ -779,7 +782,6 @@ void ConservativeMethod::setup_2nd_order_matrix() {
     }
     else {  // if ( not src_cell_data_ )
         const auto src_halo = array::make_view<int, 1>(src_mesh_.nodes().halo());
-        //       const auto glidx = array::make_view<gidx_t, 1>( src_mesh_.nodes().global_index() );
         for (idx_t snode = 0; snode < n_spoints_; ++snode) {
             const auto nb_nodes = get_node_neighbours(src_mesh_, snode);
             for (idx_t isubcell = 0; isubcell < src_node2csp_[snode].size(); ++isubcell) {
