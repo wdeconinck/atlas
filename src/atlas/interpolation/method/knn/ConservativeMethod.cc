@@ -709,8 +709,8 @@ void ConservativeMethod::setup_2nd_order_matrix() {
                 Cs = Cs + PointXYZ::mul( iparam.centroids[icell], iparam.weights[icell] );
             }
             const double Cs_norm = PointXYZ::norm( Cs );
-            Cs = PointXYZ::div( Cs, Cs_norm );
             ATLAS_ASSERT( Cs_norm > 0. );
+            Cs = PointXYZ::div( Cs, Cs_norm );
 			*/
             const PointXYZ& Cs = src_points_[scell];
             // compute gradient from cells
