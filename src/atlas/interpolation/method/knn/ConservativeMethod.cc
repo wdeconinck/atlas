@@ -337,14 +337,7 @@ void ConservativeMethod::do_setup(const Grid& src_grid, const Grid& tgt_grid) {
     auto src_mesh_config = src_grid.meshgenerator();
     auto tgt_mesh_config = tgt_grid.meshgenerator();
     tgt_mesh_            = MeshGenerator(tgt_mesh_config).generate(tgt_grid);
-    functionspace::NodeColumns tmp_tgt_fs(tgt_mesh_, option::halo(0));
-    if (mpi::size() > 1) {
-        src_mesh_ = MeshGenerator(src_mesh_config).generate(src_grid, grid::MatchingPartitioner(tgt_mesh_));
-    }
-    else {
-        src_mesh_ = MeshGenerator(src_mesh_config).generate(src_grid);
-    }
-    functionspace::NodeColumns tmp_src_fs(src_mesh_, option::halo(2));
+    src_mesh_ = MeshGenerator(src_mesh_config).generate(src_grid, grid::MatchingPartitioner(tgt_mesh_));
     if (src_cell_data_) {
         functionspace::CellColumns src_fs(src_mesh_, option::halo(2));
         src_fs_ = src_fs;
@@ -394,12 +387,6 @@ void ConservativeMethod::do_setup(const FunctionSpace& src_fs, const FunctionSpa
     else {
         ATLAS_NOTIMPLEMENTED;
     }
-
-    {
-        // TODO: Check if this is still required, and if so, work needs to be done to make it disappear
-        functionspace::NodeColumns tmp_tgt_fs(tgt_mesh_, option::halo(0));
-    }
-
     auto src_grid        = src_mesh_.grid();
     auto src_mesh_config = src_grid.meshgenerator();
     if (mpi::size() > 1) {
