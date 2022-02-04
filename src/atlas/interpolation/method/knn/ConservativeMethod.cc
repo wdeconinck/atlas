@@ -342,11 +342,6 @@ void ConservativeMethod::do_setup(const Grid& src_grid, const Grid& tgt_grid) {
         src_mesh_ = MeshGenerator(src_mesh_config).generate(src_grid);
     }
     functionspace::NodeColumns tmp_src_fs(src_mesh_, option::halo(2));
-    mesh::actions::build_edges(src_mesh_, util::Config("pole_edges", false));
-    if (not src_cell_data_) {
-        mesh::actions::build_node_to_edge_connectivity(src_mesh_);
-    }
-    mesh::actions::build_edges(tgt_mesh_, util::Config("pole_edges", false));
     if (src_cell_data_) {
         functionspace::CellColumns src_fs(src_mesh_, option::halo(2));
         src_fs_ = src_fs;
@@ -411,20 +406,8 @@ void ConservativeMethod::do_setup(const FunctionSpace& src_fs, const FunctionSpa
         src_mesh_ = MeshGenerator(src_mesh_config).generate(src_grid);
     }
     functionspace::NodeColumns tmp_src_fs(src_mesh_, option::halo(2));
-
-    {
-        // TODO: make everything in this scope unnecessary, relying only on cells and nodes.
-        mesh::actions::build_edges(src_mesh_, util::Config("pole_edges", false));
-        if (not src_cell_data_) {
-            mesh::actions::build_node_to_edge_connectivity(src_mesh_);
-        }
-        mesh::actions::build_edges(tgt_mesh_, util::Config("pole_edges", false));
-    }
-
-	{
-		mesh::actions::build_node_to_cell_connectivity(src_mesh_);
-		mesh::actions::build_node_to_cell_connectivity(tgt_mesh_);
-	}
+    mesh::actions::build_node_to_cell_connectivity(src_mesh_);
+    mesh::actions::build_node_to_cell_connectivity(tgt_mesh_);
 
     CSPolygonArray src_csp;
     CSPolygonArray tgt_csp;
@@ -1164,26 +1147,25 @@ void ConservativeMethod::dump_intersection(const CSPolygon& s_csp, const CSPolyg
                                            const TargetCellsIDs& tgt_cells) const {
     Log::info().flush();
     Log::info() << "\n === DEBUG ===\n\n";
-    Log::info() << "* src cell: " << std::setprecision(15) << s_csp << "\n";
+    Log::info() << "* src cell: " << std::setprecision(10) << s_csp << "\n";
     Log::info() << "* src area: " << s_csp.area() << "\n\n";
     double area_ncov = s_csp.area();
     for (int i = 0; i < tgt_cells.size(); ++i) {
         const auto tcell  = tgt_cells[i].payload();
         const auto& t_csp = std::get<0>(tgt_csp[tcell]);
         Log::info() << "* src cell: " << s_csp << "\n";
-        Log::info() << "* tgt cell, tgt_cell_part, tgt_centroid : " << t_csp << " " << std::get<1>(tgt_csp[tcell])
-                    << " " << t_csp.centroid() << "\n";
+        Log::info() << "* tgt cell: " << t_csp << "\n";
         auto iplg          = s_csp.intersect(t_csp);
         auto jplg          = t_csp.intersect(s_csp);
         const double darea = std::abs(iplg.area() - jplg.area());
         Log::info() << "* src ^ tgt      : " << iplg << "\n";
         Log::info() << "* src ^ tgt area : " << iplg.area() << "\n";
-        if (darea > 5e-8) {
-            s_csp.intersect(t_csp, 1);
+        if (darea > 5e-15) {
+            s_csp.intersect(t_csp);
             Log::info() << "* (!!) intersect comm area diff: " << darea << "\n";
             Log::info() << "* (!!) tgt ^ src      : " << jplg << "\n";
             Log::info() << "* (!!) tgt ^ src area : " << jplg.area() << "\n";
-            t_csp.intersect(s_csp, 1);
+            t_csp.intersect(s_csp);
             ATLAS_ASSERT(false);
         }
         Log::info() << "\n";
