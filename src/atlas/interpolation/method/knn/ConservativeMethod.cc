@@ -533,7 +533,7 @@ void ConservativeMethod::intersect_polygons(const CSPolygonArray& src_csp, const
         if (std::get<1>(tgt_csp[jcell]) == 0) {
             const auto& t_csp = std::get<0>(tgt_csp[jcell]);
             kdt_search.insert(t_csp.centroid(), jcell);
-            max_tgtcell_rad = std::max(max_tgtcell_rad, t_csp.cell_radius());
+            max_tgtcell_rad = std::max(max_tgtcell_rad, t_csp.radius());
         }
     }
     kdt_search.build();
@@ -552,7 +552,7 @@ void ConservativeMethod::intersect_polygons(const CSPolygonArray& src_csp, const
         }
         const auto& s_csp   = std::get<0>(src_csp[scell]);
         double covered_area = 0.;
-        auto tgt_cells = kdt_search.closestPointsWithinRadius(s_csp.centroid(), s_csp.cell_radius() + max_tgtcell_rad);
+        auto tgt_cells = kdt_search.closestPointsWithinRadius(s_csp.centroid(), s_csp.radius() + max_tgtcell_rad);
         for (idx_t ttcell = 0; ttcell < tgt_cells.size(); ++ttcell) {
             auto tcell        = tgt_cells[ttcell].payload();
             const auto& t_csp = std::get<0>(tgt_csp[tcell]);
@@ -734,7 +734,7 @@ void ConservativeMethod::setup_2nd_order_matrix() {
                 idx_t nsj        = nb_cells[nj];
                 const auto& Csj  = src_points_[sj];
                 const auto& Cnsj = src_points_[nsj];
-                if (CSPolygon::leftOf(Cnsj, Cs, Csj, 1e-16, 0)) {
+                if (CSPolygon::leftOf(Cnsj, Cs, Csj, 1e-16)) {
                     Rsj[j] = PointXYZ::cross(Cnsj, Csj);
                     dual_area_inv += CSPolygon({Cs, Csj, Cnsj}).area();
                 }
@@ -827,7 +827,7 @@ void ConservativeMethod::setup_2nd_order_matrix() {
                 idx_t snj        = nb_nodes[nj];
                 const auto& Nsj  = src_points_[sj];
                 const auto& Nsnj = src_points_[snj];
-                if (CSPolygon::leftOf(Nsnj, Ns, Nsj, 1e-16, 0)) {
+                if (CSPolygon::leftOf(Nsnj, Ns, Nsj, 1e-16)) {
                     Rsj[j] = PointXYZ::cross(Nsnj, Nsj);
                     dual_area_inv += CSPolygon({Ns, Nsj, Nsnj}).area();
                 }
@@ -970,7 +970,7 @@ void ConservativeMethod::do_execute(const Field& src_field, Field& tgt_field) {
                         if (csp.area() < std::numeric_limits<double>::epsilon()) {
                             csp = CSPolygon({Pn, P, Pnn});
                         }
-                        val *= (csp.leftOf(Pnn, P, Pn, 1e-16, 0) ? -1 : 1);
+                        val *= (csp.leftOf(Pnn, P, Pn, 1e-16) ? -1 : 1);
                         dual_area += std::abs(csp.area());
                         grad = grad + PointXYZ::mul(PointXYZ::cross(Pn, Pnn), val);
                     }

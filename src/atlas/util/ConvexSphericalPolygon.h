@@ -53,7 +53,8 @@ public:
    * @param[in] P, p1, p2 given point in xyz-coordinates
    * @return 0:P_right_of_[p1,p2], -1:overlap_of_[P,p1]_and_[P,p2], 1:P_left_of_[p1,p2]
    */
-    static int leftOf(const PointXYZ& P, const PointXYZ& p1, const PointXYZ& p2, const double tol, const int debug = 0);
+    static int leftOf(const PointXYZ& P, const PointXYZ& p1, const PointXYZ&
+p2, const double tol);
 
     /*
    * @brief Segment-sph_polygon intersection
@@ -85,7 +86,7 @@ public:
 
     size_t size() const { return size_; }
 
-    double cell_radius() const { return cell_radius_; }
+    double radius() const { return radius_; }
 
     void print(std::ostream&) const;
 
@@ -109,7 +110,7 @@ private:
     size_t size_;
     bool valid_;
     double area_;
-    double cell_radius_;
+    double radius_;
 };
 
 //------------------------------------------------------------------------------------------------------

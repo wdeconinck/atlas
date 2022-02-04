@@ -51,7 +51,7 @@ PointLonLat sph_to_lonlat(const PointXYZ& p) {
 
 //------------------------------------------------------------------------------------------------------
 
-ConvexSphericalPolygon::ConvexSphericalPolygon(): valid_(false), size_(0), area_(0), cell_radius_(0) {}
+ConvexSphericalPolygon::ConvexSphericalPolygon(): valid_(false), size_(0), area_(0), radius_(0) {}
 
 ConvexSphericalPolygon::ConvexSphericalPolygon(const std::vector<PointLonLat>& points): size_(points.size()), area_(0) {
     ATLAS_ASSERT(size_ < MAX_SIZE);
@@ -80,16 +80,16 @@ ConvexSphericalPolygon::ConvexSphericalPolygon(const std::vector<PointLonLat>& p
         ATLAS_ASSERT(validate());
         ATLAS_ASSERT(not approx_eq_null(centroid_, 1e-10));
         centroid_    = PointXYZ::div(centroid_, PointXYZ::norm(centroid_));
-        cell_radius_ = 0.;
+        radius_ = 0.;
         for (size_t i = 0; i < size_; ++i) {
-            cell_radius_ = std::max(cell_radius_, cart_diff(sph_coords_[i], centroid_));
+            radius_ = std::max(radius_, cart_diff(sph_coords_[i], centroid_));
         }
         compute_area();
     }
 }
 
 ConvexSphericalPolygon::ConvexSphericalPolygon(const std::vector<PointXYZ>& points, const bool debug):
-    size_(points.size()), area_(0), cell_radius_(0) {
+    size_(points.size()), area_(0), radius_(0) {
 #if DEBUG_OUTPUT
     if (debug) {
         std::cout << " \n\nConvexSphericalPolygon got points: ";
@@ -122,7 +122,7 @@ ConvexSphericalPolygon::ConvexSphericalPolygon(const std::vector<PointXYZ>& poin
                 if (approx_eq(P1, P2, 1e-10) or approx_eq(P0, P2, 1e-10)) {
                     continue;
                 }
-                if (leftOf(P2, P0, P1, 1e-14, debug)) {
+                if (leftOf(P2, P0, P1, 1e-14)) {
                     sph_coords_[isp++] = P0;
                     sph_coords_[isp++] = P1;
                     sph_coords_[isp++] = P2;
@@ -147,7 +147,7 @@ ConvexSphericalPolygon::ConvexSphericalPolygon(const std::vector<PointXYZ>& poin
     centroid_ = sph_coords_[i] + sph_coords_[j] + sph_coords_[k];
     for (; k < points.size() - 1; ++k) {
         if (approx_eq(points[k], sph_coords_[isp - 1], 1e-10) or
-            (not leftOf(points[k], sph_coords_[isp - 2], sph_coords_[isp - 1], 1e-14, debug))) {
+            (not leftOf(points[k], sph_coords_[isp - 2], sph_coords_[isp - 1], 1e-14))) {
             continue;
         }
         sph_coords_[isp] = points[k];
@@ -158,8 +158,8 @@ ConvexSphericalPolygon::ConvexSphericalPolygon(const std::vector<PointXYZ>& poin
     const PointXYZ& Pl1 = sph_coords_[isp - 1];
     const PointXYZ& P0  = sph_coords_[0];
     const PointXYZ& P   = points[size_ - 1];
-    if ((not approx_eq(P, P0, 1e-14)) and (not approx_eq(P, Pl1, 1e-14)) and leftOf(P, Pl2, Pl1, 1e-14, debug) and
-        leftOf(P0, Pl1, P, 1e-14, debug)) {
+    if ((not approx_eq(P, P0, 1e-14)) and (not approx_eq(P, Pl1, 1e-14)) and leftOf(P, Pl2, Pl1, 1e-14) and
+        leftOf(P0, Pl1, P, 1e-14)) {
         sph_coords_[isp] = P;
         centroid_        = centroid_ + P;
         ++isp;
@@ -169,15 +169,15 @@ ConvexSphericalPolygon::ConvexSphericalPolygon(const std::vector<PointXYZ>& poin
     if (valid_) {
         ATLAS_ASSERT(not approx_eq_null(centroid_, 1e-10));
         centroid_    = PointXYZ::div(centroid_, PointXYZ::norm(centroid_));
-        cell_radius_ = 0.;
+        radius_ = 0.;
         for (size_t i = 0; i < size_; ++i) {
-            cell_radius_ = std::max(cell_radius_, cart_diff(sph_coords_[i], centroid_));
+            radius_ = std::max(radius_, cart_diff(sph_coords_[i], centroid_));
         }
         compute_area();
     }
 #if DEBUG_OUTPUT
     if (debug) {
-        std::cout << " Final polygon. Centroid : " << centroid_ << ", radius : " << cell_radius_ << ", area : " << area_
+        std::cout << " Final polygon. Centroid : " << centroid_ << ", radius : " << radius_ << ", area : " << area_
                   << "\n";
     }
 #endif
@@ -192,7 +192,7 @@ bool ConvexSphericalPolygon::validate() {
             const PointXYZ& nextP = sph_coords_[ni];
             ATLAS_ASSERT(std::abs(PointXYZ::dot(P, P) - 1.) < 1e-14);
             ATLAS_ASSERT(not approx_eq(P, PointXYZ::mul(nextP, -1.), 1e-10));
-            valid_ = valid_ && leftOf(sph_coords_[nni], P, nextP, 1e-14, 0);
+            valid_ = valid_ && leftOf(sph_coords_[nni], P, nextP, 1e-14);
         }
     }
     return valid_;
@@ -237,7 +237,7 @@ void ConvexSphericalPolygon::compute_area(const int debug) {
     }
     std::vector<double> tri_area;
     std::vector<PointXYZ> tri_centre;
-    if (cell_radius_ < 1e-6) {  // plane area
+    if (radius_ < 1e-6) {  // plane area
         for (int i = 1; i < size_ - 1; i++) {
             const PointXYZ& pl = sph_coords_[i] - sph_coords_[0];
             const PointXYZ& pr = sph_coords_[i + 1] - sph_coords_[0];
@@ -326,18 +326,9 @@ void ConvexSphericalPolygon::compute_area(const int debug) {
     }
 }
 
-int ConvexSphericalPolygon::leftOf(const PointXYZ& P, const PointXYZ& p1, const PointXYZ& p2, const double tol,
-                                   const int debug) {
+int ConvexSphericalPolygon::leftOf(const PointXYZ& P, const PointXYZ& p1, const PointXYZ& p2, const double tol) {
     const PointXYZ& cp = PointXYZ(PointXYZ::cross(p1, p2));
     double cpP         = PointXYZ::dot(cp, P);
-#if DEBUG_OUTPUT
-    if (debug) {
-        (Log::info() << "\tp, p1, p2: " << sph_to_lonlat(P) << ", " << sph_to_lonlat(p1) << ", " << sph_to_lonlat(p2)
-                     << "\n")
-            .flush();
-        (Log::info() << "\tp1 x p2, p * (p1 x p2): " << cp << ", " << cpP << "\n").flush();
-    }
-#endif
     return (cpP > -tol);
 }
 
@@ -503,7 +494,7 @@ void ConvexSphericalPolygon::clip(const PointXYZ& s1, const PointXYZ& s2, const 
             (Log::info() << " point " << sph_to_lonlat(sph_coords_[i]) << "\n").flush();
         }
 #endif
-        if (leftOf(sph_coords_[i], s1, s2, 1e-15, debug)) {
+        if (leftOf(sph_coords_[i], s1, s2, 1e-15)) {
             old_pt_in[i] = true;
         }
     }
@@ -517,7 +508,7 @@ void ConvexSphericalPolygon::clip(const PointXYZ& s1, const PointXYZ& s2, const 
         if (i1_is_f1n) {
             add_i1 = add_i1 && (old_pt_in[f1n] ? false : true);
         }
-        add_i1 = add_i1 && leftOf(i1, sph_coords_[f1], sph_coords_[f1n], 1e-10, debug);
+        add_i1 = add_i1 && leftOf(i1, sph_coords_[f1], sph_coords_[f1n], 1e-10);
     }
     else {
         f1 = -1;
@@ -531,7 +522,7 @@ void ConvexSphericalPolygon::clip(const PointXYZ& s1, const PointXYZ& s2, const 
         if (PointXYZ::norm(i2 - sph_coords_[f2n]) < 1e-8) {
             add_i2 = add_i2 && (old_pt_in[f2n] ? false : true);
         }
-        add_i2 = add_i2 && leftOf(i2, sph_coords_[f2], sph_coords_[f2n], 1e-10, debug);
+        add_i2 = add_i2 && leftOf(i2, sph_coords_[f2], sph_coords_[f2n], 1e-10);
     }
     else {
         f2 = -1;
