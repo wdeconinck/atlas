@@ -337,7 +337,12 @@ void ConservativeMethod::do_setup(const Grid& src_grid, const Grid& tgt_grid) {
     auto src_mesh_config = src_grid.meshgenerator();
     auto tgt_mesh_config = tgt_grid.meshgenerator();
     tgt_mesh_            = MeshGenerator(tgt_mesh_config).generate(tgt_grid);
-    src_mesh_ = MeshGenerator(src_mesh_config).generate(src_grid, grid::MatchingPartitioner(tgt_mesh_));
+    if (mpi::size() > 1) {
+        src_mesh_ = MeshGenerator(src_mesh_config).generate(src_grid, grid::MatchingPartitioner(tgt_mesh_));
+    }
+    else {
+        src_mesh_ = MeshGenerator(src_mesh_config).generate(src_grid);
+    }
     if (src_cell_data_) {
         functionspace::CellColumns src_fs(src_mesh_, option::halo(2));
         src_fs_ = src_fs;
@@ -372,7 +377,7 @@ void ConservativeMethod::do_setup(const FunctionSpace& src_fs, const FunctionSpa
         src_mesh_      = functionspace::NodeColumns(src_fs).mesh();
     }
     else {
-        ATLAS_NOTIMPLEMENTED;
+        ATLAS_THROW_EXCEPTION("ConservativeMethod: source function space invalid");
     }
     if (functionspace::CellColumns(tgt_fs)) {
         tgt_cell_data_ = true;
@@ -385,17 +390,14 @@ void ConservativeMethod::do_setup(const FunctionSpace& src_fs, const FunctionSpa
         tgt_mesh_      = functionspace::NodeColumns(tgt_fs).mesh();
     }
     else {
-        ATLAS_NOTIMPLEMENTED;
+        ATLAS_THROW_EXCEPTION("ConservativeMethod: target function space invalid");
     }
-    auto src_grid        = src_mesh_.grid();
-    auto src_mesh_config = src_grid.meshgenerator();
-    if (mpi::size() > 1) {
-        src_mesh_ = MeshGenerator(src_mesh_config).generate(src_grid, grid::MatchingPartitioner(tgt_mesh_));
+    {
+        // we need src_halo_size >= 2, whereas tgt_halo_size >= 0 is enough
+        int src_halo_size = 0;
+        src_mesh_.metadata().get("halo", src_halo_size);
+        ATLAS_ASSERT(src_halo_size > 1);
     }
-    else {
-        src_mesh_ = MeshGenerator(src_mesh_config).generate(src_grid);
-    }
-    functionspace::NodeColumns tmp_src_fs(src_mesh_, option::halo(2));
     mesh::actions::build_node_to_cell_connectivity(src_mesh_);
     mesh::actions::build_node_to_cell_connectivity(tgt_mesh_);
 
@@ -404,26 +406,18 @@ void ConservativeMethod::do_setup(const FunctionSpace& src_fs, const FunctionSpa
     {
         ATLAS_TRACE("Get source polygons");
         if (src_cell_data_) {
-            functionspace::CellColumns src_fs(src_mesh_, option::halo(2));
-            src_fs_ = src_fs;
             src_csp = get_polygons_celldata(src_mesh_);
         }
         else {
-            functionspace::NodeColumns src_fs(src_mesh_, option::halo(2));
-            src_fs_ = src_fs;
             src_csp = get_polygons_nodedata(src_mesh_, src_csp2node_, src_node2csp_);
         }
     }
     {
         ATLAS_TRACE("Get target polygons");
         if (tgt_cell_data_) {
-            functionspace::CellColumns tgt_fs(tgt_mesh_, option::halo(0));
-            tgt_fs_ = tgt_fs;
             tgt_csp = get_polygons_celldata(tgt_mesh_);
         }
         else {
-            functionspace::NodeColumns tgt_fs(tgt_mesh_, option::halo(0));
-            tgt_fs_ = tgt_fs;
             tgt_csp = get_polygons_nodedata(tgt_mesh_, tgt_csp2node_, tgt_node2csp_);
         }
     }
@@ -566,9 +560,9 @@ void ConservativeMethod::intersect_polygons(const CSPolygonArray& src_csp, const
     Log::info() << "ConservativeMethod::intersect_polygons : " << nonintersect
                 << " source mesh polygons do NOT intersect any other polygon.\n";
     Log::info() << "ConservativeMethod::intersect_polygons : " << total_src_area_notcovered
-                << " total area of source mesh over/undercovered by target mesh.\n";
+                << " total area of source polygons over/undercovered by target polygons.\n";
     Log::info() << "ConservativeMethod::intersect_polygons : " << max_src_area_notcovered
-                << " maximal area of a source mesh NOT covered by target mesh.\n";
+                << " maximal area of a source polygons NOT covered by target polygons.\n";
     geo_err_intsc_l1_   = 0.;
     geo_err_intsc_linf_ = 0.;
     size_t no_iplg      = 0;
