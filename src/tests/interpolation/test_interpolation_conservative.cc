@@ -78,6 +78,8 @@ void do_remapping_test(Grid src_grid, Grid tgt_grid, double func(const PointLonL
     };
     config.set("src_cell_data", cell_data("--src-cell-data",src_grid));
     config.set("tgt_cell_data", cell_data("--tgt-cell-data",tgt_grid));
+    config.set("matrix_free", eckit::Resource<bool>("--matrix-free",false));
+    config.set("normalise_intersections", eckit::Resource<bool>("--normalise",true));
     ConservativeMethod consMethod(config);
 
     outfile << std::setw(10) << src_grid.name() << std::setw(10) << tgt_grid.name();
