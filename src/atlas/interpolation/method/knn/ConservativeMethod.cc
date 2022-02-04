@@ -538,9 +538,10 @@ void ConservativeMethod::intersect_polygons(const CSPolygonArray& src_csp, const
     }
     kdt_search.build();
 
-    size_t nonintersect        = 0;
-    size_t n_icsp              = 0;
-    double src_area_notcovered = 0.;
+    size_t nonintersect               = 0;
+    size_t n_icsp                     = 0;
+    double total_src_area_notcovered  = 0.;
+    double max_src_area_notcovered    = 0.;
     iparam_.resize(src_csp.size());
     eckit::Channel blackhole;
     eckit::ProgressTimer progress("Intersecting polygons ", src_csp.size(), " cell", double(10),
@@ -551,22 +552,30 @@ void ConservativeMethod::intersect_polygons(const CSPolygonArray& src_csp, const
             continue;
         }
         const auto& s_csp   = std::get<0>(src_csp[scell]);
+		const double s_csp_area = s_csp.area();
         double covered_area = 0.;
         auto tgt_cells = kdt_search.closestPointsWithinRadius(s_csp.centroid(), s_csp.radius() + max_tgtcell_rad);
         for (idx_t ttcell = 0; ttcell < tgt_cells.size(); ++ttcell) {
             auto tcell        = tgt_cells[ttcell].payload();
             const auto& t_csp = std::get<0>(tgt_csp[tcell]);
             CSPolygon csp_i   = s_csp.intersect(t_csp);
-            if (csp_i.area() > 0.) {
+			double csp_i_area = csp_i.area();
+            if (csp_i_area > 0.) {
                 iparam_[scell].tcell_id.emplace_back(tcell);
-                iparam_[scell].weights.emplace_back(csp_i.area());
-                iparam_[scell].sweights.emplace_back(csp_i.area() / t_csp.area());
+                iparam_[scell].weights.emplace_back(csp_i_area);
+                iparam_[scell].sweights.emplace_back(csp_i_area / t_csp.area());
                 iparam_[scell].centroids.emplace_back(csp_i.centroid());
-                covered_area += csp_i.area();
+                covered_area += csp_i_area;
             }
         }
-        const double loc_csp_error = std::abs(s_csp.area() - covered_area) / s_csp.area();
-        src_area_notcovered += loc_csp_error;
+        const double loc_csp_error = s_csp_area - covered_area;
+        if ( loc_csp_error > 1e-5 ) {
+            Log::info() << "* src cell area NOT covered: " << loc_csp_error << "\n";
+            //dump_intersection( s_csp, tgt_csp, tgt_cells );
+            //ATLAS_ASSERT( false );
+        }
+        total_src_area_notcovered += loc_csp_error;
+        max_src_area_notcovered = std::max( max_src_area_notcovered, loc_csp_error );
         if (iparam_[scell].tcell_id.size() == 0.) {
             ++nonintersect;
         }
@@ -577,19 +586,16 @@ void ConservativeMethod::intersect_polygons(const CSPolygonArray& src_csp, const
                 iparam_[scell].sweights[i] *= wfactor;
             }
         }
-        if (false && loc_csp_error > 1e-5) {
-            Log::info() << "* src cell area NOT covered: " << loc_csp_error << "\n";
-            //dump_intersection( s_csp, tgt_csp, tgt_cells );
-            //ATLAS_ASSERT( false );
-        }
         n_icsp += iparam_[scell].weights.size();
     }
-    Log::info() << "ConservativeMethod::intersect_polygons : size of src_grid, tgt_grid, supergrid: " << src_csp.size()
+    Log::info() << "ConservativeMethod::intersect_polygons : size of src_polygons, tgt_polygons, supermesh: " << src_csp.size()
                 << " " << tgt_csp.size() << " " << n_icsp << "\n";
     Log::info() << "ConservativeMethod::intersect_polygons : " << nonintersect
                 << " source mesh polygons do NOT intersect any other polygon.\n";
-    Log::info() << "ConservativeMethod::intersect_polygons : " << src_area_notcovered
-                << " area of source mesh NOT covered by target mesh.\n";
+    Log::info() << "ConservativeMethod::intersect_polygons : " << total_src_area_notcovered
+                << " total area of source mesh over- or under-covered by target mesh.\n";
+    Log::info() << "ConservativeMethod::intersect_polygons : " << max_src_area_notcovered
+                << " maximal area of a source mesh NOT covered by target mesh.\n";
     geo_err_intsc_l1_   = 0.;
     geo_err_intsc_linf_ = 0.;
     size_t no_iplg      = 0;
