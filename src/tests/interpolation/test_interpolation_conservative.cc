@@ -35,6 +35,7 @@ namespace test {
 
 using CSPolygon          = util::ConvexSphericalPolygon;
 using ConservativeMethod = interpolation::method::ConservativeMethod;
+using RemapErrorType     = interpolation::method::RemapErrorType;
 using FieldArray         = array::ArrayView<double, 1>;
 
 Grid localgrid(int nx, int ny) {
@@ -51,15 +52,15 @@ Grid localgrid(int nx, int ny) {
 
 void compute_field_errors(const FieldArray& src_vals, const FieldArray& tgt_vals, FieldArray& diff_vals,
                           ConservativeMethod& consMethod, double func(const PointLonLat&), std::ofstream& outfile) {
-    double global_cons_err;
-    double remap_err_l2;
-    double remap_err_linf;
-    consMethod.remap_stat(src_vals, tgt_vals, diff_vals, global_cons_err, func, remap_err_l2, remap_err_linf);
-    Log::info() << "    " << consMethod.order() << "-order remap analytical error : (L2) " << remap_err_l2 << " (Lmax) "
-                << remap_err_linf << "\n";
-    Log::info() << "    " << consMethod.order() << "-order global remap error : " << global_cons_err << "\n";
-    outfile << std::setw(10) << remap_err_l2 << std::setw(10) << remap_err_linf << std::setw(10)
-            << std::abs(global_cons_err);
+    std::array<double,3> errors;
+    consMethod.remap_stat(src_vals, tgt_vals, diff_vals, func, errors);
+    Log::info() << "    " << consMethod.order() << "-order remap analytical error : (L2) " 
+                << errors[RemapErrorType::L2] << " (Lmax) "
+                << errors[RemapErrorType::LINF] << "\n";
+    Log::info() << "    " << consMethod.order() << "-order global remap error : " 
+                << errors[RemapErrorType::GLOBAL] << "\n";
+    outfile << std::setw(10) << errors[RemapErrorType::L2] << std::setw(10) << errors[RemapErrorType::LINF] 
+            << std::setw(10) << std::abs(errors[RemapErrorType::GLOBAL]);
 }
 
 void do_remapping_test(Grid src_grid, Grid tgt_grid, double func(const PointLonLat&), std::ofstream& outfile) {

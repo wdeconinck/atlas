@@ -16,7 +16,6 @@
 #include "atlas/grid.h"
 #include "atlas/interpolation/method/MethodFactory.h"
 #include "atlas/interpolation/method/knn/ConservativeMethod.h"
-#include "atlas/mesh/actions/BuildDualMesh.h"
 #include "atlas/mesh/actions/BuildHalo.h"
 #include "atlas/mesh/actions/BuildNode2CellConnectivity.h"
 #include "atlas/meshgenerator.h"
@@ -325,7 +324,7 @@ CSPolygonArray ConservativeMethod::get_polygons_nodedata(Mesh& mesh, std::vector
     }
     Log::info() << "Created " << cspolygons.size() << " polygons from "
                 << mesh.cells().size() << " mesh cells.\n";
-    Log::info() << " Total over/undershoots " << total_csp_area_shoots << ", max over/undershoots "
+    Log::info() << "Total sum of over/undershoots " << total_csp_area_shoots << ", max over/undershoots per cell"
                 << max_csp_area_shoots << "\n";
     return cspolygons;
 }
@@ -993,59 +992,60 @@ void ConservativeMethod::setup_stat(double& geo_create_err) const {
     const auto& src_node_ghost = array::make_view<int, 1>(src_mesh_.nodes().ghost());
     const auto src_areas_v     = array::make_view<double, 1>(src_areas_);
     const auto tgt_areas_v     = array::make_view<double, 1>(tgt_areas_);
-    double src_sum             = 0.;
+    double src_tgt_sums[2]          = {0., 0.};
     if (src_cell_data_) {
         for (idx_t spt = 0; spt < src_areas_v.size(); ++spt) {
             if (not src_cell_halo(spt)) {
-                src_sum += src_areas_v(spt);
+                src_tgt_sums[0] += src_areas_v(spt);
             }
         }
     }
     else {
         for (idx_t src = 0; src < src_areas_v.size(); ++src) {
             if (not src_node_ghost(src)) {
-                src_sum += src_areas_v(src);
+                src_tgt_sums[0] += src_areas_v(src);
             }
         }
     }
     const auto& tgt_cell_halo  = array::make_view<int, 1>(tgt_mesh_.cells().halo());
     const auto& tgt_node_ghost = array::make_view<int, 1>(tgt_mesh_.nodes().ghost());
-    double tgt_sum             = 0.;
     if (tgt_cell_data_) {
         for (idx_t tpt = 0; tpt < tgt_areas_v.size(); ++tpt) {
             if (not tgt_cell_halo(tpt)) {
-                tgt_sum += tgt_areas_v(tpt);
+                src_tgt_sums[1] += tgt_areas_v(tpt);
             }
         }
     }
     else {
         for (idx_t tpt = 0; tpt < tgt_areas_v.size(); ++tpt) {
             if (not tgt_node_ghost(tpt)) {
-                tgt_sum += tgt_areas_v(tpt);
+                src_tgt_sums[1] += tgt_areas_v(tpt);
             }
         }
     }
-    geo_create_err = std::abs(src_sum - tgt_sum) * 0.25 * M_1_PI;
+    ATLAS_TRACE_MPI(ALLREDUCE) {
+        mpi::comm().allReduceInPlace(src_tgt_sums, 2, eckit::mpi::sum());
+    }
+    geo_create_err = std::abs(src_tgt_sums[0] - src_tgt_sums[1]) * 0.25 * M_1_PI;
     Log::info() << " ConservativeMethod::stat : global error in polygon create   : " << geo_create_err << "\n";
 }
 
 void ConservativeMethod::remap_stat(const FieldArray& src_vals, const FieldArray& tgt_vals, FieldArray& diff_vals,
-                                    double& global_cons_err, double func(const PointLonLat&), double& remap_error_l2,
-                                    double& remap_error_linf) const {
+                                    double func(const PointLonLat&), std::array<double,3>& errors ) const {
     const auto& src_cell_halo  = array::make_view<int, 1>(src_mesh_.cells().halo());
     const auto& src_node_ghost = array::make_view<int, 1>(src_mesh_.nodes().ghost());
     const auto& tgt_cell_halo  = array::make_view<int, 1>(tgt_mesh_.cells().halo());
     const auto& tgt_node_ghost = array::make_view<int, 1>(tgt_mesh_.nodes().ghost());
     const auto src_areas_v     = array::make_view<double, 1>(src_areas_);
     const auto tgt_areas_v     = array::make_view<double, 1>(tgt_areas_);
-    global_cons_err            = 0;
+    errors = {{0., 0., 0.}};
     if (src_cell_data_) {
         for (idx_t spt = 0; spt < src_vals.size(); ++spt) {
             if (src_cell_halo(spt)) {
                 continue;
             }
             double diff = src_vals(spt) * src_areas_v(spt);
-            global_cons_err += diff;
+            errors[GLOBAL] += diff;
             const auto& iparam = iparam_[spt];
             if (tgt_cell_data_) {
                 for (idx_t icell = 0; icell < iparam.weights.size(); ++icell) {
@@ -1071,7 +1071,7 @@ void ConservativeMethod::remap_stat(const FieldArray& src_vals, const FieldArray
                 continue;
             }
             double diff = src_vals(spt) * src_areas_v(spt);
-            global_cons_err += diff;
+            errors[GLOBAL] += diff;
             const auto& node2csp = src_node2csp_[spt];
             for (idx_t subcell = 0; subcell < node2csp.size(); ++subcell) {
                 const auto& iparam = iparam_[node2csp[subcell]];
@@ -1091,20 +1091,18 @@ void ConservativeMethod::remap_stat(const FieldArray& src_vals, const FieldArray
             diff_vals(spt) = std::abs(diff) / src_areas_v(spt);
         }
     }
-    remap_error_l2   = 0.;
-    remap_error_linf = 0.;
     if (tgt_cell_data_) {
         for (idx_t tpt = 0; tpt < tgt_vals.size(); ++tpt) {
             if (tgt_cell_halo(tpt)) {
                 continue;
             }
-            global_cons_err -= tgt_vals(tpt) * tgt_areas_v(tpt);
+            errors[GLOBAL] -= tgt_vals(tpt) * tgt_areas_v(tpt);
             auto p = tgt_points_[tpt];
             PointLonLat pll;
             eckit::geometry::Sphere::convertCartesianToSpherical(1., p, pll);
             double err_l = std::abs(tgt_vals(tpt) - func(pll));
-            remap_error_l2 += err_l * err_l * tgt_areas_v(tpt);
-            remap_error_linf = std::max(remap_error_linf, err_l);
+            errors[L2] += err_l * err_l * tgt_areas_v(tpt);
+            errors[LINF] = std::max(errors[LINF], err_l);
         }
     }
     else {
@@ -1112,17 +1110,21 @@ void ConservativeMethod::remap_stat(const FieldArray& src_vals, const FieldArray
             if (tgt_node_ghost(tpt)) {
                 continue;
             }
-            global_cons_err -= tgt_vals(tpt) * tgt_areas_v(tpt);
+            errors[GLOBAL] -= tgt_vals(tpt) * tgt_areas_v(tpt);
             auto p = tgt_points_[tpt];
             PointLonLat pll;
             eckit::geometry::Sphere::convertCartesianToSpherical(1., p, pll);
             double err_l = std::abs(tgt_vals(tpt) - func(pll));
-            remap_error_l2 += err_l * err_l * tgt_areas_v(tpt);
-            remap_error_linf = std::max(remap_error_linf, err_l);
+            errors[L2] += err_l * err_l * tgt_areas_v(tpt);
+            errors[LINF] = std::max(errors[LINF], err_l);
         }
     }
-    remap_error_l2  = std::sqrt(remap_error_l2 * 0.25 * M_1_PI);
-    global_cons_err = std::sqrt(std::abs(global_cons_err) * 0.25 * M_1_PI);
+    ATLAS_TRACE_MPI(ALLREDUCE) {
+        mpi::comm().allReduceInPlace(&errors[0], 2, eckit::mpi::sum());
+        mpi::comm().allReduceInPlace(&errors[2], 1, eckit::mpi::max());
+    }
+    errors[L2]     = std::sqrt(errors[L2] * 0.25 * M_1_PI);
+    errors[GLOBAL] = std::sqrt(std::abs(errors[GLOBAL]) * 0.25 * M_1_PI);
 }
 
 template <class TargetCellsIDs>
