@@ -504,17 +504,17 @@ void ConservativeMethod::intersect_polygons(const CSPolygonArray& src_csp, const
     }
     kdt_search.build();
 
-    size_t nonintersect               = 0;
-    size_t n_icsp                     = 0;
-    double total_src_area_notcovered  = 0.;
-    double max_src_area_notcovered    = 0.;
+    enum MeshSizeId {SRC, TGT, SRC_TGT_INTERSECT, SRC_NONINTERSECT};
+    std::array<size_t,4> num_pol{0,0,0,0};
+    enum AreaCoverageId {TOTAL_SRC, MAX_SRC};
+    std::array<double,2> area_coverage{0.,0.};
     iparam_.resize(src_csp.size());
     eckit::Channel blackhole;
     eckit::ProgressTimer progress("Intersecting polygons ", src_csp.size(), " cell", double(10),
                                   src_csp.size() > 50 ? Log::info() : blackhole);
     for (idx_t scell = 0; scell < src_csp.size(); ++scell, ++progress) {
-        if (std::get<1>(src_csp[scell]) == -1) {
-            // skip periodic cells
+        const int cell_flag = std::get<1>(src_csp[scell]);
+        if (cell_flag == -1) { // skip periodic cells
             continue;
         }
         const auto& s_csp   = std::get<0>(src_csp[scell]);
@@ -535,15 +535,17 @@ void ConservativeMethod::intersect_polygons(const CSPolygonArray& src_csp, const
             }
         }
         const double loc_csp_error = s_csp_area - covered_area;
-        if ( loc_csp_error > 1e-5 ) {
+        if ( loc_csp_error > 1e-5 && cell_flag == 0) {
             Log::info() << "WARNING src cell area NOT covered: " << loc_csp_error << "\n";
             //dump_intersection( s_csp, tgt_csp, tgt_cells );
             //ATLAS_ASSERT( false );
         }
-        total_src_area_notcovered += loc_csp_error;
-        max_src_area_notcovered = std::max( max_src_area_notcovered, loc_csp_error );
+        if (cell_flag == 0) {
+            area_coverage[TOTAL_SRC] += loc_csp_error;
+            area_coverage[MAX_SRC]   = std::max( area_coverage[MAX_SRC], loc_csp_error );
+        }
         if (iparam_[scell].tcell_id.size() == 0.) {
-            ++nonintersect;
+            num_pol[SRC_NONINTERSECT]++;
         }
         if (normalise_intersections_ && loc_csp_error < 1e-5) {
             double wfactor = s_csp.area() / (covered_area > 1e-10 ? covered_area : 1.);
@@ -552,32 +554,40 @@ void ConservativeMethod::intersect_polygons(const CSPolygonArray& src_csp, const
                 iparam_[scell].sweights[i] *= wfactor;
             }
         }
-        n_icsp += iparam_[scell].weights.size();
+        num_pol[SRC_TGT_INTERSECT] += iparam_[scell].weights.size();
     }
-    Log::info() << "ConservativeMethod::intersect_polygons : src_polygons, tgt_polygons, supermesh: " << src_csp.size()
-                << " " << tgt_csp.size() << " " << n_icsp << "\n";
-    Log::info() << "ConservativeMethod::intersect_polygons : " << nonintersect
+    num_pol[SRC] = src_csp.size();
+    num_pol[TGT] = tgt_csp.size();
+    ATLAS_TRACE_MPI(ALLREDUCE) {
+        mpi::comm().allReduceInPlace(&num_pol[0], 4, eckit::mpi::sum());
+        mpi::comm().allReduceInPlace(&area_coverage[0], 2, eckit::mpi::max());
+    }
+    Log::info() << "ConservativeMethod:: num_src_polygons, num_tgt_polygons, num_intersect_polygons: "
+                << num_pol[0] << " " << num_pol[1] << " " << num_pol[2] << "\n";
+    Log::info() << "ConservativeMethod::intersect_polygons : " << num_pol[SRC_NONINTERSECT]
                 << " source mesh polygons do NOT intersect any other polygon.\n";
-    Log::info() << "ConservativeMethod::intersect_polygons : " << total_src_area_notcovered
+    Log::info() << "ConservativeMethod::intersect_polygons : " << area_coverage[TOTAL_SRC]
                 << " total area of source polygons over/undercovered by target polygons.\n";
-    Log::info() << "ConservativeMethod::intersect_polygons : " << max_src_area_notcovered
+    Log::info() << "ConservativeMethod::intersect_polygons : " << area_coverage[MAX_SRC]
                 << " maximal area of a source polygons NOT covered by target polygons.\n";
-    geo_err_intsc_l1_   = 0.;
-    geo_err_intsc_linf_ = 0.;
-    size_t no_iplg      = 0;
+    geo_err_intsc_l1_   =  0.;
+    geo_err_intsc_linf_ =  0.;
     for (idx_t scell = 0; scell < src_csp.size(); ++scell) {
         const int cell_flag = std::get<1>(src_csp[scell]);
         if (cell_flag == -1 or cell_flag > 0) {
-            // skip periodic cells
+            // skip periodic & halo cells
             continue;
         }
         double diff_cell = std::get<0>(src_csp[scell]).area();
         for (idx_t icell = 0; icell < iparam_[scell].weights.size(); ++icell) {
             diff_cell -= iparam_[scell].weights[icell];
         }
-        no_iplg += iparam_[scell].weights.size();
-        geo_err_intsc_l1_ += std::abs(diff_cell);
+        geo_err_intsc_l1_   += std::abs(diff_cell);
         geo_err_intsc_linf_ = std::max(geo_err_intsc_linf_, std::abs(diff_cell));
+    }
+    ATLAS_TRACE_MPI(ALLREDUCE) {
+        mpi::comm().allReduceInPlace(&geo_err_intsc_l1_, 1, eckit::mpi::sum());
+        mpi::comm().allReduceInPlace(&geo_err_intsc_linf_, 1, eckit::mpi::sum());
     }
     geo_err_intsc_l1_ *= 0.25 * M_1_PI;
     Log::info() << "ConservativeMethod::intersect_polygons : cons err in polygon intersect  : (L1) "
