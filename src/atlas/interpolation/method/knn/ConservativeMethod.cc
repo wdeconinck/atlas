@@ -402,7 +402,9 @@ void ConservativeMethod::do_setup(const FunctionSpace& src_fs, const FunctionSpa
         ATLAS_ASSERT(src_halo_size > 1);
     }
     mesh::actions::build_node_to_cell_connectivity(src_mesh_);
-    mesh::actions::build_node_to_cell_connectivity(tgt_mesh_);
+    if ( not tgt_cell_data_ ) {
+        mesh::actions::build_node_to_cell_connectivity(tgt_mesh_);
+    }
 
     CSPolygonArray src_csp;
     CSPolygonArray tgt_csp;
