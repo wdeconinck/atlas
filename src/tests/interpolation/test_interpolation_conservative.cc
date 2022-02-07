@@ -67,11 +67,9 @@ void do_remapping_test(Grid src_grid, Grid tgt_grid, double func(const PointLonL
     util::Config gmsh_config;
     // Allow command-line argument to change coordinates output to lonlat; e.g.
     //    <program> --coordinates lonlat
-    gmsh_config.set("coordinates", eckit::Resource<std::string>("--coordinates","xyz"));
+    gmsh_config.set("coordinates", eckit::Resource<std::string>("--coordinates","lonlat"));
     gmsh_config.set("ghost", true);
     util::Config config;
-    config.set("matrix_free", false);
-    config.set("normalise_intersections", true);
     auto cell_data = [](const std::string& resource, const Grid& grid) -> bool {
         bool resource_default = grid.name()[0] == 'H' ? true : false;
         bool retval = eckit::Resource<bool>(resource,resource_default);
