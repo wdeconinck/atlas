@@ -246,8 +246,8 @@ CSPolygonArray ConservativeMethod::get_polygons_nodedata(Mesh& mesh, std::vector
         return p_ll;
     };
     idx_t cspol_id = 0; // subpolygon enumeration
-    double total_csp_area_shoots = 0; // total over/undershoots in creation of subpolygons
-    double max_csp_area_shoots = 0; // max over/undershoots in creation of subpolygons
+    enum CSPAreaShootsType {TOTAL, MAX};
+    std::array<double, 2> csp_area_shoots{0., 0.}; // over/undershoots in creation of subpolygons
     for (idx_t cell = 0; cell < mesh.cells().size(); ++cell) {
         ATLAS_ASSERT(cell < cell2node.rows());
         const idx_t n_nodes = cell2node.cols(cell);
@@ -319,13 +319,17 @@ CSPolygonArray ConservativeMethod::get_polygons_nodedata(Mesh& mesh, std::vector
             cspolygons.emplace_back(cspi, halo_type);
             cspol_id++;
         }
-        total_csp_area_shoots = std::abs(loc_csp_area_shoot) + total_csp_area_shoots;
-        max_csp_area_shoots = std::max( std::abs(loc_csp_area_shoot), max_csp_area_shoots );
+        csp_area_shoots[TOTAL] += std::abs(loc_csp_area_shoot);
+        csp_area_shoots[MAX] = std::max( std::abs(loc_csp_area_shoot), csp_area_shoots[MAX] );
+    }
+    ATLAS_TRACE_MPI(ALLREDUCE) {
+        mpi::comm().allReduceInPlace(&csp_area_shoots[0], 1, eckit::mpi::sum());
+        mpi::comm().allReduceInPlace(&csp_area_shoots[1], 1, eckit::mpi::max());
     }
     Log::info() << "Created " << cspolygons.size() << " subpolygons from "
                 << mesh.cells().size() << " mesh cells.\n";
-    Log::info() << "Total sum of subpolygon over/undershoots " << total_csp_area_shoots
-                << ", max over/undershoots per cell " << max_csp_area_shoots << "\n";
+    Log::info() << "Total sum of subpolygon over/undershoots " << csp_area_shoots[TOTAL]
+                << ", max over/undershoots per cell " << csp_area_shoots[MAX] << "\n";
     return cspolygons;
 }
 
