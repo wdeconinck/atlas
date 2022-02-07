@@ -50,12 +50,15 @@ ConservativeMethod::ConservativeMethod(const Config& config): Method(config) {
 // get counter-clockwise sorted neighbours of a cell
 std::vector<idx_t> ConservativeMethod::get_cell_neighbours(Mesh& mesh, idx_t cell) const {
     const auto& cell2node  = mesh.cells().node_connectivity();
-    const auto& node2cell  = mesh.nodes().cell_connectivity();
     const auto& nodes_ll   = array::make_view<double, 2>(mesh.nodes().lonlat());
-    const auto n2c_missval = node2cell.missing_value();
     const idx_t n_nodes    = cell2node.cols(cell);
     std::vector<idx_t> nbr_cells;
     nbr_cells.reserve(n_nodes);
+    if (mesh.nodes().cell_connectivity().rows() == 0) {
+        mesh::actions::build_node_to_cell_connectivity(mesh);
+    }
+    const auto& node2cell  = mesh.nodes().cell_connectivity();
+    const auto n2c_missval = node2cell.missing_value();
 
     for (idx_t inode = 0; inode < n_nodes; ++inode) {
 		idx_t node0             = cell2node(cell, inode);
@@ -90,8 +93,11 @@ std::vector<idx_t> ConservativeMethod::get_cell_neighbours(Mesh& mesh, idx_t cel
 
 // get cyclically sorted node neighbours without using edge connectivity
 std::vector<idx_t> ConservativeMethod::get_node_neighbours(Mesh& mesh, idx_t node_id) const {
-    const auto& node2cell  = mesh.nodes().cell_connectivity();
     const auto& cell2node  = mesh.cells().node_connectivity();
+    if (mesh.nodes().cell_connectivity().rows() == 0) {
+        mesh::actions::build_node_to_cell_connectivity(mesh);
+    }
+    const auto& node2cell  = mesh.nodes().cell_connectivity();
     std::vector<idx_t> nbr_nodes;
     std::vector<idx_t> nbr_nodes_od;
     const int ncells       = node2cell.cols( node_id );
@@ -401,11 +407,6 @@ void ConservativeMethod::do_setup(const FunctionSpace& src_fs, const FunctionSpa
         src_mesh_.metadata().get("halo", src_halo_size);
         ATLAS_ASSERT(src_halo_size > 1);
     }
-    mesh::actions::build_node_to_cell_connectivity(src_mesh_);
-    if ( not tgt_cell_data_ ) {
-        mesh::actions::build_node_to_cell_connectivity(tgt_mesh_);
-    }
-
     CSPolygonArray src_csp;
     CSPolygonArray tgt_csp;
     {
