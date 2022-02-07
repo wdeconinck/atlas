@@ -322,10 +322,10 @@ CSPolygonArray ConservativeMethod::get_polygons_nodedata(Mesh& mesh, std::vector
         total_csp_area_shoots = std::abs(loc_csp_area_shoot) + total_csp_area_shoots;
         max_csp_area_shoots = std::max( std::abs(loc_csp_area_shoot), max_csp_area_shoots );
     }
-    Log::info() << "Created " << cspolygons.size() << " polygons from "
+    Log::info() << "Created " << cspolygons.size() << " subpolygons from "
                 << mesh.cells().size() << " mesh cells.\n";
-    Log::info() << "Total sum of over/undershoots " << total_csp_area_shoots << ", max over/undershoots per cell"
-                << max_csp_area_shoots << "\n";
+    Log::info() << "Total sum of subpolygon over/undershoots " << total_csp_area_shoots
+                << ", max over/undershoots per cell " << max_csp_area_shoots << "\n";
     return cspolygons;
 }
 
