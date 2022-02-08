@@ -213,20 +213,20 @@ CSPolygonArray ConservativeMethod::get_polygons_celldata(Mesh& mesh) const {
     const auto& cell_flags = array::make_view<int, 1>(mesh.cells().flags());
     const auto& cell_part  = array::make_view<int, 1>(mesh.cells().partition());
     std::vector<PointLonLat> pts_ll;
-    for (idx_t icell = 0; icell < n_cells; ++icell) {
-        const idx_t n_nodes = cell2node.cols(icell);
+    for (idx_t cell = 0; cell < n_cells; ++cell) {
+        const idx_t n_nodes = cell2node.cols(cell);
         pts_ll.clear();
         pts_ll.resize(n_nodes);
         for (idx_t jnode = 0; jnode < n_nodes; ++jnode) {
-            idx_t inode   = cell2node(icell, jnode);
+            idx_t inode   = cell2node(cell, jnode);
             pts_ll[jnode] = PointLonLat{lonlat(inode, 0), lonlat(inode, 1)};
         }
-        std::get<0>(cspolygons[icell]) = CSPolygon(pts_ll);
-        int halo_type                  = cell_halo(icell);
-        if (util::Bitflags::view(cell_flags(icell)).check(util::Topology::PERIODIC)) {
+        std::get<0>(cspolygons[cell]) = CSPolygon(pts_ll);
+        int halo_type                  = cell_halo(cell);
+        if (util::Bitflags::view(cell_flags(cell)).check(util::Topology::PERIODIC)) {
             halo_type = -1;
         }
-        std::get<1>(cspolygons[icell]) = halo_type;
+        std::get<1>(cspolygons[cell]) = halo_type;
     }
     return cspolygons;
 }
@@ -685,11 +685,8 @@ void ConservativeMethod::setup_2nd_order_matrix() {
     size_t triplets_size   = 0;
     const auto tgt_areas_v = array::make_view<double, 1>(tgt_areas_);
     if (src_cell_data_) {
-        const auto halo = array::make_view<int, 1>(src_mesh_.cells().halo());
+        const auto src_halo = array::make_view<int, 1>(src_mesh_.cells().halo());
         for (idx_t scell = 0; scell < n_spoints_; ++scell) {
-            if (halo(scell)) {
-                continue;
-            }
             const auto nb_cells = get_cell_neighbours(src_mesh_, scell);
             triplets_size += (2 * nb_cells.size() + 1) * iparam_[scell].centroids.size();
         }
@@ -697,7 +694,7 @@ void ConservativeMethod::setup_2nd_order_matrix() {
         for (idx_t scell = 0; scell < n_spoints_; ++scell) {
             const auto nb_cells = get_cell_neighbours(src_mesh_, scell);
             const auto& iparam  = iparam_[scell];
-            if (iparam.centroids.size() == 0 && not halo(scell)) {
+            if (iparam.centroids.size() == 0 && not src_halo(scell)) {
                 Log::info() << " WARNING source cell " << scell << " not covered"
                             << "\n";
                 continue;
@@ -897,8 +894,8 @@ void ConservativeMethod::do_execute(const Field& src_field, Field& tgt_field) {
     const auto tgt_areas_v = array::make_view<double, 1>(tgt_areas_);
 
     if (order_ == 1) {
-        ATLAS_TRACE("order 1");
         if (matrix_free_) {
+            ATLAS_TRACE("matrix_free_order_1");
             if (not src_cell_data_ or not tgt_cell_data_) {
                 ATLAS_NOTIMPLEMENTED;
             }
@@ -920,12 +917,13 @@ void ConservativeMethod::do_execute(const Field& src_field, Field& tgt_field) {
             }
         }
         else {
+            ATLAS_TRACE("matrix_order_1");
             Method::do_execute(src_field, tgt_field);
         }
     }
     else if (order_ == 2) {
-        ATLAS_TRACE("order 2");
         if (matrix_free_) {
+            ATLAS_TRACE("matrix_free_order_2");
             if (not src_cell_data_ or not tgt_cell_data_) {
                 ATLAS_NOTIMPLEMENTED;
             }
@@ -992,10 +990,10 @@ void ConservativeMethod::do_execute(const Field& src_field, Field& tgt_field) {
             }
         }
         else {
+            ATLAS_TRACE("matrix_order_2");
             Method::do_execute(src_field, tgt_field);
         }
     }
-
     {
         ATLAS_TRACE("halo exchange target");
         tgt_field.set_dirty(true);
@@ -1161,20 +1159,19 @@ void ConservativeMethod::dump_intersection(const CSPolygon& s_csp, const CSPolyg
         const double darea = std::abs(iplg.area() - jplg.area());
         Log::info() << "* src ^ tgt      : " << iplg << "\n";
         Log::info() << "* src ^ tgt area : " << iplg.area() << "\n";
-        if (darea > 5e-15) {
+        if (darea > 5e-13) {
             s_csp.intersect(t_csp);
             Log::info() << "* (!!) intersect comm area diff: " << darea << "\n";
             Log::info() << "* (!!) tgt ^ src      : " << jplg << "\n";
             Log::info() << "* (!!) tgt ^ src area : " << jplg.area() << "\n";
             t_csp.intersect(s_csp);
-            ATLAS_ASSERT(false);
+            //ATLAS_ASSERT(false);
         }
         Log::info() << "\n";
         area_ncov -= iplg.area();
     }
     Log::info() << "\n=== END DEBUG ===\n\n";
 }
-
 
 }  // namespace method
 }  // namespace interpolation
