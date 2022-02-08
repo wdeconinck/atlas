@@ -109,7 +109,6 @@ protected:
     Mesh tgt_mesh_;
     int normalise_intersections_;
     int order_;
-    int fvtype_;
     idx_t n_spoints_;
     idx_t n_tpoints_;
     bool matrix_free_;

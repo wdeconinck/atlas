@@ -41,7 +41,6 @@ MethodBuilder<ConservativeMethod> __builder("conservative");
 ConservativeMethod::ConservativeMethod(const Config& config): Method(config) {
     config.get("order", order_ = 1);
     config.get("normalise_intersections", normalise_intersections_ = 1);
-    config.get("field_value_type", fvtype_ = 0);
     config.get("matrix_free", matrix_free_ = true);
     config.get("src_cell_data", src_cell_data_ = true);
     config.get("tgt_cell_data", tgt_cell_data_ = true);
