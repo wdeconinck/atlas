@@ -80,7 +80,7 @@ std::vector<idx_t> ConservativeMethod::get_cell_neighbours(Mesh& mesh, idx_t cel
 			}
 			for( int icell1 = 0; still_search && icell1 < n_cells1; icell1++ ) {
 				int cell1 = node2cell( node1, icell1 );
-				if ( cell0 == cell1 && cell0 != n2c_missval && cell0 != cell ) {
+                if ( cell0 == cell1 && cell0 != n2c_missval ) {
 					nbr_cells.emplace_back( cell0 );
 					still_search = false;
 				}
