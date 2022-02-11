@@ -38,6 +38,17 @@ namespace {
 MethodBuilder<ConservativeMethod> __builder("conservative");
 }
 
+int ConservativeMethod::next_index(int current_index, int size, int offset) const {
+    ATLAS_ASSERT(current_index >= 0 && current_index < size);
+    ATLAS_ASSERT(offset >= 0 && offset <= size);
+    return (current_index < size - offset) ? current_index + offset : current_index + offset - size;
+}
+int ConservativeMethod::prev_index(int current_index, int size, int offset) const {
+    ATLAS_ASSERT(current_index >= 0 && current_index < size);
+    ATLAS_ASSERT(offset >= 0 && offset <= size);
+    return (current_index >= offset) ? current_index - offset : current_index - offset + size;
+}
+
 ConservativeMethod::ConservativeMethod(const Config& config): Method(config) {
     config.get("order", order_ = 1);
     config.get("normalise_intersections", normalise_intersections_ = 1);
@@ -61,7 +72,7 @@ std::vector<idx_t> ConservativeMethod::get_cell_neighbours(Mesh& mesh, idx_t cel
 
     for (idx_t inode = 0; inode < n_nodes; ++inode) {
 		idx_t node0             = cell2node(cell, inode);
-		idx_t node1             = cell2node(cell, inode!=n_nodes-1 ? inode+1 : 0);
+        idx_t node1             = cell2node(cell, next_index(inode, n_nodes));
 		const PointLonLat p0_ll = PointLonLat{nodes_ll(node0, 0), nodes_ll(node0, 1)};
 		const PointLonLat p1_ll = PointLonLat{nodes_ll(node1, 0), nodes_ll(node1, 1)};
 		PointXYZ p0, p1;
@@ -70,7 +81,7 @@ std::vector<idx_t> ConservativeMethod::get_cell_neighbours(Mesh& mesh, idx_t cel
 		if (PointXYZ::norm(p0 - p1) < 1e-14) {
 			continue;  // edge = point
 		}
-		bool still_search = true; // still search the cell having vertices node0 & node1, not havin index "cell"
+        bool still_search = true; // still search the cell having vertices node0 & node1, not having index "cell"
 		int n_cells0 = node2cell.cols( node0 );
 		int n_cells1 = node2cell.cols( node1 );
 		for( int icell0 = 0; still_search && icell0 < n_cells0; icell0++ ) {
@@ -113,8 +124,8 @@ std::vector<idx_t> ConservativeMethod::get_node_neighbours(Mesh& mesh, idx_t nod
 				break;
 			}
 		}
-		cnodes[icell][0] = cell2node( cell, (cnode!=0 ? cnode-1 : nnodes-1) );
-		cnodes[icell][1] = cell2node( cell, (cnode!=nnodes-1 ? cnode+1 : 0) );
+        cnodes[icell][0] = cell2node( cell, prev_index(cnode, nnodes) );
+        cnodes[icell][1] = cell2node( cell, next_index(cnode, nnodes) );
     }
 	if ( ncells == 1 ) {
 		nbr_nodes.emplace_back( cnodes[0][0] );
@@ -261,7 +272,7 @@ CSPolygonArray ConservativeMethod::get_polygons_nodedata(Mesh& mesh, std::vector
         pts_ll.reserve( n_nodes );
         for (idx_t inode = 0; inode < n_nodes; ++inode) {
             idx_t node0             = cell2node(cell, inode);
-            idx_t node1             = cell2node(cell, inode!=n_nodes-1 ? inode+1 : 0);
+            idx_t node1             = cell2node(cell, next_index(inode, n_nodes));
             const PointLonLat p0_ll = PointLonLat{nodes_ll(node0, 0), nodes_ll(node0, 1)};
             const PointLonLat p1_ll = PointLonLat{nodes_ll(node1, 0), nodes_ll(node1, 1)};
             pts_ll.emplace_back( p0_ll );
@@ -282,7 +293,7 @@ CSPolygonArray ConservativeMethod::get_polygons_nodedata(Mesh& mesh, std::vector
         // get CSPolygon for each valid edge
         for (idx_t inode = 0; inode < n_nodes; ++inode) {
             idx_t node0              = cell2node(cell, inode);
-            idx_t node1              = cell2node(cell, inode!=n_nodes-1 ? inode+1 : 0);
+            idx_t node1              = cell2node(cell, next_index(inode, n_nodes));
             const PointLonLat pi0_ll = PointLonLat{nodes_ll(node0, 0), nodes_ll(node0, 1)};
             const PointLonLat pi1_ll = PointLonLat{nodes_ll(node1, 0), nodes_ll(node1, 1)};
             PointXYZ pi0, pi1;
@@ -295,13 +306,13 @@ CSPolygonArray ConservativeMethod::get_polygons_nodedata(Mesh& mesh, std::vector
             iedge_mid          = PointXYZ::div(iedge_mid, PointXYZ::norm(iedge_mid));
 			csp2node.emplace_back(node1);
 			node2csp[node0].emplace_back(cspol_id);
-			idx_t node2 = cell2node(cell, inode<n_nodes-2 ? inode+2 : inode+2-n_nodes);	// the end point of the other real edge touching pi1
+            idx_t node2 = cell2node(cell, next_index(inode, n_nodes, 2));	// the end point of the other real edge touching pi1
 			auto pi2_ll = PointLonLat{nodes_ll(node2, 0), nodes_ll(node2, 1)};
 			PointXYZ pi2;
 			eckit::geometry::Sphere::convertSphericalToCartesian(1., pi2_ll, pi2);
 			if ( PointXYZ::norm( pi1 - pi2 ) < 1e-14 ) { // we need real edge [pi1,pi2]
-				node2 = cell2node(cell, inode<n_nodes-3 ? inode+3 : inode+3-n_nodes); 
-				pi2_ll = PointLonLat{nodes_ll(node2, 0), nodes_ll(node2, 1)};
+                node2 = cell2node(cell, next_index(inode, n_nodes, 3)); 
+                pi2_ll = PointLonLat{nodes_ll(node2, 0), nodes_ll(node2, 1)};
 				eckit::geometry::Sphere::convertSphericalToCartesian(1., pi2_ll, pi2);
 			}
 			if ( PointXYZ::norm( pi1 - pi2 ) < 1e-14 ) {
@@ -721,7 +732,7 @@ void ConservativeMethod::setup_2nd_order_matrix() {
             std::vector<PointXYZ> Rsj;
             Rsj.resize(nb_cells.size());
             for (idx_t j = 0; j < nb_cells.size(); ++j) {
-                idx_t nj         = (j != nb_cells.size() - 1) ? j + 1 : 0;
+                idx_t nj         = next_index(j, nb_cells.size());
                 idx_t sj         = nb_cells[j];
                 idx_t nsj        = nb_cells[nj];
                 const auto& Csj  = src_points_[sj];
@@ -753,7 +764,7 @@ void ConservativeMethod::setup_2nd_order_matrix() {
                 for (idx_t icell = 0; icell < iparam.centroids.size(); ++icell) {
                     const idx_t tcell = iparam.tcell_id[icell];
                     for (idx_t j = 0; j < nb_cells.size(); ++j) {
-                        idx_t nj  = (j != nb_cells.size() - 1) ? j + 1 : 0;
+                        idx_t nj  = next_index(j, nb_cells.size());
                         idx_t sj  = nb_cells[j];
                         idx_t nsj = nb_cells[nj];
                         triplets.emplace_back(tcell, sj, 0.5 * PointXYZ::dot(Rsj[j], Aik[icell]));
@@ -769,7 +780,7 @@ void ConservativeMethod::setup_2nd_order_matrix() {
                     double inv_node_weight = (tgt_areas_v(tnode) > 0.) ? 1./tgt_areas_v(tnode) : 0.;
                     double csp2node_coef = iparam.weights[icell] / iparam.sweights[icell] * inv_node_weight;
                     for (idx_t j = 0; j < nb_cells.size(); ++j) {
-                        idx_t nj  = (j != nb_cells.size() - 1) ? j + 1 : 0;
+                        idx_t nj  = next_index(j, nb_cells.size());
                         idx_t sj  = nb_cells[j];
                         idx_t nsj = nb_cells[nj];
                         triplets.emplace_back(tnode, sj, (0.5 * PointXYZ::dot(Rsj[j], Aik[icell])) * csp2node_coef);
@@ -814,7 +825,7 @@ void ConservativeMethod::setup_2nd_order_matrix() {
             Rsj.resize(nb_nodes.size());
             const auto& Ns = src_points_[snode];
             for (idx_t j = 0; j < nb_nodes.size(); ++j) {
-                idx_t nj         = (j != nb_nodes.size() - 1) ? j + 1 : 0;
+                idx_t nj         = next_index(j, nb_nodes.size());
                 idx_t sj         = nb_nodes[j];
                 idx_t snj        = nb_nodes[nj];
                 const auto& Nsj  = src_points_[sj];
@@ -852,7 +863,7 @@ void ConservativeMethod::setup_2nd_order_matrix() {
                     for (idx_t icell = 0; icell < iparam.centroids.size(); ++icell) {
                         const idx_t tcell = iparam.tcell_id[icell];
                         for (idx_t j = 0; j < nb_nodes.size(); ++j) {
-                            idx_t nj  = (j != nb_nodes.size() - 1) ? j + 1 : 0;
+                            idx_t nj  = next_index(j, nb_nodes.size());
                             idx_t sj  = nb_nodes[j];
                             idx_t snj = nb_nodes[nj];
                             triplets.emplace_back(tcell, sj, 0.5 * PointXYZ::dot(Rsj[j], Aik[icell]));
@@ -868,7 +879,7 @@ void ConservativeMethod::setup_2nd_order_matrix() {
                         double inv_node_weight = (tgt_areas_v(tnode) > 1e-15) ? 1./tgt_areas_v(tnode) : 0.;
                         double csp2node_coef = iparam.weights[icell] / iparam.sweights[icell] * inv_node_weight;
                         for (idx_t j = 0; j < nb_nodes.size(); ++j) {
-                            idx_t nj  = (j != nb_nodes.size() - 1) ? j + 1 : 0;
+                            idx_t nj  = next_index(j, nb_nodes.size());
                             idx_t sj  = nb_nodes[j];
                             idx_t snj = nb_nodes[nj];
                             triplets.emplace_back(tnode, sj, (0.5 * PointXYZ::dot(Rsj[j], Aik[icell])) * csp2node_coef);
@@ -949,7 +960,7 @@ void ConservativeMethod::do_execute(const Field& src_field, Field& tgt_field) {
                 auto src_neighbour_cells = get_cell_neighbours(src_mesh_, scell);
                 double dual_area         = 0.;
                 for (idx_t nb_id = 0; nb_id < src_neighbour_cells.size(); ++nb_id) {
-                    idx_t nnb_id    = (nb_id != src_neighbour_cells.size() - 1) ? nb_id + 1 : 0;
+                    idx_t nnb_id    = next_index(nb_id, src_neighbour_cells.size());
                     idx_t ncell     = src_neighbour_cells[nb_id];
                     idx_t nncell    = src_neighbour_cells[nnb_id];
                     const auto& Pn  = src_points_[ncell];

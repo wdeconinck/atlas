@@ -30,18 +30,19 @@ enum RemapErrorType {
 };
 
 class ConservativeMethod : public Method {
-public:
-    typedef util::ConvexSphericalPolygon CSPolygon;
-    typedef std::vector<std::pair<CSPolygon, int>> PolygonArray;
-    typedef std::vector<std::tuple<CSPolygon, int>> CSPolygonArray;
-    typedef array::ArrayView<double, 1> FieldArray;
-
+private:
     struct InterpolationParameters {
         std::vector<idx_t> tcell_id;
         std::vector<PointXYZ> centroids;
         std::vector<double> weights;
         std::vector<double> sweights;
     };
+
+public:
+    typedef util::ConvexSphericalPolygon CSPolygon;
+    typedef std::vector<std::pair<CSPolygon, int>> PolygonArray;
+    typedef std::vector<std::tuple<CSPolygon, int>> CSPolygonArray;
+    typedef array::ArrayView<double, 1> FieldArray;
 
     ConservativeMethod(const Config& = util::NoConfig());
 
@@ -71,9 +72,11 @@ public:
     bool tgt_cell_data() const { return tgt_cell_data_; }
     const FunctionSpace& source() const { return src_fs_; }
     const FunctionSpace& target() const { return tgt_fs_; }
-    int order() const { return order_; }
     Mesh src_mesh() const { return src_mesh_; }
     Mesh tgt_mesh() const { return tgt_mesh_; }
+    int normalise_intersections() const { return normalise_intersections_; }
+    int order() const { return order_; }
+    int matrix_free() const { return matrix_free_; }
     double remap_err_l1() const { return remap_err_l1_; }
     double remap_err_linf() const { return remap_err_linf_; }
     double geo_err_intsc_l1() const { return geo_err_intsc_l1_; }
@@ -86,12 +89,12 @@ protected:
     void intersect_polygons(const CSPolygonArray& src_csp, const CSPolygonArray& tgt_scp);
     void setup_1st_order_matrix();
     void setup_2nd_order_matrix();
-
-private:
     template <class TargetCellsIDs>
     void dump_intersection(const util::ConvexSphericalPolygon& s_csp, const CSPolygonArray& tgt_csp,
                            const TargetCellsIDs& tgt_cells) const;
 
+    PointXYZ get_point(idx_t node, const Mesh& mesh) const; 
+    PointXYZ get_point(idx_t node, const Mesh& mesh, PointLonLat& pll) const; 
     std::vector<idx_t> sort_cell_edges(Mesh& mesh, idx_t cell_id) const;
     std::vector<idx_t> sort_node_edges(Mesh& mesh, idx_t cell_id) const;
     std::vector<idx_t> get_cell_neighbours(Mesh& mesh, idx_t jcell) const;
@@ -99,6 +102,10 @@ private:
     CSPolygonArray get_polygons_celldata(Mesh& mesh) const;
     CSPolygonArray get_polygons_nodedata(Mesh& mesh, std::vector<idx_t>& csp2node,
                                          std::vector<std::vector<idx_t>>& node2csp) const;
+
+private:
+    int next_index(int current_index, int size, int offset = 1) const; 
+    int prev_index(int current_index, int size, int offset = 1) const; 
 
 protected:
     bool src_cell_data_;
@@ -120,7 +127,7 @@ protected:
     double geo_err_intsc_linf_;                     // error in polygon intersections
     double remap_err_l1_;                           // error in remapping
     double remap_err_linf_;                         // error in remapping
-    std::vector<InterpolationParameters> iparam_;   // TODO: remove
+    std::vector<InterpolationParameters> iparam_;   // TODO: remove after setup
     std::vector<idx_t> src_csp2node_;               // TODO: remove
     std::vector<idx_t> tgt_csp2node_;               // TODO: remove
     std::vector<std::vector<idx_t>> src_node2csp_;  // TODO: remove
