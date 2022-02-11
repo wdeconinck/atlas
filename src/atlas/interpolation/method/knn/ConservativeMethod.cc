@@ -444,9 +444,16 @@ void ConservativeMethod::do_setup(const FunctionSpace& src_fs, const FunctionSpa
     else {
         const auto lonlat = array::make_view<double, 2>(src_mesh_.nodes().lonlat());
         for (idx_t spt = 0; spt < n_spoints_; ++spt) {
-            auto p = PointLonLat{lonlat(spt, 0), lonlat(spt, 1)};
-            eckit::geometry::Sphere::convertSphericalToCartesian(1., p, src_points_[spt]);
-            src_points_[spt] = PointXYZ{0., 0., 0.};
+            if (src_node2csp_[spt].size() == 0) {
+                // this is a node to which no subpolygon is associated
+                // maximal twice per mesh we end here, and that is only when mesh has nodes on poles
+                auto p = PointLonLat{lonlat(spt, 0), lonlat(spt, 1)};
+                eckit::geometry::Sphere::convertSphericalToCartesian(1., p, src_points_[spt]);
+            }
+            else {
+                // .. in the other case, start computing the barycentre
+                src_points_[spt] = PointXYZ{0., 0., 0.};
+            }
             src_areas_v(spt) = 0.;
             for (idx_t isubcell = 0; isubcell < src_node2csp_[spt].size(); ++isubcell) {
                 idx_t subcell     = src_node2csp_[spt][isubcell];
