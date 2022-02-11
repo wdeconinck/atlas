@@ -506,8 +506,10 @@ void ConservativeMethod::do_setup(const FunctionSpace& src_fs, const FunctionSpa
     //src_areas_.haloExchange();
     //tgt_areas_.set_dirty( true );
     //tgt_areas_.haloExchange();
-    setup_1st_order_matrix();
-    setup_2nd_order_matrix();
+    if (not matrix_free_) {
+        setup_1st_order_matrix();
+        setup_2nd_order_matrix();
+    }
 }
 
 
@@ -621,7 +623,7 @@ void ConservativeMethod::intersect_polygons(const CSPolygonArray& src_csp, const
 void ConservativeMethod::setup_1st_order_matrix() {
     ATLAS_TRACE("ConservativeMethod::setup: build cons-1 interpolant matrix");
 	order_ = 1;
-	matrix_free_ = false;
+	ATLAS_ASSERT(not matrix_free_);
     Triplets triplets;
     size_t triplets_size = 0;
     // determine the size of array of triplets used to define the sparse matrix
@@ -698,7 +700,7 @@ void ConservativeMethod::setup_1st_order_matrix() {
 void ConservativeMethod::setup_2nd_order_matrix() {
     ATLAS_TRACE("ConservativeMethod::setup: build cons-2 interpolant matrix");
 	order_ = 2;
-	matrix_free_ = false;
+	ATLAS_ASSERT(not matrix_free_);
     Triplets triplets;
     size_t triplets_size   = 0;
     const auto tgt_areas_v = array::make_view<double, 1>(tgt_areas_);

@@ -53,11 +53,18 @@ public:
     void do_execute(const Field& src_field, Field& tgt_field);
 
     void set_order(int order) {
+        if (matrix_free_ && (not src_cell_data_ or not tgt_cell_data_)) {
+            ATLAS_NOTIMPLEMENTED;
+        }
         if (order == 1) {
-            setup_1st_order_matrix();
+            if (not matrix_free_) {
+                setup_1st_order_matrix();
+            }
         }
         else if (order == 2) {
-            setup_2nd_order_matrix();
+            if (not matrix_free_) {
+                setup_2nd_order_matrix();
+            }
         }
         else {
             ATLAS_NOTIMPLEMENTED;
