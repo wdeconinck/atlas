@@ -83,7 +83,9 @@ void do_remapping_test(Grid src_grid, Grid tgt_grid, double func(const PointLonL
 
     outfile << std::setw(10) << src_grid.name() << std::setw(10) << tgt_grid.name();
 
-    Log::info() << "REMAPPING: " << src_grid.name() << " --> " << tgt_grid.name() << std::endl;
+    Log::info() << "REMAPPING: " << src_grid.name() << " --> " << tgt_grid.name() 
+            << ", matrix-free: " << consMethod.matrix_free()
+            << ", normalise: " << consMethod.normalise_intersections() << std::endl;
     Log::info().indent();
     auto start = std::chrono::system_clock::now();
     consMethod.do_setup(src_grid, tgt_grid);
