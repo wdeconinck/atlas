@@ -473,7 +473,8 @@ void ConservativeMethod::do_setup(const FunctionSpace& src_fs, const FunctionSpa
                 src_points_[spt] = src_points_[spt] + PointXYZ::mul(s_csp.centroid(), s_csp.area());
             }
             double src_point_norm = PointXYZ::norm(src_points_[spt]);
-            src_points_[spt]      = PointXYZ::div(src_points_[spt], (src_point_norm > 1e-16 ? src_point_norm : 1.));
+            ATLAS_ASSERT(src_point_norm > 0.);
+            src_points_[spt]      = PointXYZ::div(src_points_[spt], src_point_norm);
         }
     }
     tgt_areas_       = tgt_fs_.createField<double>();
@@ -488,9 +489,16 @@ void ConservativeMethod::do_setup(const FunctionSpace& src_fs, const FunctionSpa
     else {
         const auto lonlat = array::make_view<double, 2>(tgt_mesh_.nodes().lonlat());
         for (idx_t tpt = 0; tpt < n_tpoints_; ++tpt) {
-            auto p = PointLonLat{lonlat(tpt, 0), lonlat(tpt, 1)};
-            eckit::geometry::Sphere::convertSphericalToCartesian(1., p, tgt_points_[tpt]);
-            tgt_points_[tpt] = PointXYZ{0., 0., 0.};
+            if (tgt_node2csp_[tpt].size() == 0) {
+                // this is a node to which no subpolygon is associated
+                // maximal twice per mesh we end here, and that is only when mesh has nodes on poles
+                auto p = PointLonLat{lonlat(tpt, 0), lonlat(tpt, 1)};
+                eckit::geometry::Sphere::convertSphericalToCartesian(1., p, tgt_points_[tpt]);
+            }
+            else {
+                // .. in the other case, start computing the barycentre
+                tgt_points_[tpt] = PointXYZ{0., 0., 0.};
+            }
             tgt_areas_v(tpt) = 0.;
             for (idx_t isubcell = 0; isubcell < tgt_node2csp_[tpt].size(); ++isubcell) {
                 idx_t subcell = tgt_node2csp_[tpt][isubcell];
@@ -499,7 +507,8 @@ void ConservativeMethod::do_setup(const FunctionSpace& src_fs, const FunctionSpa
                 tgt_points_[tpt] = tgt_points_[tpt] + PointXYZ::mul(t_csp.centroid(), t_csp.area());
             }
             double tgt_point_norm = PointXYZ::norm(tgt_points_[tpt]);
-            tgt_points_[tpt]      = PointXYZ::div(tgt_points_[tpt], (tgt_point_norm > 1e-16 ? tgt_point_norm : 1.));
+            ATLAS_ASSERT(tgt_point_norm > 0.);
+            tgt_points_[tpt]      = PointXYZ::div(tgt_points_[tpt], tgt_point_norm);
         }
     }
     //src_areas_.set_dirty( true );
