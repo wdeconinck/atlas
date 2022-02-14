@@ -110,6 +110,7 @@ void do_remapping_test(Grid src_grid, Grid tgt_grid, double func(const PointLonL
     output::Gmsh("cons-remap_tgtmesh.msh", gmsh_config).write(consMethod.tgt_mesh());
 
     if (consMethod.src_cell_data()) {
+        ATLAS_ASSERT(src_vals.size() == src_mesh.cells().size()); 
         for (idx_t scell = 0; scell < src_vals.size(); ++scell) {
             auto p = consMethod.src_points(scell);
             PointLonLat pll;
@@ -119,6 +120,7 @@ void do_remapping_test(Grid src_grid, Grid tgt_grid, double func(const PointLonL
     }
     else {
         const auto lonlat = array::make_view<double, 2>(src_mesh.nodes().lonlat());
+        ATLAS_ASSERT(src_vals.size() == src_mesh.nodes().size()); 
         for (idx_t snode = 0; snode < src_vals.size(); ++snode) {
             PointLonLat pll = PointLonLat{lonlat(snode, 0), lonlat(snode, 1)};
             src_vals(snode) = func(pll);
