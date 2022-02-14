@@ -104,6 +104,7 @@ std::vector<idx_t> ConservativeMethod::get_cell_neighbours(Mesh& mesh, idx_t cel
 // get cyclically sorted node neighbours without using edge connectivity
 std::vector<idx_t> ConservativeMethod::get_node_neighbours(Mesh& mesh, idx_t node_id) const {
     const auto& cell2node  = mesh.cells().node_connectivity();
+    const auto& nodes_gidx   = array::make_view<gidx_t, 1>(mesh.nodes().global_index());
     if (mesh.nodes().cell_connectivity().rows() == 0) {
         mesh::actions::build_node_to_cell_connectivity(mesh);
     }
@@ -111,7 +112,10 @@ std::vector<idx_t> ConservativeMethod::get_node_neighbours(Mesh& mesh, idx_t nod
     std::vector<idx_t> nbr_nodes;
     std::vector<idx_t> nbr_nodes_od;
     const int ncells       = node2cell.cols( node_id );
-	ATLAS_ASSERT( ncells > 0 );
+    if ( ncells < 1 ) {
+        std::cout << " Node " << nodes_gidx(node_id) << " does not connect to any cell" <<std::endl;
+        // ATLAS_ASSERT( ncells > 0 );
+    }
     idx_t cnodes[ncells][2];
     nbr_nodes.reserve( ncells + 1 );
     nbr_nodes_od.reserve( ncells + 1 );
@@ -926,10 +930,8 @@ void ConservativeMethod::do_execute(const Field& src_field, Field& tgt_field) {
             if (not src_cell_data_ or not tgt_cell_data_) {
                 ATLAS_NOTIMPLEMENTED;
             }
-
             const auto src_vals = array::make_view<double, 1>(src_field);
             auto tgt_vals       = array::make_view<double, 1>(tgt_field);
-
             for (idx_t tcell = 0; tcell < tgt_vals.size(); ++tcell) {
                 tgt_vals(tcell) = 0.;
             }
