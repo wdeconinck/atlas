@@ -703,6 +703,8 @@ runtime/Exception.h
 util/Config.cc
 util/Config.h
 util/Constants.h
+util/ConvexSphericalPolygon.cc
+util/ConvexSphericalPolygon.h
 util/Earth.h
 util/GaussianLatitudes.cc
 util/GaussianLatitudes.h
@@ -732,6 +734,8 @@ util/detail/BlackMagic.h
 util/detail/Cache.h
 util/detail/Debug.h
 util/detail/KDTree.h
+util/function/VortexRollup.h
+util/function/VortexRollup.cc
 )
 
 list( APPEND atlas_internals_srcs

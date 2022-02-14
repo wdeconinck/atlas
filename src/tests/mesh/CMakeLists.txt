@@ -143,3 +143,4 @@ atlas_add_cuda_test(
   LIBS atlas
   ENVIRONMENT ${ATLAS_TEST_ENVIRONMENT}
 )
+
