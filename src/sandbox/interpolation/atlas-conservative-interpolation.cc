@@ -53,7 +53,7 @@ Grid localgrid(int nx, int ny) {
 void compute_field_errors(const FieldArray& src_vals, const FieldArray& tgt_vals, FieldArray& diff_vals,
                           ConservativeMethod& consMethod, double func(const PointLonLat&), std::ofstream& outfile) {
     std::array<double,3> errors;
-    consMethod.remap_stat(src_vals, tgt_vals, diff_vals, func, errors);
+    consMethod.remap_stat(src_vals, tgt_vals, &diff_vals, func, errors);
     Log::info() << "    " << consMethod.order() << "-order remap analytical error : (L2) " 
                 << errors[RemapErrorType::REMAP_L2] << " (Lmax) "
                 << errors[RemapErrorType::REMAP_LINF] << "\n";

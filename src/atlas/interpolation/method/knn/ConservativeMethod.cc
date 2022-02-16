@@ -1073,12 +1073,14 @@ void ConservativeMethod::setup_stat(double& geo_create_err) const {
     Log::info() << " ConservativeMethod::stat : global error in polygon create   : " << geo_create_err << "\n";
 }
 
-void ConservativeMethod::remap_stat(const FieldArray& src_vals, const FieldArray& tgt_vals, FieldArray& diff_vals,
+void ConservativeMethod::remap_stat(const FieldArray& src_vals, const FieldArray& tgt_vals, FieldArray* diff_vals,
                                     double func(const PointLonLat&), std::array<double,3>& errors ) const {
     const auto& src_cell_halo  = array::make_view<int, 1>(src_mesh_.cells().halo());
     const auto& src_node_ghost = array::make_view<int, 1>(src_mesh_.nodes().ghost());
+    const auto& src_node_halo  = array::make_view<int, 1>(src_mesh_.nodes().halo());
     const auto& tgt_cell_halo  = array::make_view<int, 1>(tgt_mesh_.cells().halo());
     const auto& tgt_node_ghost = array::make_view<int, 1>(tgt_mesh_.nodes().ghost());
+    const auto& tgt_node_halo  = array::make_view<int, 1>(tgt_mesh_.nodes().halo());
     const auto src_areas_v     = array::make_view<double, 1>(src_areas_);
     const auto tgt_areas_v     = array::make_view<double, 1>(tgt_areas_);
     errors = {{0., 0., 0.}};
@@ -1088,12 +1090,12 @@ void ConservativeMethod::remap_stat(const FieldArray& src_vals, const FieldArray
                 continue;
             }
             double diff = src_vals(spt) * src_areas_v(spt);
-            errors[GLOBAL] += diff;
+            errors[CONS] += diff;
             const auto& iparam = iparam_[spt];
             if (tgt_cell_data_) {
                 for (idx_t icell = 0; icell < iparam.weights.size(); ++icell) {
                     idx_t tcell = iparam.tcell_id[icell];
-                    if (tgt_cell_halo(tcell)) {
+                    if (tgt_cell_halo(tcell) < 1) {
                         diff -= tgt_vals(iparam.tcell_id[icell]) * iparam.weights[icell];
                     }
                 }
@@ -1102,19 +1104,26 @@ void ConservativeMethod::remap_stat(const FieldArray& src_vals, const FieldArray
                 for (idx_t icell = 0; icell < iparam.weights.size(); ++icell) {
                     idx_t tcell = iparam.tcell_id[icell];
                     idx_t tnode = tgt_csp2node_[tcell];
-                    diff -= tgt_vals(tnode) * iparam.weights[icell];
+                    if (tgt_node_halo(tcell) < 1) {
+                        diff -= tgt_vals(tnode) * iparam.weights[icell];
+                    }
                 }
             }
-            diff_vals(spt) = std::abs(diff) / src_areas_v(spt);
+            if (diff_vals) {
+                (*diff_vals)(spt) = std::abs(diff) / src_areas_v(spt);
+            }
         }
     }
     else {
         for (idx_t spt = 0; spt < src_vals.size(); ++spt) {
             if (src_node_ghost(spt) or src_areas_v(spt) < 1e-14) {
+                if (diff_vals) {
+                    (*diff_vals)(spt) = 0.;
+                }
                 continue;
             }
             double diff = src_vals(spt) * src_areas_v(spt);
-            errors[GLOBAL] += diff;
+            errors[CONS] += diff;
             const auto& node2csp = src_node2csp_[spt];
             for (idx_t subcell = 0; subcell < node2csp.size(); ++subcell) {
                 const auto& iparam = iparam_[node2csp[subcell]];
@@ -1131,7 +1140,9 @@ void ConservativeMethod::remap_stat(const FieldArray& src_vals, const FieldArray
                     }
                 }
             }
-            diff_vals(spt) = std::abs(diff) / src_areas_v(spt);
+            if (diff_vals) {
+                (*diff_vals)(spt) = std::abs(diff) / src_areas_v(spt);
+            }
         }
     }
     if (tgt_cell_data_) {
@@ -1139,13 +1150,13 @@ void ConservativeMethod::remap_stat(const FieldArray& src_vals, const FieldArray
             if (tgt_cell_halo(tpt)) {
                 continue;
             }
-            errors[GLOBAL] -= tgt_vals(tpt) * tgt_areas_v(tpt);
+            errors[CONS] -= tgt_vals(tpt) * tgt_areas_v(tpt);
             auto p = tgt_points_[tpt];
             PointLonLat pll;
             eckit::geometry::Sphere::convertCartesianToSpherical(1., p, pll);
             double err_l = std::abs(tgt_vals(tpt) - func(pll));
-            errors[L2] += err_l * err_l * tgt_areas_v(tpt);
-            errors[LINF] = std::max(errors[LINF], err_l);
+            errors[REMAP_L2] += err_l * err_l * tgt_areas_v(tpt);
+            errors[REMAP_LINF] = std::max(errors[REMAP_LINF], err_l);
         }
     }
     else {
@@ -1153,21 +1164,21 @@ void ConservativeMethod::remap_stat(const FieldArray& src_vals, const FieldArray
             if (tgt_node_ghost(tpt)) {
                 continue;
             }
-            errors[GLOBAL] -= tgt_vals(tpt) * tgt_areas_v(tpt);
+            errors[CONS] -= tgt_vals(tpt) * tgt_areas_v(tpt);
             auto p = tgt_points_[tpt];
             PointLonLat pll;
             eckit::geometry::Sphere::convertCartesianToSpherical(1., p, pll);
             double err_l = std::abs(tgt_vals(tpt) - func(pll));
-            errors[L2] += err_l * err_l * tgt_areas_v(tpt);
-            errors[LINF] = std::max(errors[LINF], err_l);
+            errors[REMAP_L2] += err_l * err_l * tgt_areas_v(tpt);
+            errors[REMAP_LINF] = std::max(errors[REMAP_LINF], err_l);
         }
     }
     ATLAS_TRACE_MPI(ALLREDUCE) {
         mpi::comm().allReduceInPlace(&errors[0], 2, eckit::mpi::sum());
         mpi::comm().allReduceInPlace(&errors[2], 1, eckit::mpi::max());
     }
-    errors[L2]     = std::sqrt(errors[L2] * 0.25 * M_1_PI);
-    errors[GLOBAL] = std::sqrt(std::abs(errors[GLOBAL]) * 0.25 * M_1_PI);
+    errors[REMAP_L2]   = std::sqrt(errors[REMAP_L2] * 0.25 * M_1_PI);
+    errors[CONS]       = std::sqrt(std::abs(errors[CONS]) * 0.25 * M_1_PI);
 }
 
 template <class TargetCellsIDs>

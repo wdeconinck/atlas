@@ -24,9 +24,9 @@ namespace interpolation {
 namespace method {
 
 enum RemapErrorType {
-    GLOBAL,
-    L2,
-    LINF
+    CONS,
+    REMAP_L2,
+    REMAP_LINF
 };
 
 class ConservativeMethod : public Method {
@@ -71,7 +71,7 @@ public:
         }
     }
     void setup_stat(double& geo_create_err) const;
-    void remap_stat(const FieldArray& src_field, const FieldArray& tgt_field, FieldArray& diff_field,
+    void remap_stat(const FieldArray& src_field, const FieldArray& tgt_field, FieldArray* diff_field,
                     double func(const PointLonLat&), std::array<double,3>& errors) const;
     void print(std::ostream& out) const { out << "ConservativeMethod[]"; }
 
