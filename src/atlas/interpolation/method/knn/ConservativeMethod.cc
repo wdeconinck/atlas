@@ -359,7 +359,7 @@ void ConservativeMethod::do_setup(const Grid& src_grid, const Grid& tgt_grid) {
     ATLAS_ASSERT(tgt_grid);
     auto src_mesh_config = src_grid.meshgenerator();
     auto tgt_mesh_config = tgt_grid.meshgenerator();
-    tgt_mesh_            = MeshGenerator(tgt_mesh_config).generate(tgt_grid);
+    tgt_mesh_            = MeshGenerator(tgt_mesh_config|option::halo(0)).generate(tgt_grid);
     if (mpi::size() > 1) {
         src_mesh_ = MeshGenerator(src_mesh_config).generate(src_grid, grid::MatchingPartitioner(tgt_mesh_));
     }
@@ -443,8 +443,8 @@ void ConservativeMethod::do_setup(const FunctionSpace& src_fs, const FunctionSpa
     }
     intersect_polygons(src_csp, tgt_csp);
 
-    n_spoints_ = (src_cell_data_ ? src_mesh_.cells().size() : src_mesh_.nodes().size());
-    n_tpoints_ = (tgt_cell_data_ ? tgt_mesh_.cells().size() : tgt_mesh_.nodes().size());
+    n_spoints_ = src_fs_.size();
+    n_tpoints_ = tgt_fs_.size();
     src_points_.resize(n_spoints_);
     tgt_points_.resize(n_tpoints_);
     src_areas_       = src_fs_.createField<double>();
