@@ -25,6 +25,7 @@ namespace method {
 
 
 class ConservativeMethod : public Method {
+
 private:
     struct InterpolationParameters {
         std::vector<idx_t> tcell_id;
@@ -32,9 +33,11 @@ private:
         std::vector<double> weights;
         std::vector<double> sweights;
     };
+
 public:
     struct RemapStat {
-        bool computed;
+        bool setup_computed = false;
+        bool remap_computed = false;
         enum Counts { 
             SRC_PLG,    // index, number of source polygons
             TGT_PLG,    // index, number of target polygons
@@ -49,8 +52,8 @@ public:
             REMAP_L2,   // index, error accuracy for given analytical function
             REMAP_LINF  // index, like REMAP_L2 but in L_infinity norm
         };
-        std::array<int, 4> counts;
-        std::array<double, 6> errors;
+        std::array<int, 4> counts = {-1,-1,-1,-1};
+        std::array<double, 6> errors = {-1.,-1.,-1.,-1.,-1.,-1.};
     };
 
 public:
@@ -73,7 +76,7 @@ public:
                             FieldArray* diff_field, double func(const PointLonLat&)) const;
     void print(std::ostream& out) const { out << "ConservativeMethod[]"; }
 
-    RemapStat& remap_stat() const { return remap_stat_; }
+    const RemapStat& remap_stat() const;
     bool src_cell_data() const { return src_cell_data_; }
     bool tgt_cell_data() const { return tgt_cell_data_; }
     const FunctionSpace& source() const { return src_fs_; }
@@ -94,7 +97,6 @@ protected:
     template <class TargetCellsIDs>
     void dump_intersection(const util::ConvexSphericalPolygon& s_csp, const CSPolygonArray& tgt_csp,
                            const TargetCellsIDs& tgt_cells) const;
-
     PointXYZ get_point(idx_t node, const Mesh& mesh) const; 
     PointXYZ get_point(idx_t node, const Mesh& mesh, PointLonLat& pll) const; 
     std::vector<idx_t> sort_cell_edges(Mesh& mesh, idx_t cell_id) const;

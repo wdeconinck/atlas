@@ -218,9 +218,9 @@ CASE("test_interpolation_conservative") {
 
         // Allow to override via command-line, e.g.
         //     <program> --src-grid O16 --tgt-grid O32
-        //auto src_grid = Grid{eckit::Resource<std::string>("--src-grid", "H16")};
-        //auto tgt_grid = Grid{eckit::Resource<std::string>("--tgt-grid", "H32")};
-        //do_remapping_test(src_grid, tgt_grid, func, outfile);
+        auto src_grid = Grid{eckit::Resource<std::string>("--src-grid", "H16")};
+        auto tgt_grid = Grid{eckit::Resource<std::string>("--tgt-grid", "H32")};
+        do_remapping_test(src_grid, tgt_grid, func, outfile);
         return;
 
         const int start_res            = 32;

@@ -33,6 +33,7 @@ namespace method {
 
 using CSPolygon      = util::ConvexSphericalPolygon;
 using CSPolygonArray = ConservativeMethod::CSPolygonArray;
+using RemapStat      = ConservativeMethod::RemapStat;
 
 namespace {
 MethodBuilder<ConservativeMethod> __builder("conservative");
@@ -57,6 +58,13 @@ ConservativeMethod::ConservativeMethod(const Config& config): Method(config) {
     config.get("tgt_cell_data", tgt_cell_data_ = true);
 }
 
+const RemapStat& ConservativeMethod::remap_stat() const {
+    if (not remap_stat_.setup_computed or not remap_stat_.remap_computed) {
+        std::cerr << "WARNING RemapStat not computed before accessed.\n";
+    }
+    return remap_stat_;
+}
+
 void ConservativeMethod::set_order(int order) {
     if (matrix_free_ && (not src_cell_data_ or not tgt_cell_data_)) {
         ATLAS_NOTIMPLEMENTED;
@@ -74,6 +82,7 @@ void ConservativeMethod::set_order(int order) {
     else {
         ATLAS_NOTIMPLEMENTED;
     }
+    remap_stat_.remap_computed = false;
 }
 
 // get counter-clockwise sorted neighbours of a cell
@@ -649,6 +658,7 @@ void ConservativeMethod::intersect_polygons(const CSPolygonArray& src_csp, const
     }
     remap_stat_.errors[RemapStat::Errors::GEO_L1] = 0.25 * M_1_PI * geo_err_l1;
     remap_stat_.errors[RemapStat::Errors::GEO_LINF] = geo_err_linf;
+    remap_stat_.setup_computed = true;
 }
 
 void ConservativeMethod::setup_1st_order_matrix() {
@@ -1203,6 +1213,7 @@ void ConservativeMethod::remap_stat(const FieldArray& src_vals, const FieldArray
     }
     remap_stat_.errors[RemapStat::Errors::REMAP_L2]   = std::sqrt(err_remap_l2 * 0.25 * M_1_PI);
     remap_stat_.errors[RemapStat::Errors::REMAP_CONS]  = std::sqrt(std::abs(err_remap_cons) * 0.25 * M_1_PI);
+    remap_stat_.remap_computed = true;
 }
 
 template <class TargetCellsIDs>
