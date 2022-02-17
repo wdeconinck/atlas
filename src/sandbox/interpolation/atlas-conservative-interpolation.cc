@@ -35,7 +35,7 @@ namespace test {
 
 using CSPolygon          = util::ConvexSphericalPolygon;
 using ConservativeMethod = interpolation::method::ConservativeMethod;
-using RemapErrorType     = interpolation::method::RemapErrorType;
+using RemapStat          = ConservativeMethod::RemapStat;
 using FieldArray         = array::ArrayView<double, 1>;
 
 Grid localgrid(int nx, int ny) {
@@ -53,15 +53,19 @@ Grid localgrid(int nx, int ny) {
 void compute_field_errors(const FieldArray& src_vals, const FieldArray& tgt_vals, FieldArray& diff_vals,
                           ConservativeMethod& consMethod, double func(const PointLonLat&), std::ofstream& outfile) {
     std::array<double,3> errors;
-    consMethod.remap_stat(src_vals, tgt_vals, &diff_vals, func, errors);
+    auto& remap_stat = consMethod.remap_stat();
+    consMethod.remap_stat(src_vals, tgt_vals, &diff_vals, func);
     Log::info() << "    " << consMethod.order() << "-order remap analytical error : (L2) " 
-                << errors[RemapErrorType::REMAP_L2] << " (Lmax) "
-                << errors[RemapErrorType::REMAP_LINF] << "\n";
+                << remap_stat.errors[RemapStat::Errors::REMAP_L2] << " (Lmax) "
+                << remap_stat.errors[RemapStat::Errors::REMAP_LINF] << "\n";
     Log::info() << "    " << consMethod.order() << "-order global mass conservation error : " 
-                << errors[RemapErrorType::CONS] << "\n";
-    outfile << std::setw(10) << errors[RemapErrorType::REMAP_L2] << std::setw(10) <<
-errors[RemapErrorType::REMAP_LINF] 
-            << std::setw(10) << std::abs(errors[RemapErrorType::CONS]);
+                << remap_stat.errors[RemapStat::Errors::REMAP_CONS] << "\n";
+    outfile << std::setw(10) 
+            << remap_stat.errors[RemapStat::Errors::REMAP_L2] 
+            << std::setw(10)
+            << remap_stat.errors[RemapStat::Errors::REMAP_LINF] 
+            << std::setw(10) 
+            << remap_stat.errors[RemapStat::Errors::REMAP_CONS];
 }
 
 void do_remapping_test(Grid src_grid, Grid tgt_grid, double func(const PointLonLat&), std::ofstream& outfile) {
@@ -103,10 +107,11 @@ void do_remapping_test(Grid src_grid, Grid tgt_grid, double func(const PointLonL
     auto src_vals        = array::make_view<double, 1>(src_field);
     auto tgt_vals        = array::make_view<double, 1>(tgt_field);
 
-    double geo_create_err;
-    consMethod.setup_stat(geo_create_err);
-    outfile << std::setw(10) << geo_create_err;
-    outfile << std::setw(10) << consMethod.geo_err_intsc_l1() << std::setw(10) << consMethod.geo_err_intsc_linf();
+    consMethod.setup_stat();
+    const auto& remap_stat = consMethod.remap_stat();
+    outfile << std::setw(10) << remap_stat.errors[RemapStat::Errors::GEO_DIFF];
+    outfile << std::setw(10) << remap_stat.errors[RemapStat::Errors::REMAP_L2]
+            << std::setw(10) << remap_stat.errors[RemapStat::Errors::REMAP_LINF];
     output::Gmsh("cons-remap_srcmesh.msh", gmsh_config).write(consMethod.src_mesh());
     output::Gmsh("cons-remap_tgtmesh.msh", gmsh_config).write(consMethod.tgt_mesh());
 

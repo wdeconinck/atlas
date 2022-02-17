@@ -23,11 +23,6 @@ namespace atlas {
 namespace interpolation {
 namespace method {
 
-enum RemapErrorType {
-    CONS,
-    REMAP_L2,
-    REMAP_LINF
-};
 
 class ConservativeMethod : public Method {
 private:
@@ -36,6 +31,26 @@ private:
         std::vector<PointXYZ> centroids;
         std::vector<double> weights;
         std::vector<double> sweights;
+    };
+public:
+    struct RemapStat {
+        bool computed;
+        enum Counts { 
+            SRC_PLG,    // index, number of source polygons
+            TGT_PLG,    // index, number of target polygons
+            INT_PLG,    // index, number of intersection polygons
+            UNCVR_SRC   // index, number of uncovered source polygons
+        };
+        enum Errors {
+            GEO_L1,     // index, cumulative area mismatch in polygon intersections
+            GEO_LINF,   // index, like GEO_L1 but in L_infinity norm
+            GEO_DIFF,   // index, difference in earth area coverages
+            REMAP_CONS, // index, error in mass conservation
+            REMAP_L2,   // index, error accuracy for given analytical function
+            REMAP_LINF  // index, like REMAP_L2 but in L_infinity norm
+        };
+        std::array<int, 4> counts;
+        std::array<double, 6> errors;
     };
 
 public:
@@ -53,11 +68,12 @@ public:
     void do_execute(const Field& src_field, Field& tgt_field);
 
     void set_order(int order);
-    void setup_stat(double& geo_create_err) const;
-    void remap_stat(const FieldArray& src_field, const FieldArray& tgt_field, FieldArray* diff_field,
-                    double func(const PointLonLat&), std::array<double,3>& errors) const;
+    void setup_stat() const;
+    void remap_stat(const FieldArray& src_field, const FieldArray& tgt_field,
+                            FieldArray* diff_field, double func(const PointLonLat&)) const;
     void print(std::ostream& out) const { out << "ConservativeMethod[]"; }
 
+    RemapStat& remap_stat() const { return remap_stat_; }
     bool src_cell_data() const { return src_cell_data_; }
     bool tgt_cell_data() const { return tgt_cell_data_; }
     const FunctionSpace& source() const { return src_fs_; }
@@ -67,10 +83,6 @@ public:
     int normalise_intersections() const { return normalise_intersections_; }
     int order() const { return order_; }
     int matrix_free() const { return matrix_free_; }
-    double remap_err_l1() const { return remap_err_l1_; }
-    double remap_err_linf() const { return remap_err_linf_; }
-    double geo_err_intsc_l1() const { return geo_err_intsc_l1_; }
-    double geo_err_intsc_linf() const { return geo_err_intsc_linf_; }
     inline const std::vector<InterpolationParameters>& iparam() const { return iparam_; }
     inline const PointXYZ& src_points(size_t id) const { return src_points_[id]; }
     inline const PointXYZ& tgt_points(size_t id) const { return tgt_points_[id]; }
@@ -113,10 +125,7 @@ protected:
     std::vector<PointXYZ> tgt_points_;
     Field src_areas_;
     Field tgt_areas_;
-    double geo_err_intsc_l1_;                       // error in polygon intersections
-    double geo_err_intsc_linf_;                     // error in polygon intersections
-    double remap_err_l1_;                           // error in remapping
-    double remap_err_linf_;                         // error in remapping
+    mutable RemapStat remap_stat_;
     std::vector<InterpolationParameters> iparam_;   // TODO: remove after setup
     std::vector<idx_t> src_csp2node_;               // TODO: remove
     std::vector<idx_t> tgt_csp2node_;               // TODO: remove
