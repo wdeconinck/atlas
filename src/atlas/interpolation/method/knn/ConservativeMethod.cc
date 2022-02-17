@@ -52,8 +52,8 @@ int ConservativeMethod::prev_index(int current_index, int size, int offset) cons
 
 ConservativeMethod::ConservativeMethod(const Config& config): Method(config) {
     config.get("order", order_ = 1);
-    config.get("normalise_intersections", normalise_intersections_ = 1);
-    config.get("matrix_free", matrix_free_ = true);
+    config.get("normalise_intersections", normalise_intersections_ = 0);
+    config.get("matrix_free", matrix_free_ = false);
     config.get("src_cell_data", src_cell_data_ = true);
     config.get("tgt_cell_data", tgt_cell_data_ = true);
 }
