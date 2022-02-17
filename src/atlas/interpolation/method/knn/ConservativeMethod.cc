@@ -57,6 +57,25 @@ ConservativeMethod::ConservativeMethod(const Config& config): Method(config) {
     config.get("tgt_cell_data", tgt_cell_data_ = true);
 }
 
+void ConservativeMethod::set_order(int order) {
+    if (matrix_free_ && (not src_cell_data_ or not tgt_cell_data_)) {
+        ATLAS_NOTIMPLEMENTED;
+    }
+    if (order == 1) {
+        if (not matrix_free_) {
+            setup_1st_order_matrix();
+        }
+    }
+    else if (order == 2) {
+        if (not matrix_free_) {
+            setup_2nd_order_matrix();
+        }
+    }
+    else {
+        ATLAS_NOTIMPLEMENTED;
+    }
+}
+
 // get counter-clockwise sorted neighbours of a cell
 std::vector<idx_t> ConservativeMethod::get_cell_neighbours(Mesh& mesh, idx_t cell) const {
     const auto& cell2node  = mesh.cells().node_connectivity();

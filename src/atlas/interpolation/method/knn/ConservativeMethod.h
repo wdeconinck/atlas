@@ -52,24 +52,7 @@ public:
     void do_setup(const Grid& src_grid, const Grid& tgt_grid, const Cache&) { ATLAS_NOTIMPLEMENTED; }
     void do_execute(const Field& src_field, Field& tgt_field);
 
-    void set_order(int order) {
-        if (matrix_free_ && (not src_cell_data_ or not tgt_cell_data_)) {
-            ATLAS_NOTIMPLEMENTED;
-        }
-        if (order == 1) {
-            if (not matrix_free_) {
-                setup_1st_order_matrix();
-            }
-        }
-        else if (order == 2) {
-            if (not matrix_free_) {
-                setup_2nd_order_matrix();
-            }
-        }
-        else {
-            ATLAS_NOTIMPLEMENTED;
-        }
-    }
+    void set_order(int order);
     void setup_stat(double& geo_create_err) const;
     void remap_stat(const FieldArray& src_field, const FieldArray& tgt_field, FieldArray* diff_field,
                     double func(const PointLonLat&), std::array<double,3>& errors) const;
