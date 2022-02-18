@@ -101,8 +101,6 @@ protected:
     template <class TargetCellsIDs>
     void dump_intersection(const util::ConvexSphericalPolygon& s_csp, const CSPolygonArray& tgt_csp,
                            const TargetCellsIDs& tgt_cells) const;
-    PointXYZ get_point(idx_t node, const Mesh& mesh) const; 
-    PointXYZ get_point(idx_t node, const Mesh& mesh, PointLonLat& pll) const; 
     std::vector<idx_t> sort_cell_edges(Mesh& mesh, idx_t cell_id) const;
     std::vector<idx_t> sort_node_edges(Mesh& mesh, idx_t cell_id) const;
     std::vector<idx_t> get_cell_neighbours(Mesh& mesh, idx_t jcell) const;

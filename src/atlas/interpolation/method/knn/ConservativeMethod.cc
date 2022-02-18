@@ -291,80 +291,74 @@ CSPolygonArray ConservativeMethod::get_polygons_nodedata(Mesh& mesh, std::vector
     const auto cell_halo  = array::make_view<int, 1>(mesh.cells().halo());
     const auto cell_flags = array::make_view<int, 1>(mesh.cells().flags());
     const auto cell_part  = array::make_view<int, 1>(mesh.cells().partition());
-    auto xyz2ll = [](atlas::PointXYZ& p_xyz) {
+    auto xyz2ll = [](const atlas::PointXYZ& p_xyz) {
         PointLonLat p_ll;
         eckit::geometry::Sphere::convertCartesianToSpherical(1., p_xyz, p_ll);
         return p_ll;
+    };
+    auto ll2xyz = [](const atlas::PointLonLat& p_ll) {
+        PointXYZ p_xyz;
+        eckit::geometry::Sphere::convertSphericalToCartesian(1., p_ll, p_xyz);
+        return p_xyz;
     };
     idx_t cspol_id = 0; // subpolygon enumeration
     errors = {0., 0.}; // over/undershoots in creation of subpolygons
     for (idx_t cell = 0; cell < mesh.cells().size(); ++cell) {
         ATLAS_ASSERT(cell < cell2node.rows());
         const idx_t n_nodes = cell2node.cols(cell);
+        ATLAS_ASSERT(n_nodes > 2);
         PointXYZ cell_mid(0., 0., 0.);	// cell centre
+        std::vector<PointXYZ> pts_xyz;
         std::vector<PointLonLat> pts_ll;
+        std::vector<int> pts_idx;
+        pts_xyz.reserve( n_nodes );
         pts_ll.reserve( n_nodes );
+        pts_idx.reserve( n_nodes );
         for (idx_t inode = 0; inode < n_nodes; ++inode) {
             idx_t node0             = cell2node(cell, inode);
             idx_t node1             = cell2node(cell, next_index(inode, n_nodes));
             const PointLonLat p0_ll = PointLonLat{nodes_ll(node0, 0), nodes_ll(node0, 1)};
             const PointLonLat p1_ll = PointLonLat{nodes_ll(node1, 0), nodes_ll(node1, 1)};
-            pts_ll.emplace_back( p0_ll );
-            PointXYZ p0, p1;
-            eckit::geometry::Sphere::convertSphericalToCartesian(1., p0_ll, p0);
-            eckit::geometry::Sphere::convertSphericalToCartesian(1., p1_ll, p1);
+            PointXYZ p0 = ll2xyz( p0_ll );
+            PointXYZ p1 = ll2xyz( p1_ll );
             if (PointXYZ::norm(p0 - p1) < 1e-14) {
                 continue;  // skip this edge = a pole point
             }
+            pts_xyz.emplace_back( p0 );
+            pts_ll.emplace_back( p0_ll );
+            pts_idx.emplace_back( inode );
             cell_mid = cell_mid + p0;
             cell_mid = cell_mid + p1;
         }
-        CSPolygon csp( pts_ll );
-        double loc_csp_area_shoot = csp.area();
         cell_mid = PointXYZ::div(cell_mid, PointXYZ::norm(cell_mid));
-        PointLonLat cell_ll;
-        eckit::geometry::Sphere::convertCartesianToSpherical(1., cell_mid, cell_ll);
+        PointLonLat cell_ll = xyz2ll( cell_mid );
+        double loc_csp_area_shoot = CSPolygon( pts_ll ).area();
         // get CSPolygon for each valid edge
-        for (idx_t inode = 0; inode < n_nodes; ++inode) {
-            idx_t node0              = cell2node(cell, inode);
-            idx_t node1              = cell2node(cell, next_index(inode, n_nodes));
-            const PointLonLat pi0_ll = PointLonLat{nodes_ll(node0, 0), nodes_ll(node0, 1)};
-            const PointLonLat pi1_ll = PointLonLat{nodes_ll(node1, 0), nodes_ll(node1, 1)};
-            PointXYZ pi0, pi1;
-            eckit::geometry::Sphere::convertSphericalToCartesian(1., pi0_ll, pi0);
-            eckit::geometry::Sphere::convertSphericalToCartesian(1., pi1_ll, pi1);
-            if (PointXYZ::norm(pi0 - pi1) < 1e-14) {
-                continue;  // skip this edge = a pole point
-            }
-            PointXYZ iedge_mid = pi0 + pi1;
+        for (auto inode: pts_idx) {
+            int inode_n              = next_index(inode, pts_idx.size());
+            idx_t node               = cell2node(cell, inode);
+            idx_t node_n             = cell2node(cell, inode_n);
+            PointXYZ iedge_mid = pts_xyz[inode] + pts_xyz[inode_n];
             iedge_mid          = PointXYZ::div(iedge_mid, PointXYZ::norm(iedge_mid));
-			csp2node.emplace_back(node1);
-			node2csp[node0].emplace_back(cspol_id);
-            idx_t node2 = cell2node(cell, next_index(inode, n_nodes, 2));	// the end point of the other real edge touching pi1
-			auto pi2_ll = PointLonLat{nodes_ll(node2, 0), nodes_ll(node2, 1)};
-			PointXYZ pi2;
-			eckit::geometry::Sphere::convertSphericalToCartesian(1., pi2_ll, pi2);
-			if ( PointXYZ::norm( pi1 - pi2 ) < 1e-14 ) { // we need real edge [pi1,pi2]
-                node2 = cell2node(cell, next_index(inode, n_nodes, 3)); 
-                pi2_ll = PointLonLat{nodes_ll(node2, 0), nodes_ll(node2, 1)};
-				eckit::geometry::Sphere::convertSphericalToCartesian(1., pi2_ll, pi2);
-			}
-			if ( PointXYZ::norm( pi1 - pi2 ) < 1e-14 ) {
+			csp2node.emplace_back( node_n );
+			node2csp[node_n].emplace_back( cspol_id );
+            int inode_nn             = next_index(inode_n, pts_idx.size());
+			if ( PointXYZ::norm( pts_xyz[inode_nn] - pts_xyz[inode_n] ) < 1e-14 ) {
 				ATLAS_THROW_EXCEPTION("Three cell vertices on a same great arc!");
 			}
             PointXYZ jedge_mid;
-			jedge_mid = pi1 + pi2;
+			jedge_mid = pts_xyz[inode_nn] + pts_xyz[inode_n];
             jedge_mid = PointXYZ::div(jedge_mid, PointXYZ::norm(jedge_mid));	
-            std::vector<PointLonLat> pts_ll(4);
-            pts_ll[0]     = cell_ll;
-            pts_ll[1]     = xyz2ll(iedge_mid);
-            pts_ll[2]     = pi1_ll;
-            pts_ll[3]     = xyz2ll(jedge_mid);
+            std::vector<PointLonLat> subpol_pts_ll(4);
+            subpol_pts_ll[0]     = cell_ll;
+            subpol_pts_ll[1]     = xyz2ll(iedge_mid);
+            subpol_pts_ll[2]     = pts_ll[inode_n];
+            subpol_pts_ll[3]     = xyz2ll(jedge_mid);
             int halo_type = cell_halo(cell);
             if (util::Bitflags::view(cell_flags(cell)).check(util::Topology::PERIODIC)) {
                 halo_type = -1;
             }
-            CSPolygon cspi(pts_ll);
+            CSPolygon cspi( subpol_pts_ll );
             loc_csp_area_shoot -= cspi.area();
             cspolygons.emplace_back(cspi, halo_type);
             cspol_id++;
