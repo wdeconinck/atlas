@@ -108,22 +108,10 @@ void do_remapping_test(Grid src_grid, Grid tgt_grid, double func(const PointLonL
     output::Gmsh("cons-remap_srcmesh.msh", gmsh_config).write(consMethod.src_mesh());
     output::Gmsh("cons-remap_tgtmesh.msh", gmsh_config).write(consMethod.tgt_mesh());
 
-    if (consMethod.src_cell_data()) {
-        ATLAS_ASSERT(src_vals.size() == src_mesh.cells().size()); 
-        for (idx_t scell = 0; scell < src_vals.size(); ++scell) {
-            auto p = consMethod.src_points(scell);
-            PointLonLat pll;
-            eckit::geometry::Sphere::convertCartesianToSpherical(1., p, pll);
-            src_vals(scell) = func(pll);
-        }
-    }
-    else {
-        const auto lonlat = array::make_view<double, 2>(src_mesh.nodes().lonlat());
-        ATLAS_ASSERT(src_vals.size() == src_mesh.nodes().size()); 
-        for (idx_t snode = 0; snode < src_vals.size(); ++snode) {
-            PointLonLat pll = PointLonLat{lonlat(snode, 0), lonlat(snode, 1)};
-            src_vals(snode) = func(pll);
-        }
+    for (idx_t spt = 0; spt < src_vals.size(); ++spt) {
+        PointLonLat pll;
+        eckit::geometry::Sphere::convertCartesianToSpherical(1., consMethod.src_points(spt), pll);
+        src_vals(spt) = func(pll);
     }
     output::Gmsh("cons-remap_srcfield.msh", gmsh_config).write(src_field);
 
@@ -140,15 +128,15 @@ void do_remapping_test(Grid src_grid, Grid tgt_grid, double func(const PointLonL
     // remap statistics
     auto& remap_stat = consMethod.remap_stat();
     Log::info() << "Created " << remap_stat.counts[RemapStat::Counts::SRC_PLG] 
-                << " (sub)polygons from source "
-                << src_mesh.cells().size() << " mesh cells.\n";
+                << " (sub)polygons from "
+                << src_mesh.cells().size() << " source mesh cells.\n";
     Log::info() << "    Total sum of subpolygon over/undershoots : "
                 << remap_stat.errors[RemapStat::Errors::SRC_PLG_L1] << "\n";
     Log::info() << "    Max over/undershoots per cell : "
                 << remap_stat.errors[RemapStat::Errors::SRC_PLG_LINF] << "\n";
     Log::info() << "Created " << remap_stat.counts[RemapStat::Counts::TGT_PLG] 
-                << " (sub)polygons from target "
-                << tgt_mesh.cells().size() << " mesh cells.\n";
+                << " (sub)polygons from "
+                << tgt_mesh.cells().size() << " target mesh cells.\n";
     Log::info() << "    Total sum of subpolygon over/undershoots : "
                 << remap_stat.errors[RemapStat::Errors::TGT_PLG_L1] << "\n";
     Log::info() << "    Max over/undershoots per cell : "
