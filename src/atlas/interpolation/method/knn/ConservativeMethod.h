@@ -39,21 +39,25 @@ public:
         bool setup_computed = false;
         bool remap_computed = false;
         enum Counts { 
-            SRC_PLG,    // index, number of source polygons
+            SRC_PLG = 0,    // index, number of source polygons
             TGT_PLG,    // index, number of target polygons
             INT_PLG,    // index, number of intersection polygons
             UNCVR_SRC   // index, number of uncovered source polygons
         };
+        std::array<int, 4> counts;
         enum Errors {
-            GEO_L1,     // index, cumulative area mismatch in polygon intersections
-            GEO_LINF,   // index, like GEO_L1 but in L_infinity norm
-            GEO_DIFF,   // index, difference in earth area coverages
-            REMAP_CONS, // index, error in mass conservation
-            REMAP_L2,   // index, error accuracy for given analytical function
-            REMAP_LINF  // index, like REMAP_L2 but in L_infinity norm
+            SRC_PLG_L1 = 0,   // index, over/undershoot in source subpolygon creation
+            SRC_PLG_LINF, 
+            TGT_PLG_L1,   // index, over/untershoot in target subpolygon creation
+            TGT_PLG_LINF, 
+            GEO_L1,       // index, cumulative area mismatch in polygon intersections
+            GEO_LINF,     // index, like GEO_L1 but in L_infinity norm
+            GEO_DIFF,     // index, difference in earth area coverages
+            REMAP_CONS,   // index, error in mass conservation
+            REMAP_L2,     // index, error accuracy for given analytical function
+            REMAP_LINF    // index, like REMAP_L2 but in L_infinity norm
         };
-        std::array<int, 4> counts = {-1,-1,-1,-1};
-        std::array<double, 6> errors = {-1.,-1.,-1.,-1.,-1.,-1.};
+        std::array<double, 10> errors;
     };
 
 public:
@@ -76,7 +80,7 @@ public:
                             FieldArray* diff_field, double func(const PointLonLat&)) const;
     void print(std::ostream& out) const { out << "ConservativeMethod[]"; }
 
-    const RemapStat& remap_stat() const;
+    RemapStat& remap_stat() const;
     bool src_cell_data() const { return src_cell_data_; }
     bool tgt_cell_data() const { return tgt_cell_data_; }
     const FunctionSpace& source() const { return src_fs_; }
@@ -105,7 +109,8 @@ protected:
     std::vector<idx_t> get_node_neighbours(Mesh& mesh, idx_t jcell) const;
     CSPolygonArray get_polygons_celldata(Mesh& mesh) const;
     CSPolygonArray get_polygons_nodedata(Mesh& mesh, std::vector<idx_t>& csp2node,
-                                         std::vector<std::vector<idx_t>>& node2csp) const;
+                                         std::vector<std::vector<idx_t>>& node2csp,
+                                         std::array<double,2>& errors) const;
 
 private:
     int next_index(int current_index, int size, int offset = 1) const; 

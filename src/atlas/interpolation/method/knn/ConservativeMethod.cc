@@ -58,7 +58,7 @@ ConservativeMethod::ConservativeMethod(const Config& config): Method(config) {
     config.get("tgt_cell_data", tgt_cell_data_ = true);
 }
 
-const RemapStat& ConservativeMethod::remap_stat() const {
+RemapStat& ConservativeMethod::remap_stat() const {
     if (not remap_stat_.setup_computed or not remap_stat_.remap_computed) {
         std::cerr << "WARNING RemapStat not computed before accessed.\n";
     }
@@ -278,7 +278,8 @@ CSPolygonArray ConservativeMethod::get_polygons_celldata(Mesh& mesh) const {
 // 	 (cell_centre, edge_centre, cell_vertex, edge_centre)
 // additionally, subcell-to-node and node-to-subcells mapping are computed
 CSPolygonArray ConservativeMethod::get_polygons_nodedata(Mesh& mesh, std::vector<idx_t>& csp2node,
-                                                         std::vector<std::vector<idx_t>>& node2csp) const {
+                                                         std::vector<std::vector<idx_t>>& node2csp,
+                                                         std::array<double,2>& errors) const {
     CSPolygonArray cspolygons;
     csp2node.clear();
     node2csp.clear();
@@ -294,8 +295,7 @@ CSPolygonArray ConservativeMethod::get_polygons_nodedata(Mesh& mesh, std::vector
         return p_ll;
     };
     idx_t cspol_id = 0; // subpolygon enumeration
-    enum CSPAreaShootsType {TOTAL, MAX};
-    std::array<double, 2> csp_area_shoots{0., 0.}; // over/undershoots in creation of subpolygons
+    errors = {0., 0.}; // over/undershoots in creation of subpolygons
     for (idx_t cell = 0; cell < mesh.cells().size(); ++cell) {
         ATLAS_ASSERT(cell < cell2node.rows());
         const idx_t n_nodes = cell2node.cols(cell);
@@ -367,17 +367,13 @@ CSPolygonArray ConservativeMethod::get_polygons_nodedata(Mesh& mesh, std::vector
             cspolygons.emplace_back(cspi, halo_type);
             cspol_id++;
         }
-        csp_area_shoots[TOTAL] += std::abs(loc_csp_area_shoot);
-        csp_area_shoots[MAX] = std::max( std::abs(loc_csp_area_shoot), csp_area_shoots[MAX] );
+        errors[0] += std::abs(loc_csp_area_shoot);
+        errors[1] = std::max( std::abs(loc_csp_area_shoot), errors[1] );
     }
     ATLAS_TRACE_MPI(ALLREDUCE) {
-        mpi::comm().allReduceInPlace(&csp_area_shoots[0], 1, eckit::mpi::sum());
-        mpi::comm().allReduceInPlace(&csp_area_shoots[1], 1, eckit::mpi::max());
+        mpi::comm().allReduceInPlace(&errors[0], 1, eckit::mpi::sum());
+        mpi::comm().allReduceInPlace(&errors[1], 1, eckit::mpi::max());
     }
-    Log::info() << "Created " << cspolygons.size() << " subpolygons from "
-                << mesh.cells().size() << " mesh cells.\n";
-    Log::info() << "Total sum of subpolygon over/undershoots " << csp_area_shoots[TOTAL]
-                << ", max over/undershoots per cell " << csp_area_shoots[MAX] << "\n";
     return cspolygons;
 }
 
@@ -451,25 +447,32 @@ void ConservativeMethod::do_setup(const FunctionSpace& src_fs, const FunctionSpa
     }
     CSPolygonArray src_csp;
     CSPolygonArray tgt_csp;
+    std::array<double,2> errors = {0., 0.};
     {
         ATLAS_TRACE("Get source polygons");
         if (src_cell_data_) {
             src_csp = get_polygons_celldata(src_mesh_);
         }
         else {
-            src_csp = get_polygons_nodedata(src_mesh_, src_csp2node_, src_node2csp_);
+            src_csp = get_polygons_nodedata(src_mesh_, src_csp2node_, src_node2csp_, errors);
         }
     }
+    remap_stat_.errors[RemapStat::Errors::SRC_PLG_L1] = errors[0];
+    remap_stat_.errors[RemapStat::Errors::SRC_PLG_LINF] = errors[1];
     {
         ATLAS_TRACE("Get target polygons");
         if (tgt_cell_data_) {
             tgt_csp = get_polygons_celldata(tgt_mesh_);
         }
         else {
-            tgt_csp = get_polygons_nodedata(tgt_mesh_, tgt_csp2node_, tgt_node2csp_);
+            tgt_csp = get_polygons_nodedata(tgt_mesh_, tgt_csp2node_, tgt_node2csp_, errors);
         }
     }
+    remap_stat_.errors[RemapStat::Errors::TGT_PLG_L1] = errors[0];
+    remap_stat_.errors[RemapStat::Errors::TGT_PLG_LINF] = errors[1];
     intersect_polygons(src_csp, tgt_csp);
+    remap_stat_.counts[RemapStat::Counts::SRC_PLG] = src_csp.size();
+    remap_stat_.counts[RemapStat::Counts::TGT_PLG] = tgt_csp.size();
 
     n_spoints_ = src_fs_.size();
     n_tpoints_ = tgt_fs_.size();
@@ -629,14 +632,11 @@ void ConservativeMethod::intersect_polygons(const CSPolygonArray& src_csp, const
         mpi::comm().allReduceInPlace(&num_pol[0], 4, eckit::mpi::sum());
         mpi::comm().allReduceInPlace(&area_coverage[0], 2, eckit::mpi::max());
     }
-    Log::info() << "ConservativeMethod:: num_src_polygons, num_tgt_polygons, num_intersect_polygons: "
-                << num_pol[0] << " " << num_pol[1] << " " << num_pol[2] << "\n";
-    Log::info() << "ConservativeMethod::intersect_polygons : " << num_pol[SRC_NONINTERSECT]
-                << " source mesh polygons do NOT intersect any other polygon.\n";
-    Log::info() << "ConservativeMethod::intersect_polygons : " << area_coverage[TOTAL_SRC]
-                << " total area of source polygons over/undercovered by target polygons.\n";
-    Log::info() << "ConservativeMethod::intersect_polygons : " << area_coverage[MAX_SRC]
-                << " maximal area of a source polygons NOT covered by target polygons.\n";
+    remap_stat_.counts[RemapStat::Counts::INT_PLG] = num_pol[SRC_TGT_INTERSECT];
+    remap_stat_.counts[RemapStat::Counts::UNCVR_SRC] = num_pol[SRC_NONINTERSECT];
+    remap_stat_.errors[RemapStat::Errors::GEO_L1] = area_coverage[TOTAL_SRC];
+    remap_stat_.errors[RemapStat::Errors::GEO_LINF] = area_coverage[MAX_SRC];
+
     double geo_err_l1    =  0.;
     double geo_err_linf  =  0.;
     for (idx_t scell = 0; scell < src_csp.size(); ++scell) {
@@ -1100,7 +1100,6 @@ void ConservativeMethod::setup_stat() const {
     }
     geo_create_err = std::abs(src_tgt_sums[0] - src_tgt_sums[1]) * 0.25 * M_1_PI;
     remap_stat_.errors[RemapStat::Errors::GEO_DIFF] = geo_create_err;
-    Log::info() << " ConservativeMethod::stat : global error in polygon create   : " << geo_create_err << "\n";
 }
 
 void ConservativeMethod::remap_stat(const FieldArray& src_vals, const FieldArray& tgt_vals,
