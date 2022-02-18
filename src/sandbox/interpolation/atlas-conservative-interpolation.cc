@@ -50,11 +50,8 @@ Grid localgrid(int nx, int ny) {
     return Grid{gridspec};
 }
 
-void compute_field_errors(const FieldArray& src_vals, const FieldArray& tgt_vals, FieldArray& diff_vals,
-                          ConservativeMethod& consMethod, double func(const PointLonLat&), std::ofstream& outfile) {
-    std::array<double,3> errors;
-    auto& remap_stat = consMethod.remap_stat();
-    consMethod.remap_stat(src_vals, tgt_vals, &diff_vals, func);
+void print_remap_errors(ConservativeMethod& consMethod, std::ofstream& outfile) {
+    const auto& remap_stat = consMethod.remap_stat();
     Log::info() << "    " << consMethod.order() << "-order remap analytical error : (L2) " 
                 << remap_stat.errors[RemapStat::Errors::REMAP_L2] << " (Lmax) "
                 << remap_stat.errors[RemapStat::Errors::REMAP_LINF] << "\n";
@@ -134,28 +131,35 @@ void do_remapping_test(Grid src_grid, Grid tgt_grid, double func(const PointLonL
     start = std::chrono::system_clock::now();
     consMethod.do_execute(src_field, tgt_field);
     elapsed_seconds = std::chrono::system_clock::now() - start;
-	auto& remap_stat = consMethod.remap_stat();
+
+    // compute difference field
+    auto diff_field = src_fs.createField<double>();
+    auto diff_vals  = array::make_view<double, 1>(diff_field);
+    consMethod.remap_stat(src_vals, tgt_vals, &diff_vals, func);
+
+    // remap statistics
+    auto& remap_stat = consMethod.remap_stat();
     Log::info() << "Created " << remap_stat.counts[RemapStat::Counts::SRC_PLG] 
                 << " (sub)polygons from source "
                 << src_mesh.cells().size() << " mesh cells.\n";
     Log::info() << "    Total sum of subpolygon over/undershoots : "
-                << remap_stat.errors[RemapStat::Errors::SRC_PLG_L1]
-                << ", max over/undershoots per cell "
+                << remap_stat.errors[RemapStat::Errors::SRC_PLG_L1] << "\n";
+    Log::info() << "    Max over/undershoots per cell : "
                 << remap_stat.errors[RemapStat::Errors::SRC_PLG_LINF] << "\n";
     Log::info() << "Created " << remap_stat.counts[RemapStat::Counts::TGT_PLG] 
                 << " (sub)polygons from target "
                 << tgt_mesh.cells().size() << " mesh cells.\n";
     Log::info() << "    Total sum of subpolygon over/undershoots : "
-                << remap_stat.errors[RemapStat::Errors::TGT_PLG_L1]
-                << ", max over/undershoots per cell : "
+                << remap_stat.errors[RemapStat::Errors::TGT_PLG_L1] << "\n";
+    Log::info() << "    Max over/undershoots per cell : "
                 << remap_stat.errors[RemapStat::Errors::TGT_PLG_LINF] << "\n";
     Log::info() << "Intersection polygons : "
                 << remap_stat.counts[RemapStat::Counts::INT_PLG] << "\n";
     Log::info() << "    Total mismatch area in polygons intersections : "
                 << remap_stat.errors[RemapStat::Errors::GEO_L1] << "\n";
-    Log::info() << "Source-cell maximal mismatch area in polygons intersections : "
+    Log::info() << "    Source-cell maximal mismatch area in polygons intersections : "
                 << remap_stat.errors[RemapStat::Errors::GEO_LINF] << "\n";
-    Log::info() << "Non covered polygons : "
+    Log::info() << "Non covered source polygons : "
                 << remap_stat.counts[RemapStat::Counts::UNCVR_SRC] << "\n";
     Log::info() << "Diff in source mesh vs target mesh coverage with polygons : "
                 << remap_stat.errors[RemapStat::Errors::GEO_DIFF] << "\n";
@@ -164,29 +168,26 @@ void do_remapping_test(Grid src_grid, Grid tgt_grid, double func(const PointLonL
     outfile << std::setw(10) << remap_stat.errors[RemapStat::Errors::GEO_DIFF];
     outfile << std::setw(10) << remap_stat.errors[RemapStat::Errors::REMAP_L2]
             << std::setw(10) << remap_stat.errors[RemapStat::Errors::REMAP_LINF];
+    print_remap_errors(consMethod, outfile);
     output::Gmsh("cons-remap_tgtfield-1ord.msh", gmsh_config).write(tgt_field);
-
-
-    auto diff_field = src_fs.createField<double>();
-    auto diff_vals  = array::make_view<double, 1>(diff_field);
-    compute_field_errors(src_vals, tgt_vals, diff_vals, consMethod, func, outfile);
     output::Gmsh("cons-remap_difffield-1ord.msh", gmsh_config).write(diff_field);
 
     consMethod.set_order(2);
     start = std::chrono::system_clock::now();
     consMethod.do_execute(src_field, tgt_field);
     elapsed_seconds = std::chrono::system_clock::now() - start;
+
+    // remap statistics
+    consMethod.remap_stat(src_vals, tgt_vals, &diff_vals, func);
 	remap_stat = consMethod.remap_stat();
     Log::info() << "  2-order remap took " << elapsed_seconds.count() << " seconds.\n";
     outfile << std::setw(10) << elapsed_seconds.count();
+    print_remap_errors(consMethod, outfile);
     output::Gmsh("cons-remap_tgtfield-2ord.msh", gmsh_config).write(tgt_field);
-
-    compute_field_errors(src_vals, tgt_vals, diff_vals, consMethod, func, outfile);
     output::Gmsh("cons-remap_difffield-2ord.msh", gmsh_config).write(diff_field);
 
     (outfile << "\n").flush();
     Log::info().unindent();
-
 }
 
 CASE("test_interpolation_conservative") {
@@ -203,6 +204,7 @@ CASE("test_interpolation_conservative") {
     SECTION("analytic constfunc") {
         auto func = [](const PointLonLat& p) { return 1.; };
         std::ofstream outfile;
+//        int func_id = eckit::Resource<std::string>("--test", "Jones_Y22"));
         outfile.open("cons-remap_constfunc.dat", std::ios_base::app);
         outfile << "# Test -- analytic function = 1\n";
         outfile << std::scientific << std::setprecision(1);
@@ -211,7 +213,7 @@ CASE("test_interpolation_conservative") {
         //     <program> --src-grid O16 --tgt-grid O32
         auto src_grid = Grid{eckit::Resource<std::string>("--src-grid", "H16")};
         auto tgt_grid = Grid{eckit::Resource<std::string>("--tgt-grid", "H32")};
-        //do_remapping_test(src_grid, tgt_grid, func, outfile);
+ //       do_remapping_test(src_grid, tgt_grid, func, outfile);
         return;
 
 

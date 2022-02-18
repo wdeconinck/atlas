@@ -1103,8 +1103,7 @@ void ConservativeMethod::setup_stat() const {
 }
 
 void ConservativeMethod::remap_stat(const FieldArray& src_vals, const FieldArray& tgt_vals,
-                                    FieldArray* diff_vals,
-                                    double func(const PointLonLat&)) const {
+                                    FieldArray* diff_vals, double func(const PointLonLat&)) const {
     const auto& src_cell_halo  = array::make_view<int, 1>(src_mesh_.cells().halo());
     const auto& src_node_ghost = array::make_view<int, 1>(src_mesh_.nodes().ghost());
     const auto& src_node_halo  = array::make_view<int, 1>(src_mesh_.nodes().halo());
@@ -1210,7 +1209,8 @@ void ConservativeMethod::remap_stat(const FieldArray& src_vals, const FieldArray
         mpi::comm().allReduceInPlace(&err_remap_l2, 1, eckit::mpi::sum());
         mpi::comm().allReduceInPlace(&err_remap_linf, 1, eckit::mpi::max());
     }
-    remap_stat_.errors[RemapStat::Errors::REMAP_L2]   = std::sqrt(err_remap_l2 * 0.25 * M_1_PI);
+    remap_stat_.errors[RemapStat::Errors::REMAP_L2]    = std::sqrt(err_remap_l2 * 0.25 * M_1_PI);
+    remap_stat_.errors[RemapStat::Errors::REMAP_LINF]  = err_remap_linf;
     remap_stat_.errors[RemapStat::Errors::REMAP_CONS]  = std::sqrt(std::abs(err_remap_cons) * 0.25 * M_1_PI);
     remap_stat_.remap_computed = true;
 }
