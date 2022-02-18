@@ -130,7 +130,7 @@ CASE("test_interpolation_conservative") {
         RemapStat remap_stat_1;
         RemapStat remap_stat_2;
         do_remapping_test(Grid("H47"), Grid("H48"), func, remap_stat_1, remap_stat_2);
-        check(remap_stat_1, remap_stat_2, {1.e-13, 5.e-8, 4.8e-4, 1.1e-4, 8.9e-6, 1.1e-4});
+        check(remap_stat_1, remap_stat_2, {1.e-13, 5.e-8, 4.8e-4, 1.1e-4, 8.9e-5, 1.1e-4});
     }
 }
 
