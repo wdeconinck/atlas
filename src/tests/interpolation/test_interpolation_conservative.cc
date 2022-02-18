@@ -107,7 +107,6 @@ void check(const RemapStat remap_stat_1, RemapStat remap_stat_2, std::array<doub
     err = remap_stat_2.errors[RemapStat::Errors::REMAP_CONS];
     Log::info() << "2nd order conservation improvement: "
                 << improvement(err, tol[5]) << " %" << std::endl;
-Log::info() << err << " " << tol[5] <<std::endl;
     EXPECT(err < tol[5]);
 }
 
@@ -117,10 +116,10 @@ CASE("test_interpolation_conservative") {
         RemapStat remap_stat_1;
         RemapStat remap_stat_2;
         do_remapping_test(Grid("H47"), Grid("H48"), func, remap_stat_1, remap_stat_2);
-        check(remap_stat_1, remap_stat_2, {1.e-13, 5.e-8, 2.5e-7, 2.5e-7, 1.5e-6, 1.5e-6});
+        check(remap_stat_1, remap_stat_2, {1.e-13, 5.e-8, 2.8e-7, 2.8e-7, 5.5e-5, 5.5e-5});
     }
 
-    SECTION("analytic Y_2^2 as in Jones - scaling") {
+    SECTION("analytic Y_2^2 as in Jones(1998)") {
         auto func = [](const PointLonLat& p) {
             double cos = std::cos(0.025 * p[0]);
             return 2. + cos * cos * std::cos(2 * 0.025 * p[1]);
@@ -128,7 +127,7 @@ CASE("test_interpolation_conservative") {
         RemapStat remap_stat_1;
         RemapStat remap_stat_2;
         do_remapping_test(Grid("H47"), Grid("H48"), func, remap_stat_1, remap_stat_2);
-        check(remap_stat_1, remap_stat_2, {1.e-13, 5.e-8, 4.8e-4, 1.1e-4, 5.8e-6, 5.3e-5});
+        check(remap_stat_1, remap_stat_2, {1.e-13, 5.e-8, 4.8e-4, 1.1e-4, 8.9e-6, 1.1e-4});
     }
 }
 
