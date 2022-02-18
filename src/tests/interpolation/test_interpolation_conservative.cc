@@ -39,6 +39,7 @@ using FieldArray         = array::ArrayView<double, 1>;
 
 void do_remapping_test(Grid src_grid, Grid tgt_grid, double func(const PointLonLat&),
                        RemapStat& remap_stat_1, RemapStat& remap_stat_2) {
+    Log::info().indent();
     // setup conservative remap: compute weights, polygon intersection, etc
     util::Config config;
     ConservativeMethod consMethod(config);
@@ -77,7 +78,7 @@ void do_remapping_test(Grid src_grid, Grid tgt_grid, double func(const PointLonL
 }
 
 void check(const RemapStat remap_stat_1, RemapStat remap_stat_2, std::array<double,6> tol) {
-    auto improvement = [](double& e, double& r){ return (r-e)/r; };
+    auto improvement = [](double& e, double& r){ return 100.*(r-e)/r; };
     double err;
     // check polygon intersections
     err = remap_stat_1.errors[RemapStat::Errors::GEO_DIFF];
@@ -85,29 +86,31 @@ void check(const RemapStat remap_stat_1, RemapStat remap_stat_2, std::array<doub
                 << improvement(err, tol[0]) << " %" << std::endl;
     EXPECT(err < tol[0]);
     err = remap_stat_1.errors[RemapStat::Errors::GEO_L1];
-    Log::info() << "Polygon intersection improvement: "
+    Log::info() << "Polygon intersection improvement    : "
                 << improvement(err, tol[1]) << " %" << std::endl;
     EXPECT(err < tol[1]);
 
     // check remap accuracy
     err = remap_stat_1.errors[RemapStat::Errors::REMAP_L2];
-    Log::info() << "1st order accuracy improvement: "
+    Log::info() << "1st order accuracy improvement      : "
                 << improvement(err, tol[2]) << " %" << std::endl;
     EXPECT(err < tol[2]);
     err = remap_stat_2.errors[RemapStat::Errors::REMAP_L2];
-    Log::info() << "2nd order accuracy improvement: "
+    Log::info() << "2nd order accuracy improvement      : "
                 << improvement(err, tol[3]) << " %" << std::endl;
     EXPECT(err < tol[3]);
 
     // check mass conservation
     err = remap_stat_1.errors[RemapStat::Errors::REMAP_CONS];
-    Log::info() << "1st order conservation improvement: "
+    Log::info() << "1st order conservation improvement  : "
                 << improvement(err, tol[4]) << " %" << std::endl;
     EXPECT(err < tol[4]);
     err = remap_stat_2.errors[RemapStat::Errors::REMAP_CONS];
-    Log::info() << "2nd order conservation improvement: "
-                << improvement(err, tol[5]) << " %" << std::endl;
+    Log::info() << "2nd order conservation improvement  : "
+                << improvement(err, tol[5]) << " %" << std::endl
+                << std::endl;
     EXPECT(err < tol[5]);
+    Log::info().unindent();
 }
 
 CASE("test_interpolation_conservative") {
