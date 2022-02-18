@@ -39,6 +39,16 @@ namespace {
 MethodBuilder<ConservativeMethod> __builder("conservative");
 }
 
+ConservativeMethod::ConservativeMethod(const Config& config): Method(config) {
+    config.get("order", order_ = 1);
+    config.get("normalise_intersections", normalise_intersections_ = 0);
+    config.get("matrix_free", matrix_free_ = false);
+    config.get("src_cell_data", src_cell_data_ = true);
+    config.get("tgt_cell_data", tgt_cell_data_ = true);
+    remap_stat_.setup_computed = false;
+    remap_stat_.remap_computed = false;
+}
+
 int ConservativeMethod::next_index(int current_index, int size, int offset) const {
     ATLAS_ASSERT(current_index >= 0 && current_index < size);
     ATLAS_ASSERT(offset >= 0 && offset <= size);
@@ -48,14 +58,6 @@ int ConservativeMethod::prev_index(int current_index, int size, int offset) cons
     ATLAS_ASSERT(current_index >= 0 && current_index < size);
     ATLAS_ASSERT(offset >= 0 && offset <= size);
     return (current_index >= offset) ? current_index - offset : current_index - offset + size;
-}
-
-ConservativeMethod::ConservativeMethod(const Config& config): Method(config) {
-    config.get("order", order_ = 1);
-    config.get("normalise_intersections", normalise_intersections_ = 0);
-    config.get("matrix_free", matrix_free_ = false);
-    config.get("src_cell_data", src_cell_data_ = true);
-    config.get("tgt_cell_data", tgt_cell_data_ = true);
 }
 
 RemapStat& ConservativeMethod::remap_stat() const {
@@ -468,11 +470,12 @@ void ConservativeMethod::do_setup(const FunctionSpace& src_fs, const FunctionSpa
             tgt_csp = get_polygons_nodedata(tgt_mesh_, tgt_csp2node_, tgt_node2csp_, errors);
         }
     }
-    remap_stat_.errors[RemapStat::Errors::TGT_PLG_L1] = errors[0];
-    remap_stat_.errors[RemapStat::Errors::TGT_PLG_LINF] = errors[1];
-    intersect_polygons(src_csp, tgt_csp);
     remap_stat_.counts[RemapStat::Counts::SRC_PLG] = src_csp.size();
     remap_stat_.counts[RemapStat::Counts::TGT_PLG] = tgt_csp.size();
+    remap_stat_.errors[RemapStat::Errors::TGT_PLG_L1] = errors[0];
+    remap_stat_.errors[RemapStat::Errors::TGT_PLG_LINF] = errors[1];
+
+    intersect_polygons(src_csp, tgt_csp);
 
     n_spoints_ = src_fs_.size();
     n_tpoints_ = tgt_fs_.size();
@@ -548,8 +551,6 @@ void ConservativeMethod::do_setup(const FunctionSpace& src_fs, const FunctionSpa
     }
     //src_areas_.set_dirty( true );
     //src_areas_.haloExchange();
-    //tgt_areas_.set_dirty( true );
-    //tgt_areas_.haloExchange();
     if (not matrix_free_) {
         setup_1st_order_matrix();
         setup_2nd_order_matrix();
@@ -561,7 +562,6 @@ void ConservativeMethod::intersect_polygons(const CSPolygonArray& src_csp, const
     ATLAS_TRACE();
     util::KDTree<idx_t> kdt_search;
     kdt_search.reserve(tgt_csp.size());
-
     double max_tgtcell_rad = 0.;
     for (idx_t jcell = 0; jcell < tgt_csp.size(); ++jcell) {
         if (std::get<1>(tgt_csp[jcell]) == 0) {
