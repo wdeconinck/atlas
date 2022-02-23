@@ -111,7 +111,10 @@ struct PolygonEdgeIntersection {
     static constexpr int INSIDE = 3;
 
     PolygonEdgeIntersection(const ConvexSphericalPolygon& polygon, int edge_index, const PointXYZ& point) {
-        auto matches = [](const PointXYZ& p1, const PointXYZ& p2) { return (distance2(p1, p2) < 1.e-16); };
+        auto matches = [](const PointXYZ& p1, const PointXYZ& p2) {
+            return (distance2(p1, p2) < 1e-16);
+//            return (distance2(p1, p2) < ConvexSphericalPolygon::TOL2);
+        };
 
         ATLAS_ASSERT(edge_index >= 0);
         ATLAS_ASSERT(edge_index < polygon.size());
@@ -145,14 +148,14 @@ ConvexSphericalPolygon::ConvexSphericalPolygon(const PointLonLat points[], size_
     size_t isp = 1;
     for (size_t i = 1; i < size_ - 1; ++i) {
         lonlat2xyz(points[i], sph_coords_[isp]);
-        if (approx_eq(sph_coords_[isp], sph_coords_[isp - 1], 1.e-10)) {
+        if (approx_eq(sph_coords_[isp], sph_coords_[isp - 1], TOL)) {
             continue;
         }
         ++isp;
     }
     lonlat2xyz(points[size_ - 1], sph_coords_[isp]);
-    if (approx_eq(sph_coords_[isp], sph_coords_[0], 1.e-10) or
-        approx_eq(sph_coords_[isp], sph_coords_[isp - 1], 1.e-10)) {
+    if (approx_eq(sph_coords_[isp], sph_coords_[0], TOL) or
+        approx_eq(sph_coords_[isp], sph_coords_[isp - 1], TOL)) {
     }
     else {
         ++isp;
@@ -171,14 +174,14 @@ ConvexSphericalPolygon::ConvexSphericalPolygon(const PointXYZ points[], size_t s
     size_t isp     = 1;
     for (size_t i = 1; i < size_ - 1; ++i) {
         sph_coords_[isp] = points[i];
-        if (approx_eq(sph_coords_[isp], sph_coords_[isp - 1], 1.e-10)) {
+        if (approx_eq(sph_coords_[isp], sph_coords_[isp - 1], TOL)) {
             continue;
         }
         ++isp;
     }
     sph_coords_[isp] = points[size_ - 1];
-    if (approx_eq(sph_coords_[isp], sph_coords_[0], 1.e-10) or
-        approx_eq(sph_coords_[isp], sph_coords_[isp - 1], 1.e-10)) {
+    if (approx_eq(sph_coords_[isp], sph_coords_[0], TOL) or
+        approx_eq(sph_coords_[isp], sph_coords_[isp - 1], TOL)) {
     }
     else {
         ++isp;
@@ -213,10 +216,10 @@ void ConvexSphericalPolygon::simplify() {
             }
             for (k = j + 1; k < size_ && search_3pts; ++k) {
                 const PointXYZ& P2 = points[k];
-                if (approx_eq(P1, P2, 1.e-10) or approx_eq(P0, P2, 1.e-10)) {
+                if (approx_eq(P1, P2, TOL) or approx_eq(P0, P2, TOL)) {
                     continue;
                 }
-                if (GreatCircleSegment{P0, P1}.inLeftHemisphere(P2, -1.e-14)) {
+                if (GreatCircleSegment{P0, P1}.inLeftHemisphere(P2, -EPS)) {
                     sph_coords_[isp++] = P0;
                     sph_coords_[isp++] = P1;
                     sph_coords_[isp++] = P2;
@@ -231,8 +234,9 @@ void ConvexSphericalPolygon::simplify() {
         return;
     }
     for (; k < size_ - 1; ++k) {
-        if (approx_eq(points[k], sph_coords_[isp - 1], 1.e-10) or
-            (not GreatCircleSegment{sph_coords_[isp - 2], sph_coords_[isp - 1]}.inLeftHemisphere(points[k], -1.e-14))) {
+        if (approx_eq(points[k], sph_coords_[isp - 1], TOL) or
+            (not GreatCircleSegment{sph_coords_[isp - 2], sph_coords_[isp -
+1]}.inLeftHemisphere(points[k], -EPS))) {
             continue;
         }
         sph_coords_[isp] = points[k];
@@ -242,9 +246,9 @@ void ConvexSphericalPolygon::simplify() {
     const PointXYZ& Pl1 = sph_coords_[isp - 1];
     const PointXYZ& P0  = sph_coords_[0];
     const PointXYZ& P   = points[size_ - 1];
-    if ((not approx_eq(P, P0, 1.e-14)) and (not approx_eq(P, Pl1, 1.e-14)) and
-        GreatCircleSegment{Pl2, Pl1}.inLeftHemisphere(P, -1.e-14) and
-        GreatCircleSegment{Pl1, P}.inLeftHemisphere(P0, -1.e-14)) {
+    if ((not approx_eq(P, P0, EPS)) and (not approx_eq(P, Pl1, EPS)) and
+        GreatCircleSegment{Pl2, Pl1}.inLeftHemisphere(P, -EPS) and
+        GreatCircleSegment{Pl1, P}.inLeftHemisphere(P0, -EPS)) {
         sph_coords_[isp] = P;
         ++isp;
     }
@@ -282,9 +286,9 @@ bool ConvexSphericalPolygon::validate() {
             int nni               = next(ni);
             const PointXYZ& P     = sph_coords_[i];
             const PointXYZ& nextP = sph_coords_[ni];
-            ATLAS_ASSERT(std::abs(PointXYZ::dot(P, P) - 1.) < 1.e-14);
-            ATLAS_ASSERT(not approx_eq(P, PointXYZ::mul(nextP, -1.), 1.e-10));
-            valid_ = valid_ && GreatCircleSegment{P, nextP}.inLeftHemisphere(sph_coords_[nni], -1.e-14);
+            ATLAS_ASSERT(std::abs(PointXYZ::dot(P, P) - 1.) < 10.*EPS);
+            ATLAS_ASSERT(not approx_eq(P, PointXYZ::mul(nextP, -1.), TOL));
+            valid_ = valid_ && GreatCircleSegment{P, nextP}.inLeftHemisphere(sph_coords_[nni], -EPS);
         }
     }
     return valid_;
@@ -348,7 +352,7 @@ ConvexSphericalPolygon::SubTriangles ConvexSphericalPolygon::triangulate(const d
             const double ab_norm = PointXYZ::norm(ab);
             const double bc_norm = PointXYZ::norm(bc);
             const double ca_norm = PointXYZ::norm(ca);
-            if (ab_norm < 1.e-15 or bc_norm < 1.e-15 or ca_norm < 1.e-15) {
+            if (ab_norm < EPS or bc_norm < EPS or ca_norm < EPS) {
                 continue;
             }
             double abc = -PointXYZ::dot(ab, bc) / (ab_norm * bc_norm);
@@ -419,11 +423,37 @@ int ConvexSphericalPolygon::intersect(const int start, const GreatCircleSegment&
 }
 
 
-void ConvexSphericalPolygon::clip(const GreatCircleSegment& great_circle) {
-    ATLAS_ASSERT(valid_);
-    if (distance2(great_circle.first(), great_circle.second()) < 1.e-28) {
-        return;
+bool ConvexSphericalPolygon::does_intersect( const ConvexSphericalPolygon& plg, int& pin, int& pout ) const {
+    pin = 0;
+    pout = 0;
+    for (int j = 0; j < plg.size_; j++ ) {
+        int i = 0;
+        for (; i < size_; i++ ) {
+            int in = (i!=size_-1) ? i+1 : 0;
+            auto gss = GreatCircleSegment(sph_coords_[i], sph_coords_[in]);
+            if (not gss.inLeftHemisphere(plg.sph_coords_[j], -EPS)) {
+                pout++;
+                break;
+            };
+        }
+        if (i==size_) {
+            pin++;
+        }
     }
+    return (pin >= 0) && (pout > 0);
+}
+
+
+void ConvexSphericalPolygon::clip(const GreatCircleSegment& great_circle_in) {
+    ATLAS_ASSERT(valid_);
+    PointXYZ p1 = great_circle_in.first();
+    PointXYZ p2 = great_circle_in.second();
+    if (distance2(great_circle_in.first(), great_circle_in.second()) < TOL2) {
+        auto p_hlp = p1;
+        p1 = PointXYZ{0.,0.,0.} - p2;
+        p2 = p1;
+    }
+    GreatCircleSegment great_circle(p1, p2);
     auto invalidate_this_polygon = [&]() {
         size_  = 0;
         valid_ = false;
@@ -434,7 +464,7 @@ void ConvexSphericalPolygon::clip(const GreatCircleSegment& great_circle) {
     StackVector<int> vertex_in(size_);
     int num_vertices_in = 0;
     for (int i = 0; i < size_; i++) {
-        vertex_in[i] = great_circle.inLeftHemisphere(sph_coords_[i], -2.e-16);
+        vertex_in[i] = great_circle.inLeftHemisphere(sph_coords_[i], -EPS);
         num_vertices_in += vertex_in[i] ? 1 : 0;
     }
 
@@ -544,7 +574,7 @@ double ConvexSphericalPolygon::compute_radius() const {
         centroid   = sph_coords_[0];
         size_t isp = 1;
         for (size_t i = 1; i < size_ - 1; ++i) {
-            if (approx_eq(sph_coords_[isp], sph_coords_[isp - 1], 1.e-10)) {
+            if (approx_eq(sph_coords_[isp], sph_coords_[isp - 1], TOL)) {
                 continue;
             }
             centroid = centroid + sph_coords_[isp];
@@ -565,14 +595,12 @@ bool ConvexSphericalPolygon::GreatCircleSegment::contains(const PointXYZ& p) con
    * @param[in] P given point in (x,y,z) coordinates
    * @return
    */
-    constexpr double eps       = std::numeric_limits<double>::epsilon();
-    constexpr double eps2      = eps * eps;
-    constexpr double eps_large = 1.e3 * eps;
+    constexpr double eps_large = 1.e3 * EPS;
 
     // Case where p is one of the endpoints
     double pp1n2 = distance2(p, p1_);
     double pp2n2 = distance2(p, p2_);
-    if (pp1n2 < eps2 && pp2n2 < eps2) {
+    if (pp1n2 < EPS2 or pp2n2 < EPS2) {
         return true;
     }
 
@@ -595,7 +623,7 @@ PointXYZ ConvexSphericalPolygon::GreatCircleSegment::intersect(const GreatCircle
     PointXYZ sp   = PointXYZ::cross(s.cross(), p.cross());
 
     double sp_norm = PointXYZ::norm(sp);
-    if (sp_norm > std::numeric_limits<double>::epsilon()) {
+    if (sp_norm > EPS) {
         sp /= sp_norm;
         if (p.contains(sp)) {
             return sp;

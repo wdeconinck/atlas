@@ -26,6 +26,10 @@ class ConvexSphericalPolygon {
 public:
     static constexpr int MAX_GRIDCELL_EDGES = 4;
     static constexpr int MAX_SIZE           = 2 * MAX_GRIDCELL_EDGES + 1;
+    static constexpr double EPS             = std::numeric_limits<double>::epsilon();
+    static constexpr double EPS2            = EPS * EPS;
+    static constexpr double TOL             = 1.e4 * EPS; // two points considered "same"
+    static constexpr double TOL2            = TOL * TOL;
 
 public:
     class GreatCircleSegment {
@@ -123,6 +127,9 @@ public:
     static bool leftOf(const PointXYZ& P, const PointXYZ& p1, const PointXYZ& p2, const double tol);
 
     int next(const int index) const { return (index == size_ - 1) ? 0 : index + 1; };
+
+    /// Check if there are two vertices of "plg", one inside and one outside of this polygon
+    bool does_intersect( const ConvexSphericalPolygon& plg, int& pin, int& pout ) const;
 
 private:
     struct SubTriangle {
