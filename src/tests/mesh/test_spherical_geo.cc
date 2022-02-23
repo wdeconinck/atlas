@@ -140,41 +140,43 @@ CASE("Size of ConvexSphericalPolygon") {
 }
 
 CASE("analyse intersect") {
-    Log::info() << "\n\n";
+    const double du = 0.5;
+    const double dv = 1.1 * ConvexSphericalPolygon::EPS;
+    const double duc = 0.5*du;
+    const double sduc = std::sqrt( 1. - 0.25*du*du );
+    const double dvc = 1. - 0.5*dv*dv;
+    const double sdvc = dv * std::sqrt(1. - 0.25*dv*dv); 
+    PointXYZ s0p0, s0p1, s1p0, s1p1;
+    s0p0[0] = sduc;
+    s0p0[1] = -duc;
+    s0p0[2] = 0.;
+    s0p1[0] = sduc;
+    s0p1[1] = duc;
+    s0p1[2] = 0.;
+    s1p0[0] = dvc * sduc;
+    s1p0[1] = -dvc * duc;
+    s1p0[2] = -sdvc;
+    s1p1[0] = dvc * sduc;
+    s1p1[1] = dvc * duc;
+    s1p1[2] = sdvc;
+    EXPECT_APPROX_EQ( dv, PointXYZ::norm(s0p0 - s1p0), ConvexSphericalPolygon::EPS );
+    EXPECT_APPROX_EQ( du, PointXYZ::norm(s0p0 - s0p1), ConvexSphericalPolygon::EPS );
+    EXPECT_APPROX_EQ( dv, PointXYZ::norm(s0p1 - s1p1), ConvexSphericalPolygon::EPS );
 
-    double du = 5.;
-    double dv = 1e-14;
+    ConvexSphericalPolygon::GreatCircleSegment s1(s0p0, s0p1);
+    ConvexSphericalPolygon::GreatCircleSegment s2(s1p0, s1p1);
 
-    std::vector<PointLonLat> llp1 = {{70 - du, 0}, {70 + du, 0}};
-    std::vector<PointLonLat> llp2 = {{70 - du, -dv}, {70 + du, dv}};
-    std::vector<PointXYZ> p1(2), p2(2);
+    // analytical solution
+    PointXYZ Isol{1.,0.,0.};
 
-    auto unit_sphere = geometry::UnitSphere{};
-
-    for (int i = 0; i < 2; ++i) {
-        unit_sphere.lonlat2xyz(llp1[i], p1[i]);
-        unit_sphere.lonlat2xyz(llp2[i], p2[i]);
-    }
-
-    ConvexSphericalPolygon::GreatCircleSegment s1(p1[0], p1[1]);
-    ConvexSphericalPolygon::GreatCircleSegment s2(p2[0], p2[1]);
-
-    PointXYZ Isol = unit_sphere.xyz(PointLonLat(70, dv));
-
-    // BETWEEN
-    auto btw1 = s1.contains(Isol);
-    auto btw2 = s2.contains(Isol);
-    EXPECT(btw1 && btw2);
-
-    // INTERSECT SEGMENTS
+    // test "intersection"
     PointXYZ I = s1.intersect(s2);
-    Log::info() << " I = " << I << ", |I|-1 = " << PointXYZ::norm(I) - 1. << "\n";
-    Log::info() << " I - solution = " << std::setprecision(20) << I - Isol << "\n\n";
+    EXPECT_APPROX_EQ( std::abs(PointXYZ::norm(I) - 1.), 0., ConvexSphericalPolygon::EPS );
+    EXPECT_APPROX_EQ( PointXYZ::norm(I - Isol), 0., ConvexSphericalPolygon::EPS );
 
-    // INTERSECT SEGMENT-POLYGON
-    // (disabled as the intersect() API is now private)
-    //auto plg = make_polygon({{70 - du, 0}, {70 + du, 0}, {70 + du, dv}, {70 - du, dv}});
-    //Log::info() << plg.intersect(p1[0], p1[1], I, 0);
+    // test "contains"
+    EXPECT( s1.contains(Isol) && s2.contains(Isol) );
+    EXPECT( s1.contains(I) && s2.contains(I) );
 }
 
 CASE("source_covered") {
