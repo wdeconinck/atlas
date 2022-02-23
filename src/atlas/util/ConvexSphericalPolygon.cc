@@ -440,7 +440,7 @@ bool ConvexSphericalPolygon::does_intersect( const ConvexSphericalPolygon& plg, 
             pin++;
         }
     }
-    return (pin >= 0) && (pout > 0);
+    return (pin > 0) && (pout > 0);
 }
 
 

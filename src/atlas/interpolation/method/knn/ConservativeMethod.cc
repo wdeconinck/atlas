@@ -587,7 +587,10 @@ void ConservativeMethod::intersect_polygons(const CSPolygonArray& src_csp, const
             auto tcell        = tgt_cells[ttcell].payload();
             const auto& t_csp = std::get<0>(tgt_csp[tcell]);
             CSPolygon csp_i   = s_csp.intersect(t_csp);
-			double csp_i_area = csp_i.area();
+            double csp_i_area = csp_i.area();
+            //if ( s_csp.does_intersect( t_csp, pin, pout ) && csp_i.area() < 2e-16 ) {
+                //dump_intersection( s_csp, tgt_csp, tgt_cells );
+            //}
             if (csp_i_area > 0.) {
                 iparam_[scell].tcell_id.emplace_back(tcell);
                 iparam_[scell].weights.emplace_back(csp_i_area);
@@ -598,10 +601,9 @@ void ConservativeMethod::intersect_polygons(const CSPolygonArray& src_csp, const
         }
         const double loc_csp_error = s_csp_area - covered_area;
         if ( loc_csp_error > 1e-8 && cell_flag == 0) {
-            // TODO: for mpi>1 there are src cells not entirely covered by tgt cells
-            //Log::info() << "WARNING src cell area NOT covered: " << loc_csp_error << "\n";
+            // TODO: for mpi>1 there are src cells with flag 0 not entirely covered by tgt cells
+            Log::info() << "WARNING src cell area fully covered: " << loc_csp_error << "\n";
             //dump_intersection( s_csp, tgt_csp, tgt_cells );
-            //ATLAS_ASSERT( false );
         }
         if (cell_flag == 0 && loc_csp_error < 1e-8) {
             // HACK: partially convered src cells not to be added, avoid them with loc_scp_error < 1e-8
@@ -1214,30 +1216,41 @@ void ConservativeMethod::dump_intersection(const CSPolygon& s_csp, const CSPolyg
                                            const TargetCellsIDs& tgt_cells) const {
     Log::info().flush();
     Log::info() << "\n === DEBUG ===\n\n";
-    Log::info() << "* src cell: " << std::setprecision(10) << s_csp << "\n";
-    Log::info() << "* src area: " << s_csp.area() << "\n\n";
+    Log::info() << "* SRC       : " << std::setprecision(10) << s_csp << "\n";
+    Log::info() << "* area(SRC) : " << s_csp.area() << "\n\n";
+
     double area_ncov = s_csp.area();
     for (int i = 0; i < tgt_cells.size(); ++i) {
         const auto tcell  = tgt_cells[i].payload();
         const auto& t_csp = std::get<0>(tgt_csp[tcell]);
-        Log::info() << "* src cell: " << s_csp << "\n";
-        Log::info() << "* tgt cell: " << t_csp << "\n";
         auto iplg          = s_csp.intersect(t_csp);
         auto jplg          = t_csp.intersect(s_csp);
         const double darea = std::abs(iplg.area() - jplg.area());
-        Log::info() << "* src ^ tgt      : " << iplg << "\n";
-        Log::info() << "* src ^ tgt area : " << iplg.area() << "\n";
-        if (darea > 5e-13) {
+        if (darea > CSPolygon::TOL) {
             s_csp.intersect(t_csp);
-            Log::info() << "* (!!) intersect comm area diff: " << darea << "\n";
-            Log::info() << "* (!!) tgt ^ src      : " << jplg << "\n";
-            Log::info() << "* (!!) tgt ^ src area : " << jplg.area() << "\n";
+            Log::info() << "* TGT      :" << t_csp << "\n";
+            Log::info() << "* (!!) SRC^TGT                 : " << iplg << "\n";
+            Log::info() << "* (!!) TGT^SRC                 : " << jplg << "\n";
+            Log::info() << "* (!!) area(SRC^TGT - TGT^SRC) : " << darea << "\n";
+            Log::info() << "* (!!) area(TGT^SRC)           : " << jplg.area() << "\n";
             t_csp.intersect(s_csp);
-            //ATLAS_ASSERT(false);
+            ATLAS_ASSERT( false, "SRC.intersect.TGT =/= TGT.intersect.SRC.");
         }
-        Log::info() << "\n";
-        area_ncov -= iplg.area();
+        int pin, pout;
+        bool does = s_csp.does_intersect(t_csp, pin, pout);
+        Log::info() << " pin : " << pin << ", pout :" << pout 
+                    << ", total vertices : " << t_csp.size()<< "\n";
+        if ( does && iplg.area() < CSPolygon::EPS ) {
+            Log::info() << "* TGT      :" << t_csp << "\n";
+            Log::info() << "* SRC^TGT       : " << iplg << "\n";
+            Log::info() << "* area(SRC^TGT) : " << iplg.area() << "\n";
+            Log::info() << "\n";
+            area_ncov -= iplg.area();
+            ATLAS_ASSERT( false, "SRC must intersect TGT." );
+        }
     }
+    Log::info() << "non covered: " << area_ncov << "\n";
+    ATLAS_ASSERT( area_ncov < CSPolygon::TOL );
     Log::info() << "\n=== END DEBUG ===\n\n";
 }
 
