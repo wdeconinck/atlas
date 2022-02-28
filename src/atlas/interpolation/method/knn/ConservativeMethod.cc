@@ -1134,7 +1134,7 @@ void ConservativeMethod::remap_stat(const FieldArray& src_vals, const FieldArray
                 for (idx_t icell = 0; icell < iparam.weights.size(); ++icell) {
                     idx_t tcell = iparam.tcell_id[icell];
                     idx_t tnode = tgt_csp2node_[tcell];
-                    if (tgt_node_halo(tcel) < 1) {
+                    if (tgt_node_halo(tnode) < 1) {
                         diff -= tgt_vals(tnode) * iparam.weights[icell];
                     }
                 }
