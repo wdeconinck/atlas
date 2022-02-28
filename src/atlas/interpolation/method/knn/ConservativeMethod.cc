@@ -588,7 +588,7 @@ void ConservativeMethod::intersect_polygons(const CSPolygonArray& src_csp, const
             const auto& t_csp = std::get<0>(tgt_csp[tcell]);
             CSPolygon csp_i   = s_csp.intersect(t_csp);
             double csp_i_area = csp_i.area();
-            //if ( s_csp.does_intersect( t_csp, pin, pout ) && csp_i.area() < 2e-16 ) {
+            //if ( s_csp.empty_intersection( t_csp, pin, pout ) && csp_i.area() < 2e-16 ) {
                 //dump_intersection( s_csp, tgt_csp, tgt_cells );
             //}
             if (csp_i_area > 0.) {
@@ -776,7 +776,8 @@ void ConservativeMethod::setup_2nd_order_matrix() {
                 idx_t nsj        = nb_cells[nj];
                 const auto& Csj  = src_points_[sj];
                 const auto& Cnsj = src_points_[nsj];
-                if (CSPolygon::leftOf(Cnsj, Cs, Csj, 1e-16)) {
+                if (CSPolygon::GreatCircleSegment( Cs, Csj ).inLeftHemisphere( Cnsj,
+-1e-16 )) {;
                     Rsj[j] = PointXYZ::cross(Cnsj, Csj);
                     dual_area_inv += CSPolygon({Cs, Csj, Cnsj}).area();
                 }
@@ -869,7 +870,8 @@ void ConservativeMethod::setup_2nd_order_matrix() {
                 idx_t snj        = nb_nodes[nj];
                 const auto& Nsj  = src_points_[sj];
                 const auto& Nsnj = src_points_[snj];
-                if (CSPolygon::leftOf(Nsnj, Ns, Nsj, 1e-16)) {
+                if (CSPolygon::GreatCircleSegment( Ns, Nsj ).inLeftHemisphere(
+Nsnj,-1e-16)) {
                     Rsj[j] = PointXYZ::cross(Nsnj, Nsj);
                     dual_area_inv += CSPolygon({Ns, Nsj, Nsnj}).area();
                 }
@@ -1008,7 +1010,8 @@ void ConservativeMethod::do_execute(const Field& src_field, Field& tgt_field) {
                         if (csp.area() < std::numeric_limits<double>::epsilon()) {
                             csp = CSPolygon({Pn, P, Pnn});
                         }
-                        val *= (csp.leftOf(Pnn, P, Pn, 1e-16) ? -1 : 1);
+                        auto NsNsj = CSPolygon::GreatCircleSegment( P, Pn );
+                        val *= (NsNsj.inLeftHemisphere(Pnn, -1e-16) ? -1 : 1);
                         dual_area += std::abs(csp.area());
                         grad = grad + PointXYZ::mul(PointXYZ::cross(Pn, Pnn), val);
                     }
@@ -1131,7 +1134,7 @@ void ConservativeMethod::remap_stat(const FieldArray& src_vals, const FieldArray
                 for (idx_t icell = 0; icell < iparam.weights.size(); ++icell) {
                     idx_t tcell = iparam.tcell_id[icell];
                     idx_t tnode = tgt_csp2node_[tcell];
-                    if (tgt_node_halo(tcell) < 1) {
+                    if (tgt_node_halo(tcel) < 1) {
                         diff -= tgt_vals(tnode) * iparam.weights[icell];
                     }
                 }
@@ -1226,7 +1229,7 @@ void ConservativeMethod::dump_intersection(const CSPolygon& s_csp, const CSPolyg
         auto iplg          = s_csp.intersect(t_csp);
         auto jplg          = t_csp.intersect(s_csp);
         const double darea = std::abs(iplg.area() - jplg.area());
-        if (darea > CSPolygon::TOL) {
+        if (darea > 1e-12) {
             s_csp.intersect(t_csp);
             Log::info() << "* TGT      :" << t_csp << "\n";
             Log::info() << "* (!!) SRC^TGT                 : " << iplg << "\n";
@@ -1237,10 +1240,10 @@ void ConservativeMethod::dump_intersection(const CSPolygon& s_csp, const CSPolyg
             ATLAS_ASSERT( false, "SRC.intersect.TGT =/= TGT.intersect.SRC.");
         }
         int pin, pout;
-        bool does = s_csp.does_intersect(t_csp, pin, pout);
+        bool empty = s_csp.empty_intersection(t_csp, pin, pout);
         Log::info() << " pin : " << pin << ", pout :" << pout 
                     << ", total vertices : " << t_csp.size()<< "\n";
-        if ( does && iplg.area() < CSPolygon::EPS ) {
+        if ( not empty && iplg.area() < 3e-16 ) {
             Log::info() << "* TGT      :" << t_csp << "\n";
             Log::info() << "* SRC^TGT       : " << iplg << "\n";
             Log::info() << "* area(SRC^TGT) : " << iplg.area() << "\n";
@@ -1250,7 +1253,7 @@ void ConservativeMethod::dump_intersection(const CSPolygon& s_csp, const CSPolyg
         }
     }
     Log::info() << "non covered: " << area_ncov << "\n";
-    ATLAS_ASSERT( area_ncov < CSPolygon::TOL );
+    ATLAS_ASSERT( area_ncov < 1e-12 );
     Log::info() << "\n=== END DEBUG ===\n\n";
 }
 

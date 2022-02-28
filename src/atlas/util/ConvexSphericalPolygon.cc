@@ -30,6 +30,11 @@ using GreatCircleSegment = ConvexSphericalPolygon::GreatCircleSegment;
 
 namespace {
 
+constexpr double EPS  = std::numeric_limits<double>::epsilon();
+constexpr double EPS2 = EPS * EPS;
+constexpr double TOL  = 1.e4 * EPS; // two points considered "same"
+constexpr double TOL2 = TOL * TOL;
+
 enum IntersectionType
 {
     NO_INTERSECT = -100,
@@ -113,7 +118,7 @@ struct PolygonEdgeIntersection {
     PolygonEdgeIntersection(const ConvexSphericalPolygon& polygon, int edge_index, const PointXYZ& point) {
         auto matches = [](const PointXYZ& p1, const PointXYZ& p2) {
             return (distance2(p1, p2) < 1e-16);
-//            return (distance2(p1, p2) < ConvexSphericalPolygon::TOL2);
+//            return (distance2(p1, p2) < TOL2);
         };
 
         ATLAS_ASSERT(edge_index >= 0);
@@ -423,7 +428,7 @@ int ConvexSphericalPolygon::intersect(const int start, const GreatCircleSegment&
 }
 
 
-bool ConvexSphericalPolygon::does_intersect( const ConvexSphericalPolygon& plg, int& pin, int& pout ) const {
+bool ConvexSphericalPolygon::empty_intersection( const ConvexSphericalPolygon& plg, int& pin, int& pout ) const {
     pin = 0;
     pout = 0;
     for (int j = 0; j < plg.size_; j++ ) {
@@ -440,7 +445,8 @@ bool ConvexSphericalPolygon::does_intersect( const ConvexSphericalPolygon& plg, 
             pin++;
         }
     }
-    return (pin > 0) && (pout > 0);
+    ATLAS_ASSERT( pin + pout == plg.size_ );
+    return (pin == 0);
 }
 
 
@@ -639,10 +645,6 @@ PointXYZ ConvexSphericalPolygon::GreatCircleSegment::intersect(const GreatCircle
     }
 }
 
-
-bool ConvexSphericalPolygon::leftOf(const PointXYZ& P, const PointXYZ& p1, const PointXYZ& p2, const double tol) {
-    return GreatCircleSegment{p1, p2}.inLeftHemisphere(P, -tol);
-}
 
 //------------------------------------------------------------------------------------------------------
 
