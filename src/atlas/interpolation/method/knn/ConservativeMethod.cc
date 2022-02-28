@@ -39,6 +39,27 @@ namespace {
 MethodBuilder<ConservativeMethod> __builder("conservative");
 }
 
+int inside_vertices( const CSPolygon& plg1, const CSPolygon& plg2, int& pout ) {
+    int points_in = 0;
+    pout = 0;
+    for (int j = 0; j < plg2.size(); j++ ) {
+        int i = 0;
+        for (; i < plg1.size(); i++ ) {
+            int in = (i!=plg1.size()-1) ? i+1 : 0;
+            auto gss = CSPolygon::GreatCircleSegment(plg1[i], plg1[in]);
+            if (not gss.inLeftHemisphere(plg2[j], -std::numeric_limits<double>::epsilon())) {
+                pout++;
+                break;
+            };
+        }
+        if (i==plg1.size()) {
+            points_in++;
+        }
+    }
+    ATLAS_ASSERT( points_in + pout == plg2.size() );
+    return points_in;
+}
+
 ConservativeMethod::ConservativeMethod(const Config& config): Method(config) {
     config.get("order", order_ = 1);
     config.get("normalise_intersections", normalise_intersections_ = 0);
@@ -1239,11 +1260,11 @@ void ConservativeMethod::dump_intersection(const CSPolygon& s_csp, const CSPolyg
             t_csp.intersect(s_csp);
             ATLAS_ASSERT( false, "SRC.intersect.TGT =/= TGT.intersect.SRC.");
         }
-        int pin, pout;
-        bool empty = s_csp.empty_intersection(t_csp, pin, pout);
+        int pout;
+        int pin = inside_vertices(s_csp, t_csp, pout);
         Log::info() << " pin : " << pin << ", pout :" << pout 
                     << ", total vertices : " << t_csp.size()<< "\n";
-        if ( not empty && iplg.area() < 3e-16 ) {
+        if ( pin > 2 && iplg.area() < 3e-16 ) {
             Log::info() << "* TGT      :" << t_csp << "\n";
             Log::info() << "* SRC^TGT       : " << iplg << "\n";
             Log::info() << "* area(SRC^TGT) : " << iplg.area() << "\n";

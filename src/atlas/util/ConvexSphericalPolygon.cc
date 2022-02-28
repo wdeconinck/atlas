@@ -32,7 +32,7 @@ namespace {
 
 constexpr double EPS  = std::numeric_limits<double>::epsilon();
 constexpr double EPS2 = EPS * EPS;
-constexpr double TOL  = 1.e4 * EPS; // two points considered "same"
+constexpr double TOL  = 1.e4 * EPS;  // two points considered "same"
 constexpr double TOL2 = TOL * TOL;
 
 enum IntersectionType
@@ -118,7 +118,7 @@ struct PolygonEdgeIntersection {
     PolygonEdgeIntersection(const ConvexSphericalPolygon& polygon, int edge_index, const PointXYZ& point) {
         auto matches = [](const PointXYZ& p1, const PointXYZ& p2) {
             return (distance2(p1, p2) < 1e-16);
-//            return (distance2(p1, p2) < TOL2);
+            // We would like this to be TOL2 instead, but that gives bad results
         };
 
         ATLAS_ASSERT(edge_index >= 0);
@@ -159,8 +159,7 @@ ConvexSphericalPolygon::ConvexSphericalPolygon(const PointLonLat points[], size_
         ++isp;
     }
     lonlat2xyz(points[size_ - 1], sph_coords_[isp]);
-    if (approx_eq(sph_coords_[isp], sph_coords_[0], TOL) or
-        approx_eq(sph_coords_[isp], sph_coords_[isp - 1], TOL)) {
+    if (approx_eq(sph_coords_[isp], sph_coords_[0], TOL) or approx_eq(sph_coords_[isp], sph_coords_[isp - 1], TOL)) {
     }
     else {
         ++isp;
@@ -185,8 +184,7 @@ ConvexSphericalPolygon::ConvexSphericalPolygon(const PointXYZ points[], size_t s
         ++isp;
     }
     sph_coords_[isp] = points[size_ - 1];
-    if (approx_eq(sph_coords_[isp], sph_coords_[0], TOL) or
-        approx_eq(sph_coords_[isp], sph_coords_[isp - 1], TOL)) {
+    if (approx_eq(sph_coords_[isp], sph_coords_[0], TOL) or approx_eq(sph_coords_[isp], sph_coords_[isp - 1], TOL)) {
     }
     else {
         ++isp;
@@ -240,8 +238,7 @@ void ConvexSphericalPolygon::simplify() {
     }
     for (; k < size_ - 1; ++k) {
         if (approx_eq(points[k], sph_coords_[isp - 1], TOL) or
-            (not GreatCircleSegment{sph_coords_[isp - 2], sph_coords_[isp -
-1]}.inLeftHemisphere(points[k], -EPS))) {
+            (not GreatCircleSegment{sph_coords_[isp - 2], sph_coords_[isp - 1]}.inLeftHemisphere(points[k], -EPS))) {
             continue;
         }
         sph_coords_[isp] = points[k];
@@ -291,7 +288,7 @@ bool ConvexSphericalPolygon::validate() {
             int nni               = next(ni);
             const PointXYZ& P     = sph_coords_[i];
             const PointXYZ& nextP = sph_coords_[ni];
-            ATLAS_ASSERT(std::abs(PointXYZ::dot(P, P) - 1.) < 10.*EPS);
+            ATLAS_ASSERT(std::abs(PointXYZ::dot(P, P) - 1.) < 10. * EPS);
             ATLAS_ASSERT(not approx_eq(P, PointXYZ::mul(nextP, -1.), TOL));
             valid_ = valid_ && GreatCircleSegment{P, nextP}.inLeftHemisphere(sph_coords_[nni], -EPS);
         }
@@ -428,38 +425,10 @@ int ConvexSphericalPolygon::intersect(const int start, const GreatCircleSegment&
 }
 
 
-bool ConvexSphericalPolygon::empty_intersection( const ConvexSphericalPolygon& plg, int& pin, int& pout ) const {
-    pin = 0;
-    pout = 0;
-    for (int j = 0; j < plg.size_; j++ ) {
-        int i = 0;
-        for (; i < size_; i++ ) {
-            int in = (i!=size_-1) ? i+1 : 0;
-            auto gss = GreatCircleSegment(sph_coords_[i], sph_coords_[in]);
-            if (not gss.inLeftHemisphere(plg.sph_coords_[j], -EPS)) {
-                pout++;
-                break;
-            };
-        }
-        if (i==size_) {
-            pin++;
-        }
-    }
-    ATLAS_ASSERT( pin + pout == plg.size_ );
-    return (pin == 0);
-}
-
-
-void ConvexSphericalPolygon::clip(const GreatCircleSegment& great_circle_in) {
+void ConvexSphericalPolygon::clip(const GreatCircleSegment& great_circle) {
     ATLAS_ASSERT(valid_);
-    PointXYZ p1 = great_circle_in.first();
-    PointXYZ p2 = great_circle_in.second();
-    if (distance2(great_circle_in.first(), great_circle_in.second()) < TOL2) {
-        auto p_hlp = p1;
-        p1 = PointXYZ{0.,0.,0.} - p2;
-        p2 = p1;
-    }
-    GreatCircleSegment great_circle(p1, p2);
+    ATLAS_ASSERT(distance2(great_circle.first(), great_circle.second()) > TOL2);
+
     auto invalidate_this_polygon = [&]() {
         size_  = 0;
         valid_ = false;
