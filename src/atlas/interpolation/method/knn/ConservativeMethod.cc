@@ -334,7 +334,7 @@ CSPolygonArray ConservativeMethod::get_polygons_nodedata(Mesh& mesh, std::vector
         PointLonLat cell_ll = xyz2ll( cell_mid );
         double loc_csp_area_shoot = CSPolygon( pts_ll ).area();
         // get CSPolygon for each valid edge
-        for (auto inode: pts_idx) {
+        for ( int inode = 0; inode < pts_idx.size(); inode++ ) {
             int inode_n              = next_index(inode, pts_idx.size());
             idx_t node               = cell2node(cell, inode);
             idx_t node_n             = cell2node(cell, inode_n);
