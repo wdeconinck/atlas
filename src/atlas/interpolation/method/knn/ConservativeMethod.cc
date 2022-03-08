@@ -398,7 +398,7 @@ void ConservativeMethod::do_setup(const Grid& src_grid, const Grid& tgt_grid) {
     ATLAS_TRACE("ConservativeMethod::do_setup( Grid, Grid )");
     ATLAS_ASSERT(src_grid);
     ATLAS_ASSERT(tgt_grid);
-    auto src_mesh_config = src_grid.meshgenerator();
+    auto src_mesh_config = src_grid.meshgenerator() | option::halo(2);
     auto tgt_mesh_config = tgt_grid.meshgenerator();
     tgt_mesh_            = MeshGenerator(tgt_mesh_config|option::halo(0)).generate(tgt_grid);
     if (mpi::size() > 1) {
