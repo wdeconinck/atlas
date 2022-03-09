@@ -280,18 +280,19 @@ CSPolygonArray ConservativeMethod::get_polygons_celldata(Mesh& mesh) const {
     const auto& cell_part  = array::make_view<int, 1>(mesh.cells().partition());
     std::vector<PointLonLat> pts_ll;
     for (idx_t cell = 0; cell < n_cells; ++cell) {
-        const idx_t n_nodes = cell2node.cols(cell);
+        int halo_type         = cell_halo(cell);
+        const idx_t n_nodes   = cell2node.cols(cell);
         pts_ll.clear();
         pts_ll.resize(n_nodes);
         for (idx_t jnode = 0; jnode < n_nodes; ++jnode) {
             idx_t inode   = cell2node(cell, jnode);
             pts_ll[jnode] = PointLonLat{lonlat(inode, 0), lonlat(inode, 1)};
         }
-        std::get<0>(cspolygons[cell]) = CSPolygon(pts_ll);
-        int halo_type                  = cell_halo(cell);
-        if (util::Bitflags::view(cell_flags(cell)).check(util::Topology::PERIODIC)) {
-            halo_type = -1;
+        const auto& bitflag = util::Bitflags::view(cell_flags(cell));
+        if (bitflag.check(util::Topology::PERIODIC) and mpi::rank()==cell_part(cell)) {
+              halo_type = -1;
         }
+        std::get<0>(cspolygons[cell]) = CSPolygon(pts_ll);
         std::get<1>(cspolygons[cell]) = halo_type;
     }
     return cspolygons;
@@ -376,7 +377,8 @@ CSPolygonArray ConservativeMethod::get_polygons_nodedata(Mesh& mesh, std::vector
             subpol_pts_ll[2]     = pts_ll[inode_n];
             subpol_pts_ll[3]     = xyz2ll(jedge_mid);
             int halo_type = cell_halo(cell);
-            if (util::Bitflags::view(cell_flags(cell)).check(util::Topology::PERIODIC)) {
+            if (util::Bitflags::view(cell_flags(cell)).check(util::Topology::PERIODIC)
+                and cell_part(cell)==mpi::rank()) {
                 halo_type = -1;
             }
             CSPolygon cspi( subpol_pts_ll );
@@ -399,8 +401,8 @@ void ConservativeMethod::do_setup(const Grid& src_grid, const Grid& tgt_grid) {
     ATLAS_ASSERT(src_grid);
     ATLAS_ASSERT(tgt_grid);
     auto src_mesh_config = src_grid.meshgenerator() | option::halo(2);
-    auto tgt_mesh_config = tgt_grid.meshgenerator();
-    tgt_mesh_            = MeshGenerator(tgt_mesh_config|option::halo(0)).generate(tgt_grid);
+    auto tgt_mesh_config = tgt_grid.meshgenerator() | option::halo(0);
+    tgt_mesh_            = MeshGenerator(tgt_mesh_config).generate(tgt_grid);
     if (mpi::size() > 1) {
         src_mesh_ = MeshGenerator(src_mesh_config).generate(src_grid, grid::MatchingPartitioner(tgt_mesh_));
     }
@@ -573,6 +575,27 @@ void ConservativeMethod::do_setup(const FunctionSpace& src_fs, const FunctionSpa
 }
 
 
+class ComparePointXYZ {
+public:
+    bool operator()(const PointXYZ& f, const PointXYZ& s) {
+        double eps = 1e4 * std::numeric_limits<double>::epsilon();
+        if (f[0] < s[0] - eps) {
+            return true;
+        }
+        else if ( std::abs(f[0]-s[0]) < eps ) {
+            if ( f[1] < s[1] - eps ) {
+                return true;
+            }
+            else if ( std::abs(f[1]-s[1]) < eps ) {
+                if ( f[2] < s[2] - eps ) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+};
+
 void ConservativeMethod::intersect_polygons(const CSPolygonArray& src_csp, const CSPolygonArray& tgt_csp) {
     ATLAS_TRACE();
     util::KDTree<idx_t> kdt_search;
@@ -587,6 +610,23 @@ void ConservativeMethod::intersect_polygons(const CSPolygonArray& src_csp, const
     }
     kdt_search.build();
 
+    std::set<PointXYZ, ComparePointXYZ> src_cent;
+    auto polygon_point = [](const CSPolygon& pol) {
+        PointXYZ p{0.,0.,0.};
+        for ( int i =0; i < pol.size() ; i++ ) {
+            p = p + pol[i];
+        }
+        p /= pol.size();
+        return p;
+    };
+    auto src_already_in = [&](const PointXYZ& halo_cent) {
+          if( src_cent.find(halo_cent) == src_cent.end() ) {
+            src_cent.insert(halo_cent);
+            return false;
+          }
+        return true;
+    };
+
     enum MeshSizeId {SRC, TGT, SRC_TGT_INTERSECT, SRC_NONINTERSECT};
     std::array<size_t,4> num_pol{0,0,0,0};
     enum AreaCoverageId {TOTAL_SRC, MAX_SRC};
@@ -596,8 +636,7 @@ void ConservativeMethod::intersect_polygons(const CSPolygonArray& src_csp, const
     eckit::ProgressTimer progress("Intersecting polygons ", src_csp.size(), " cell", double(10),
                                   src_csp.size() > 50 ? Log::info() : blackhole);
     for (idx_t scell = 0; scell < src_csp.size(); ++scell, ++progress) {
-        const int cell_flag = std::get<1>(src_csp[scell]);
-        if (cell_flag == -1) { // skip periodic cells
+        if (src_already_in(polygon_point(std::get<0>(src_csp[scell])))) {
             continue;
         }
         const auto& s_csp   = std::get<0>(src_csp[scell]);
@@ -621,13 +660,14 @@ void ConservativeMethod::intersect_polygons(const CSPolygonArray& src_csp, const
             }
         }
         const double loc_csp_error = s_csp_area - covered_area;
-        if ( loc_csp_error > 1e-8 && cell_flag == 0) {
-            // TODO: for mpi>1 there are src cells with flag 0 not entirely covered by tgt cells
-            Log::info() << "WARNING src cell area fully covered: " << loc_csp_error << "\n";
-            //dump_intersection( s_csp, tgt_csp, tgt_cells );
-        }
-        if (cell_flag == 0 && loc_csp_error < 1e-8) {
-            // HACK: partially convered src cells not to be added, avoid them with loc_scp_error < 1e-8
+        if (loc_csp_error > 1e-8 and std::get<1>(src_csp[scell]) == 0) {
+            if ( mpi::size() == 1) {
+                // TODO: for mpi>1 there are src cells with flag 0 not entirely covered by tgt cells
+                Log::info() << "WARNING src cell area not fully covered: " << loc_csp_error << "\n";
+                //dump_intersection( s_csp, tgt_csp, tgt_cells );
+            }
+            // HACK: partially convered src cells in parallel runs are not to be added, avoid them with
+            // loc_scp_error > 1e-8
             area_coverage[TOTAL_SRC] += loc_csp_error;
             area_coverage[MAX_SRC]   = std::max( area_coverage[MAX_SRC], loc_csp_error );
         }
@@ -643,6 +683,7 @@ void ConservativeMethod::intersect_polygons(const CSPolygonArray& src_csp, const
         }
         num_pol[SRC_TGT_INTERSECT] += iparam_[scell].weights.size();
     }
+     Log::info() << " set size is " << src_cent.size() << std::endl;
     num_pol[SRC] = src_csp.size();
     num_pol[TGT] = tgt_csp.size();
     ATLAS_TRACE_MPI(ALLREDUCE) {
