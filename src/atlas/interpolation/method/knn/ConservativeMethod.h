@@ -30,8 +30,8 @@ private:
     struct InterpolationParameters {
         std::vector<idx_t> tcell_id;
         std::vector<PointXYZ> centroids;
-        std::vector<double> weights;
-        std::vector<double> sweights;
+        std::vector<double> src_weights;
+        std::vector<double> tgt_weights;
     };
 
 public:
@@ -123,19 +123,23 @@ protected:
     Mesh tgt_mesh_;
     int normalise_intersections_;
     int order_;
+    bool matrix_free_;
+    mutable RemapStat remap_stat_;
+    std::vector<InterpolationParameters> iparam_;   // TODO: remove after setup
+
+    // position and effective area of data points
     idx_t n_spoints_;
     idx_t n_tpoints_;
-    bool matrix_free_;
     std::vector<PointXYZ> src_points_;
     std::vector<PointXYZ> tgt_points_;
     Field src_areas_;
     Field tgt_areas_;
-    mutable RemapStat remap_stat_;
-    std::vector<InterpolationParameters> iparam_;   // TODO: remove after setup
-    std::vector<idx_t> src_csp2node_;               // TODO: remove
-    std::vector<idx_t> tgt_csp2node_;               // TODO: remove
-    std::vector<std::vector<idx_t>> src_node2csp_;  // TODO: remove
-    std::vector<std::vector<idx_t>> tgt_node2csp_;  // TODO: remove
+
+    // indexing of subpolygons
+    std::vector<idx_t> src_csp2node_;
+    std::vector<idx_t> tgt_csp2node_;
+    std::vector<std::vector<idx_t>> src_node2csp_;
+    std::vector<std::vector<idx_t>> tgt_node2csp_;
 };
 
 
