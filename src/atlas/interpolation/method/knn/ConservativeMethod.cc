@@ -155,7 +155,6 @@ std::vector<idx_t> ConservativeMethod::get_cell_neighbours(Mesh& mesh, idx_t cel
 // get cyclically sorted node neighbours without using edge connectivity
 std::vector<idx_t> ConservativeMethod::get_node_neighbours(Mesh& mesh, idx_t node_id) const {
     const auto& cell2node  = mesh.cells().node_connectivity();
-    const auto& nodes_gidx   = array::make_view<gidx_t, 1>(mesh.nodes().global_index());
     if (mesh.nodes().cell_connectivity().rows() == 0) {
         mesh::actions::build_node_to_cell_connectivity(mesh);
     }
@@ -163,10 +162,7 @@ std::vector<idx_t> ConservativeMethod::get_node_neighbours(Mesh& mesh, idx_t nod
     std::vector<idx_t> nbr_nodes;
     std::vector<idx_t> nbr_nodes_od;
     const int ncells       = node2cell.cols( node_id );
-    if ( ncells < 1 ) {
-        std::cout << " Node " << nodes_gidx(node_id) << " does not connect to any cell" <<std::endl;
-        // ATLAS_ASSERT( ncells > 0 );
-    }
+    ATLAS_ASSERT( ncells > 0, "There is a node which does not connect to any cell" );
     idx_t cnodes[ncells][2];
     nbr_nodes.reserve( ncells + 1 );
     nbr_nodes_od.reserve( ncells + 1 );
@@ -577,6 +573,7 @@ void ConservativeMethod::do_setup(const FunctionSpace& src_fs, const FunctionSpa
 
 struct ComparePointXYZ {
     bool operator()(const PointXYZ& f, const PointXYZ& s) const {
+        // eps = ConvexSphericalPolygon::EPS which is the threshold when two points are "same"
         double eps = 1e4 * std::numeric_limits<double>::epsilon();
         if (f[0] < s[0] - eps) {
             return true;
@@ -635,7 +632,7 @@ void ConservativeMethod::intersect_polygons(const CSPolygonArray& src_csp, const
     eckit::ProgressTimer progress("Intersecting polygons ", src_csp.size(), " cell", double(10),
                                   src_csp.size() > 50 ? Log::info() : blackhole);
     for (idx_t scell = 0; scell < src_csp.size(); ++scell, ++progress) {
-        if (src_already_in(polygon_point(std::get<0>(src_csp[scell])))) {
+        if (src_already_in( polygon_point(std::get<0>(src_csp[scell])) )) {
             continue;
         }
         const auto& s_csp   = std::get<0>(src_csp[scell]);
@@ -653,9 +650,12 @@ void ConservativeMethod::intersect_polygons(const CSPolygonArray& src_csp, const
             if (csp_i_area > 0.) {
                 iparam_[scell].tcell_id.emplace_back(tcell);
                 iparam_[scell].weights.emplace_back(csp_i_area);
-                iparam_[scell].sweights.emplace_back(csp_i_area / t_csp.area());
+                double target_weight = csp_i_area / t_csp.area();
+                iparam_[scell].sweights.emplace_back( target_weight );
                 iparam_[scell].centroids.emplace_back(csp_i.centroid());
                 covered_area += csp_i_area;
+                ATLAS_ASSERT( target_weight < 1.1 );
+                ATLAS_ASSERT( csp_i_area / s_csp_area < 1.1 );
             }
         }
         const double loc_csp_error = s_csp_area - covered_area;
@@ -665,7 +665,7 @@ void ConservativeMethod::intersect_polygons(const CSPolygonArray& src_csp, const
                 Log::info() << "WARNING src cell area not fully covered: " << loc_csp_error << "\n";
                 //dump_intersection( s_csp, tgt_csp, tgt_cells );
             }
-            // HACK: partially convered src cells in parallel runs are not to be added, avoid them with
+            // HACK: partially covered src cells in parallel runs are not to be added, avoid them with
             // loc_scp_error > 1e-8
             area_coverage[TOTAL_SRC] += loc_csp_error;
             area_coverage[MAX_SRC]   = std::max( area_coverage[MAX_SRC], loc_csp_error );
@@ -682,7 +682,6 @@ void ConservativeMethod::intersect_polygons(const CSPolygonArray& src_csp, const
         }
         num_pol[SRC_TGT_INTERSECT] += iparam_[scell].weights.size();
     }
-     Log::info() << " set size is " << src_cent.size() << std::endl;
     num_pol[SRC] = src_csp.size();
     num_pol[TGT] = tgt_csp.size();
     ATLAS_TRACE_MPI(ALLREDUCE) {
@@ -1302,9 +1301,9 @@ void ConservativeMethod::dump_intersection(const CSPolygon& s_csp, const CSPolyg
         }
         int pout;
         int pin = inside_vertices(s_csp, t_csp, pout);
-        Log::info() << " pin : " << pin << ", pout :" << pout 
-                    << ", total vertices : " << t_csp.size()<< "\n";
         if ( pin > 2 && iplg.area() < 3e-16 ) {
+            Log::info() << " pin : " << pin << ", pout :" << pout 
+                        << ", total vertices : " << t_csp.size()<< "\n";
             Log::info() << "* TGT      :" << t_csp << "\n";
             Log::info() << "* SRC^TGT       : " << iplg << "\n";
             Log::info() << "* area(SRC^TGT) : " << iplg.area() << "\n";
