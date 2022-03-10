@@ -250,6 +250,17 @@ CASE("source_covered") {
 
 CASE("edge cases") {
     Log::info().precision(20);
+    SECTION("CS-LFR-2 -> O48 problem polygon intersection") {
+        const auto plg0 = make_polygon({{180,-45},{180,0},{135,0},{135,-35.26438968}});
+        const auto plg1 = make_polygon({{180,-23.31573073},{180,-25.18098558},{-177.75,-23.31573073}});
+        auto iplg       = plg0.intersect(plg1);
+        auto jplg       = plg1.intersect(plg0);
+        EXPECT_APPROX_EQ(iplg.area(), jplg.area(), 1e-15);
+        EXPECT_EQ(iplg.size(), 0);
+        EXPECT_EQ(jplg.size(), 0);
+        EXPECT(iplg.equals(jplg, 1.e-12));
+        Log::info() << "Intersection area difference: " << std::abs(iplg.area() - jplg.area()) << "\n";
+    }
     SECTION("H128->H256 problem polygon intersection") {
         const auto plg0 = make_polygon({{42.45283019, 50.48004426},
                                         {43.33333333, 49.70239033},
