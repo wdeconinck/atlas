@@ -575,9 +575,8 @@ void ConservativeMethod::do_setup(const FunctionSpace& src_fs, const FunctionSpa
 }
 
 
-class ComparePointXYZ {
-public:
-    bool operator()(const PointXYZ& f, const PointXYZ& s) {
+struct ComparePointXYZ {
+    bool operator()(const PointXYZ& f, const PointXYZ& s) const {
         double eps = 1e4 * std::numeric_limits<double>::epsilon();
         if (f[0] < s[0] - eps) {
             return true;
