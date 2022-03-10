@@ -529,6 +529,8 @@ ConvexSphericalPolygon ConvexSphericalPolygon::intersect(const ConvexSphericalPo
         }
     }
     intersection.simplify();
+    intersection.compute_radius();
+    intersection.compute_centroid();
     return intersection;
 }
 
