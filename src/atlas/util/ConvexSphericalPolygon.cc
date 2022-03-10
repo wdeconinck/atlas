@@ -297,6 +297,9 @@ bool ConvexSphericalPolygon::validate() {
 }
 
 bool ConvexSphericalPolygon::equals(const ConvexSphericalPolygon& plg, const double deg_prec) const {
+    if ( size_ == 0 and plg.size_ == 0 ) {
+        return true;
+    }
     if ((not plg.valid_) || (not valid_) || size_ != plg.size()) {
         Log::info() << " ConvexSphericalPolygon::equals == not compatible\n";
         return false;
