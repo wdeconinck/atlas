@@ -117,7 +117,7 @@ CASE("test_interpolation_conservative") {
         RemapStat remap_stat_1;
         RemapStat remap_stat_2;
         do_remapping_test(Grid("H47"), Grid("H48"), func, remap_stat_1, remap_stat_2);
-        check(remap_stat_1, remap_stat_2, {1.e-13, 5.e-8, 2.8e-7, 2.8e-7, 5.5e-5, 5.5e-5});
+        check(remap_stat_1, remap_stat_2, {1.e-13, 5.e-8, 2.9e-7, 2.9e-7, 5.5e-5, 5.5e-5});
     }
 
     SECTION("analytic Y_2^2 as in Jones(1998)") {
