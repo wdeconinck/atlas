@@ -46,7 +46,6 @@ void do_remapping_test(Grid src_grid, Grid tgt_grid, double func(const PointLonL
     consMethod.do_setup(src_grid, tgt_grid);
 
     // get errors in polygon intersections
-    double geo_create_err;
     consMethod.setup_stat();
 
     // create source field from analytic function "func"
@@ -56,7 +55,6 @@ void do_remapping_test(Grid src_grid, Grid tgt_grid, double func(const PointLonL
     auto tgt_field       = tgt_fs.createField<double>();
     auto src_vals        = array::make_view<double, 1>(src_field);
     auto tgt_vals        = array::make_view<double, 1>(tgt_field);
-    ATLAS_ASSERT(src_vals.size() == src_fs.size());
     for (idx_t spt = 0; spt < src_vals.size(); ++spt) {
         auto p = consMethod.src_points(spt);
         PointLonLat pll;
