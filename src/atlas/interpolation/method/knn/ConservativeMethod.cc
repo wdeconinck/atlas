@@ -625,7 +625,11 @@ void ConservativeMethod::intersect_polygons(const CSPolygonArray& src_csp, const
     std::array<size_t,4> num_pol{0,0,0,0};
     enum AreaCoverageId {TOTAL_SRC, MAX_SRC};
     std::array<double,2> area_coverage{0.,0.};
-    iparam_.resize(src_csp.size());
+    src_iparam_.resize(src_csp.size());
+#ifndef NDEBUG
+    std::vector<InterpolationParameters> tgt_iparam;
+    tgt_iparam.resize(tgt_csp.size());
+#endif
     eckit::Channel blackhole;
     eckit::ProgressTimer progress("Intersecting polygons ", src_csp.size(), " cell", double(10),
                                   src_csp.size() > 50 ? Log::info() : blackhole);
@@ -643,17 +647,21 @@ void ConservativeMethod::intersect_polygons(const CSPolygonArray& src_csp, const
             CSPolygon csp_i   = s_csp.intersect(t_csp);
             double csp_i_area = csp_i.area();
 #ifndef NDEBUG
-            double pout;
-            if ( s_csp.inside_vertices(t_csp, pin, pout) > 2 && csp_i.area() < 3e-16 ) {
+            int pout;
+            if ( inside_vertices(s_csp, t_csp, pout) > 2 && csp_i.area() < 3e-16 ) {
                 dump_intersection( s_csp, tgt_csp, tgt_cells );
             }
 #endif
             if (csp_i_area > 0.) {
-                iparam_[scell].tcell_id.emplace_back(tcell);
-                iparam_[scell].src_weights.emplace_back(csp_i_area);
+#ifndef NDEBUG
+                tgt_iparam[tcell].cell_idx.emplace_back(scell);
+                tgt_iparam[tcell].tgt_weights.emplace_back(csp_i_area);
+#endif
+                src_iparam_[scell].cell_idx.emplace_back(tcell);
+                src_iparam_[scell].src_weights.emplace_back(csp_i_area);
                 double target_weight = csp_i_area / t_csp.area();
-                iparam_[scell].tgt_weights.emplace_back( target_weight );
-                iparam_[scell].centroids.emplace_back(csp_i.centroid());
+                src_iparam_[scell].tgt_weights.emplace_back( target_weight );
+                src_iparam_[scell].centroids.emplace_back(csp_i.centroid());
                 src_cover_area += csp_i_area;
                 ATLAS_ASSERT( target_weight < 1.1 );
                 ATLAS_ASSERT( csp_i_area / s_csp_area < 1.1 );
@@ -673,17 +681,17 @@ void ConservativeMethod::intersect_polygons(const CSPolygonArray& src_csp, const
             area_coverage[TOTAL_SRC] += src_cover_err;
             area_coverage[MAX_SRC]   = std::max( area_coverage[MAX_SRC], src_cover_err );
         }
-        if (iparam_[scell].tcell_id.size() == 0) {
+        if (src_iparam_[scell].cell_idx.size() == 0) {
             num_pol[SRC_NONINTERSECT]++;
         }
         if (normalise_intersections_ && src_cover_err_percent < 10.) {
             double wfactor = s_csp.area() / (src_cover_area > 0. ? src_cover_area : 1.);
-            for (idx_t i = 0; i < iparam_[scell].src_weights.size(); i++) {
-                iparam_[scell].src_weights[i] *= wfactor;
-                iparam_[scell].tgt_weights[i] *= wfactor;
+            for (idx_t i = 0; i < src_iparam_[scell].src_weights.size(); i++) {
+                src_iparam_[scell].src_weights[i] *= wfactor;
+                src_iparam_[scell].tgt_weights[i] *= wfactor;
             }
         }
-        num_pol[SRC_TGT_INTERSECT] += iparam_[scell].src_weights.size();
+        num_pol[SRC_TGT_INTERSECT] += src_iparam_[scell].src_weights.size();
     }
     num_pol[SRC] = src_csp.size();
     num_pol[TGT] = tgt_csp.size();
@@ -705,8 +713,8 @@ void ConservativeMethod::intersect_polygons(const CSPolygonArray& src_csp, const
             continue;
         }
         double diff_cell = std::get<0>(src_csp[scell]).area();
-        for (idx_t icell = 0; icell < iparam_[scell].src_weights.size(); ++icell) {
-            diff_cell -= iparam_[scell].src_weights[icell];
+        for (idx_t icell = 0; icell < src_iparam_[scell].src_weights.size(); ++icell) {
+            diff_cell -= src_iparam_[scell].src_weights[icell];
         }
         geo_err_l1    += std::abs(diff_cell);
         geo_err_linf  = std::max(geo_err_linf, std::abs(diff_cell));
@@ -718,6 +726,22 @@ void ConservativeMethod::intersect_polygons(const CSPolygonArray& src_csp, const
     remap_stat_.errors[RemapStat::Errors::GEO_L1] = 0.25 * M_1_PI * geo_err_l1;
     remap_stat_.errors[RemapStat::Errors::GEO_LINF] = geo_err_linf;
     remap_stat_.setup_computed = true;
+#ifndef NDEBUG
+    for (idx_t tcell = 0; tcell < tgt_csp.size(); ++tcell) {
+        const auto& t_csp = std::get<0>( tgt_csp[tcell] );
+        double tgt_cover_area = t_csp.area();
+        auto& tiparam = tgt_iparam[tcell];
+        for (idx_t icell = 0; icell < tiparam.cell_idx.size(); ++icell) {
+            tgt_cover_area -= tiparam.tgt_weights[icell];
+        }
+        const double tgt_cover_err = std::abs(t_csp.area() - tgt_cover_area);
+        const double tgt_cover_err_percent = tgt_cover_err / t_csp.area();
+        if (tgt_cover_err_percent > 10. and std::get<1>(tgt_csp[tcell]) == 0) {
+            Log::info() << "WARNING tgt cell covered: " << tgt_cover_err_percent << "%\n";
+            dump_intersection( t_csp, src_csp, tiparam.cell_idx );
+        }
+    }
+#endif
 }
 
 void ConservativeMethod::setup_1st_order_matrix() {
@@ -729,14 +753,14 @@ void ConservativeMethod::setup_1st_order_matrix() {
     // determine the size of array of triplets used to define the sparse matrix
     if (src_cell_data_) {
         for (idx_t scell = 0; scell < n_spoints_; ++scell) {
-            triplets_size += iparam_[scell].centroids.size();
+            triplets_size += src_iparam_[scell].centroids.size();
         }
     }
     else {
         for (idx_t snode = 0; snode < n_spoints_; ++snode) {
             for (idx_t isubcell = 0; isubcell < src_node2csp_[snode].size(); ++isubcell) {
                 idx_t subcell = src_node2csp_[snode][isubcell];
-                triplets_size += iparam_[subcell].tgt_weights.size();
+                triplets_size += src_iparam_[subcell].tgt_weights.size();
             }
         }
     }
@@ -746,9 +770,9 @@ void ConservativeMethod::setup_1st_order_matrix() {
     const auto tgt_areas_v = array::make_view<double, 1>(tgt_areas_);
     if (src_cell_data_ && tgt_cell_data_) {
         for (idx_t scell = 0; scell < n_spoints_; ++scell) {
-            const auto& iparam = iparam_[scell];
+            const auto& iparam = src_iparam_[scell];
             for (idx_t icell = 0; icell < iparam.centroids.size(); ++icell) {
-                idx_t tcell = iparam.tcell_id[icell];
+                idx_t tcell = iparam.cell_idx[icell];
                 triplets.emplace_back(tcell, scell, iparam.tgt_weights[icell]);
             }
         }
@@ -757,9 +781,9 @@ void ConservativeMethod::setup_1st_order_matrix() {
         for (idx_t snode = 0; snode < n_spoints_; ++snode) {
             for (idx_t isubcell = 0; isubcell < src_node2csp_[snode].size(); ++isubcell) {
                 const idx_t subcell = src_node2csp_[snode][isubcell];
-                const auto& iparam  = iparam_[subcell];
+                const auto& iparam  = src_iparam_[subcell];
                 for (idx_t icell = 0; icell < iparam.centroids.size(); ++icell) {
-                    idx_t tcell = iparam.tcell_id[icell];
+                    idx_t tcell = iparam.cell_idx[icell];
                     triplets.emplace_back(tcell, snode, iparam.tgt_weights[icell]);
                 }
             }
@@ -767,9 +791,9 @@ void ConservativeMethod::setup_1st_order_matrix() {
     }
     else if (src_cell_data_ && not tgt_cell_data_) {
         for (idx_t scell = 0; scell < n_spoints_; ++scell) {
-            const auto& iparam = iparam_[scell];
+            const auto& iparam = src_iparam_[scell];
             for (idx_t icell = 0; icell < iparam.centroids.size(); ++icell) {
-                idx_t tcell = iparam.tcell_id[icell];
+                idx_t tcell = iparam.cell_idx[icell];
                 idx_t tnode = tgt_csp2node_[tcell];
                 double inv_node_weight = (tgt_areas_v(tnode) > 0. ? 1./tgt_areas_v(tnode) : 0.);
                 triplets.emplace_back(tnode, scell, iparam.src_weights[icell] * inv_node_weight);
@@ -780,9 +804,9 @@ void ConservativeMethod::setup_1st_order_matrix() {
         for (idx_t snode = 0; snode < n_spoints_; ++snode) {
             for (idx_t isubcell = 0; isubcell < src_node2csp_[snode].size(); ++isubcell) {
                 const idx_t subcell = src_node2csp_[snode][isubcell];
-                const auto& iparam  = iparam_[subcell];
+                const auto& iparam  = src_iparam_[subcell];
                 for (idx_t icell = 0; icell < iparam.centroids.size(); ++icell) {
-                    idx_t tcell = iparam.tcell_id[icell];
+                    idx_t tcell = iparam.cell_idx[icell];
                     idx_t tnode = tgt_csp2node_[tcell];
                     double inv_node_weight = (tgt_areas_v(tnode) > 0. ? 1./tgt_areas_v(tnode) : 0.);
                     triplets.emplace_back(tnode, snode, iparam.src_weights[icell] * inv_node_weight);
@@ -808,12 +832,12 @@ void ConservativeMethod::setup_2nd_order_matrix() {
         const auto src_halo = array::make_view<int, 1>(src_mesh_.cells().halo());
         for (idx_t scell = 0; scell < n_spoints_; ++scell) {
             const auto nb_cells = get_cell_neighbours(src_mesh_, scell);
-            triplets_size += (2 * nb_cells.size() + 1) * iparam_[scell].centroids.size();
+            triplets_size += (2 * nb_cells.size() + 1) * src_iparam_[scell].centroids.size();
         }
         triplets.reserve(triplets_size);
         for (idx_t scell = 0; scell < n_spoints_; ++scell) {
             const auto nb_cells = get_cell_neighbours(src_mesh_, scell);
-            const auto& iparam  = iparam_[scell];
+            const auto& iparam  = src_iparam_[scell];
             if (iparam.centroids.size() == 0 && not src_halo(scell)) {
 //                Log::info() << " WARNING source cell " << scell << " not covered"
 //                            << "\n";
@@ -865,7 +889,7 @@ void ConservativeMethod::setup_2nd_order_matrix() {
             }
             if (tgt_cell_data_) {
                 for (idx_t icell = 0; icell < iparam.centroids.size(); ++icell) {
-                    const idx_t tcell = iparam.tcell_id[icell];
+                    const idx_t tcell = iparam.cell_idx[icell];
                     for (idx_t j = 0; j < nb_cells.size(); ++j) {
                         idx_t nj  = next_index(j, nb_cells.size());
                         idx_t sj  = nb_cells[j];
@@ -878,7 +902,7 @@ void ConservativeMethod::setup_2nd_order_matrix() {
             }
             else {
                 for (idx_t icell = 0; icell < iparam.centroids.size(); ++icell) {
-                    idx_t tcell                = iparam.tcell_id[icell];
+                    idx_t tcell                = iparam.cell_idx[icell];
                     idx_t tnode                = tgt_csp2node_[tcell];
                     double inv_node_weight = (tgt_areas_v(tnode) > 0.) ? 1./tgt_areas_v(tnode) : 0.;
                     double csp2node_coef = iparam.src_weights[icell] / iparam.tgt_weights[icell] * inv_node_weight;
@@ -901,7 +925,7 @@ void ConservativeMethod::setup_2nd_order_matrix() {
             const auto nb_nodes = get_node_neighbours(src_mesh_, snode);
             for (idx_t isubcell = 0; isubcell < src_node2csp_[snode].size(); ++isubcell) {
                 idx_t subcell = src_node2csp_[snode][isubcell];
-                triplets_size += (2 * nb_nodes.size() + 1) * iparam_[subcell].centroids.size();
+                triplets_size += (2 * nb_nodes.size() + 1) * src_iparam_[subcell].centroids.size();
             }
         }
         triplets.reserve(triplets_size);
@@ -912,7 +936,7 @@ void ConservativeMethod::setup_2nd_order_matrix() {
             PointXYZ Cs = {0., 0., 0.};
             for ( idx_t isubcell = 0; isubcell < src_node2csp_[snode].size(); ++isubcell ) {
                 idx_t subcell      = src_node2csp_[snode][isubcell];
-                const auto& iparam = iparam_[subcell];
+                const auto& iparam = src_iparam_[subcell];
                 for ( idx_t icell = 0; icell < iparam.centroids.size(); ++icell ) {
                     Cs = Cs + PointXYZ::mul( iparam.centroids[icell], iparam.src_weights[icell] );
                 }
@@ -951,7 +975,7 @@ Nsnj,-1e-16)) {
             // assemble the matrix
             for (idx_t isubcell = 0; isubcell < src_node2csp_[snode].size(); ++isubcell) {
                 idx_t subcell      = src_node2csp_[snode][isubcell];
-                const auto& iparam = iparam_[subcell];
+                const auto& iparam = src_iparam_[subcell];
                 if (iparam.centroids.size() == 0) {
                     continue;
                 }
@@ -965,7 +989,7 @@ Nsnj,-1e-16)) {
                 }
                 if (tgt_cell_data_) {
                     for (idx_t icell = 0; icell < iparam.centroids.size(); ++icell) {
-                        const idx_t tcell = iparam.tcell_id[icell];
+                        const idx_t tcell = iparam.cell_idx[icell];
                         for (idx_t j = 0; j < nb_nodes.size(); ++j) {
                             idx_t nj  = next_index(j, nb_nodes.size());
                             idx_t sj  = nb_nodes[j];
@@ -978,7 +1002,7 @@ Nsnj,-1e-16)) {
                 }
                 else {
                     for (idx_t icell = 0; icell < iparam.centroids.size(); ++icell) {
-                        idx_t tcell = iparam.tcell_id[icell];
+                        idx_t tcell = iparam.cell_idx[icell];
                         idx_t tnode = tgt_csp2node_[tcell];
                         double inv_node_weight = (tgt_areas_v(tnode) > 1e-15) ? 1./tgt_areas_v(tnode) : 0.;
                         double csp2node_coef = iparam.src_weights[icell] / iparam.tgt_weights[icell] * inv_node_weight;
@@ -1025,9 +1049,9 @@ void ConservativeMethod::do_execute(const Field& src_field, Field& tgt_field) {
                 tgt_vals(tcell) = 0.;
             }
             for (idx_t scell = 0; scell < src_vals.size(); ++scell) {
-                const auto& iparam = iparam_[scell];
+                const auto& iparam = src_iparam_[scell];
                 for (idx_t icell = 0; icell < iparam.centroids.size(); ++icell) {
-                    tgt_vals(iparam.tcell_id[icell]) += iparam.src_weights[icell] * src_vals(scell);
+                    tgt_vals(iparam.cell_idx[icell]) += iparam.src_weights[icell] * src_vals(scell);
                 }
             }
             for (idx_t tcell = 0; tcell < tgt_vals.size(); ++tcell) {
@@ -1055,7 +1079,7 @@ void ConservativeMethod::do_execute(const Field& src_field, Field& tgt_field) {
                 if (halo(scell)) {
                     continue;
                 }
-                const auto& iparam       = iparam_[scell];
+                const auto& iparam       = src_iparam_[scell];
                 const PointXYZ& P        = src_points_[scell];
                 PointXYZ grad            = {0., 0., 0.};
                 PointXYZ src_barycenter  = {0., 0., 0.};
@@ -1099,7 +1123,7 @@ void ConservativeMethod::do_execute(const Field& src_field, Field& tgt_field) {
                 grad           = grad - PointXYZ::mul(src_barycenter, PointXYZ::dot(grad, src_barycenter));
                 ATLAS_ASSERT(std::abs(PointXYZ::dot(grad, src_barycenter)) < 1e-14);
                 for (idx_t icell = 0; icell < iparam.centroids.size(); ++icell) {
-                    tgt_vals(iparam.tcell_id[icell]) +=
+                    tgt_vals(iparam.cell_idx[icell]) +=
                         iparam.src_weights[icell] *
                         (src_vals(scell) + PointXYZ::dot(grad, iparam.centroids[icell] - src_barycenter));
                 }
@@ -1184,18 +1208,18 @@ void ConservativeMethod::remap_stat(const FieldArray& src_vals, const FieldArray
             }
             double diff = src_vals(spt) * src_areas_v(spt);
             err_remap_cons += diff;
-            const auto& iparam = iparam_[spt];
+            const auto& iparam = src_iparam_[spt];
             if (tgt_cell_data_) {
                 for (idx_t icell = 0; icell < iparam.src_weights.size(); ++icell) {
-                    idx_t tcell = iparam.tcell_id[icell];
+                    idx_t tcell = iparam.cell_idx[icell];
                     if (tgt_cell_halo(tcell) < 1) {
-                        diff -= tgt_vals(iparam.tcell_id[icell]) * iparam.src_weights[icell];
+                        diff -= tgt_vals(iparam.cell_idx[icell]) * iparam.src_weights[icell];
                     }
                 }
             }
             else {
                 for (idx_t icell = 0; icell < iparam.src_weights.size(); ++icell) {
-                    idx_t tcell = iparam.tcell_id[icell];
+                    idx_t tcell = iparam.cell_idx[icell];
                     idx_t tnode = tgt_csp2node_[tcell];
                     if (tgt_node_halo(tnode) < 1) {
                         diff -= tgt_vals(tnode) * iparam.src_weights[icell];
@@ -1219,15 +1243,15 @@ void ConservativeMethod::remap_stat(const FieldArray& src_vals, const FieldArray
             err_remap_cons += diff;
             const auto& node2csp = src_node2csp_[spt];
             for (idx_t subcell = 0; subcell < node2csp.size(); ++subcell) {
-                const auto& iparam = iparam_[node2csp[subcell]];
+                const auto& iparam = src_iparam_[node2csp[subcell]];
                 if (tgt_cell_data_) {
                     for (idx_t icell = 0; icell < iparam.src_weights.size(); ++icell) {
-                        diff -= tgt_vals(iparam.tcell_id[icell]) * iparam.src_weights[icell];
+                        diff -= tgt_vals(iparam.cell_idx[icell]) * iparam.src_weights[icell];
                     }
                 }
                 else {
                     for (idx_t icell = 0; icell < iparam.src_weights.size(); ++icell) {
-                        idx_t tcell = iparam.tcell_id[icell];
+                        idx_t tcell = iparam.cell_idx[icell];
                         idx_t tnode = tgt_csp2node_[tcell];
                         diff -= tgt_vals(tnode) * iparam.src_weights[icell];
                     }
@@ -1277,47 +1301,50 @@ void ConservativeMethod::remap_stat(const FieldArray& src_vals, const FieldArray
     remap_stat_.remap_computed = true;
 }
 
+auto debug_polygons = [](const CSPolygon& plg_1, const CSPolygon& plg_2) {
+    auto iplg          = plg_1.intersect( plg_2 );
+    auto jplg          = plg_2.intersect( plg_1 );
+    const double darea = std::abs(iplg.area() - jplg.area()) / plg_1.area();
+    if (darea > 1e-6) {
+        Log::info() << "* PLG_1       : " << std::setprecision(10) << plg_1 << "\n";
+        Log::info() << "* area(PLG_1) : " << plg_1.area() << "\n\n";
+        Log::info() << "* PLG_2      :" << plg_2 << "\n";
+        Log::info() << "* (!!) PLG_12 = PLG_1 ^ PLG_2  : " << iplg << "\n";
+        Log::info() << "* (!!) PLG_21 = PLG_2 ^ PLG_1  : " << jplg << "\n";
+        Log::info() << "* (!!) area(PLG_12 - PLG_21)   : " << darea << "\n";
+        Log::info() << "* (!!) area(PLG_21)            : " << jplg.area() << "\n";
+        //ATLAS_ASSERT( false, "SRC.intersect.TGT =/= TGT.intersect.SRC.");
+    }
+    int pout;
+    int pin = inside_vertices(plg_1, plg_2, pout);
+    if ( pin > 2 && iplg.area() < 3e-16 ) {
+        Log::info() << " pin : " << pin << ", pout :" << pout 
+                    << ", total vertices : " << plg_2.size()<< "\n";
+        Log::info() << "* PLG_2                   :" << plg_2 << "\n";
+        Log::info() << "* PLG_12 = PLG_1 ^ PLG_2  : " << iplg << "\n";
+        Log::info() << "* area(PLG_12)            : " << iplg.area() << "\n";
+        Log::info() << "\n";
+        //ATLAS_ASSERT( false, "SRC must intersect TGT." );
+    }
+};
+
+void ConservativeMethod::dump_intersection(const CSPolygon& s_csp, const CSPolygonArray& tgt_csp,
+                                           const std::vector<idx_t>& tgt_cells) const {
+    for (int i = 0; i < tgt_cells.size(); ++i) {
+        const auto tcell  = tgt_cells[i];
+        const auto& t_csp = std::get<0>(tgt_csp[tcell]);
+        debug_polygons(s_csp, t_csp);
+    }
+}
+
 template <class TargetCellsIDs>
 void ConservativeMethod::dump_intersection(const CSPolygon& s_csp, const CSPolygonArray& tgt_csp,
                                            const TargetCellsIDs& tgt_cells) const {
-    Log::info() << "\n === DEBUG ===\n\n";
-    Log::info() << "* SRC       : " << std::setprecision(10) << s_csp << "\n";
-    Log::info() << "* area(SRC) : " << s_csp.area() << "\n\n";
-    Log::info().indent();
-
-    double area_ncov = s_csp.area();
     for (int i = 0; i < tgt_cells.size(); ++i) {
         const auto tcell  = tgt_cells[i].payload();
         const auto& t_csp = std::get<0>(tgt_csp[tcell]);
-        auto iplg          = s_csp.intersect(t_csp);
-        auto jplg          = t_csp.intersect(s_csp);
-        const double darea = std::abs(iplg.area() - jplg.area()) / s_csp.area();
-        if (darea > 1e-6) {
-            s_csp.intersect(t_csp);
-            Log::info() << "* TGT      :" << t_csp << "\n";
-            Log::info() << "* (!!) SRC^TGT                 : " << iplg << "\n";
-            Log::info() << "* (!!) TGT^SRC                 : " << jplg << "\n";
-            Log::info() << "* (!!) area(SRC^TGT - TGT^SRC) : " << darea << "\n";
-            Log::info() << "* (!!) area(TGT^SRC)           : " << jplg.area() << "\n";
-            t_csp.intersect(s_csp);
-            //ATLAS_ASSERT( false, "SRC.intersect.TGT =/= TGT.intersect.SRC.");
-        }
-        int pout;
-        int pin = inside_vertices(s_csp, t_csp, pout);
-        if ( pin > 2 && iplg.area() < 3e-16 ) {
-            Log::info() << " pin : " << pin << ", pout :" << pout 
-                        << ", total vertices : " << t_csp.size()<< "\n";
-            Log::info() << "* TGT      :" << t_csp << "\n";
-            Log::info() << "* SRC^TGT       : " << iplg << "\n";
-            Log::info() << "* area(SRC^TGT) : " << iplg.area() << "\n";
-            Log::info() << "\n";
-            area_ncov -= iplg.area();
-            //ATLAS_ASSERT( false, "SRC must intersect TGT." );
-        }
+        debug_polygons(s_csp, t_csp);
     }
-    Log::info().unindent();
-    Log::info() << "non covered: " << area_ncov / s_csp.area() << "\n";
-    Log::info() << "\n=== END DEBUG ===\n\n";
 }
 
 }  // namespace method

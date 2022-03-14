@@ -28,7 +28,7 @@ class ConservativeMethod : public Method {
 
 private:
     struct InterpolationParameters {
-        std::vector<idx_t> tcell_id;
+        std::vector<idx_t> cell_idx;
         std::vector<PointXYZ> centroids;
         std::vector<double> src_weights;
         std::vector<double> tgt_weights;
@@ -90,7 +90,7 @@ public:
     int normalise_intersections() const { return normalise_intersections_; }
     int order() const { return order_; }
     int matrix_free() const { return matrix_free_; }
-    inline const std::vector<InterpolationParameters>& iparam() const { return iparam_; }
+    inline const std::vector<InterpolationParameters>& iparam() const { return src_iparam_; }
     inline const PointXYZ& src_points(size_t id) const { return src_points_[id]; }
     inline const PointXYZ& tgt_points(size_t id) const { return tgt_points_[id]; }
 
@@ -98,6 +98,8 @@ protected:
     void intersect_polygons(const CSPolygonArray& src_csp, const CSPolygonArray& tgt_scp);
     void setup_1st_order_matrix();
     void setup_2nd_order_matrix();
+    void dump_intersection(const util::ConvexSphericalPolygon& s_csp, const CSPolygonArray& tgt_csp,
+                           const std::vector<idx_t>& tgt_cells) const;
     template <class TargetCellsIDs>
     void dump_intersection(const util::ConvexSphericalPolygon& s_csp, const CSPolygonArray& tgt_csp,
                            const TargetCellsIDs& tgt_cells) const;
@@ -125,7 +127,7 @@ protected:
     int order_;
     bool matrix_free_;
     mutable RemapStat remap_stat_;
-    std::vector<InterpolationParameters> iparam_;   // TODO: remove after setup
+    std::vector<InterpolationParameters> src_iparam_;   // TODO: remove after setup
 
     // position and effective area of data points
     idx_t n_spoints_;
