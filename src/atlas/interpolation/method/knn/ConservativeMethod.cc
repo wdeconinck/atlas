@@ -562,15 +562,13 @@ void ConservativeMethod::do_setup(const FunctionSpace& src_fs, const FunctionSpa
             tgt_points_[tpt]      = PointXYZ::div(tgt_points_[tpt], tgt_point_norm);
         }
     }
-    //src_areas_.set_dirty( true );
-    //src_areas_.haloExchange();
     if (not matrix_free_) {
         setup_1st_order_matrix();
         setup_2nd_order_matrix();
     }
 }
 
-
+// needed for intersect_polygons only
 struct ComparePointXYZ {
     bool operator()(const PointXYZ& f, const PointXYZ& s) const {
         // eps = ConvexSphericalPolygon::EPS which is the threshold when two points are "same"
@@ -637,44 +635,49 @@ void ConservativeMethod::intersect_polygons(const CSPolygonArray& src_csp, const
         }
         const auto& s_csp   = std::get<0>(src_csp[scell]);
 		const double s_csp_area = s_csp.area();
-        double covered_area = 0.;
+        double src_cover_area = 0.;
         auto tgt_cells = kdt_search.closestPointsWithinRadius(s_csp.centroid(), s_csp.radius() + max_tgtcell_rad);
         for (idx_t ttcell = 0; ttcell < tgt_cells.size(); ++ttcell) {
             auto tcell        = tgt_cells[ttcell].payload();
             const auto& t_csp = std::get<0>(tgt_csp[tcell]);
             CSPolygon csp_i   = s_csp.intersect(t_csp);
             double csp_i_area = csp_i.area();
-            //if ( s_csp.empty_intersection( t_csp, pin, pout ) && csp_i.area() < 2e-16 ) {
-                //dump_intersection( s_csp, tgt_csp, tgt_cells );
-            //}
+#ifndef NDEBUG
+            double pout;
+            if ( s_csp.inside_vertices(t_csp, pin, pout) > 2 && csp_i.area() < 3e-16 ) {
+                dump_intersection( s_csp, tgt_csp, tgt_cells );
+            }
+#endif
             if (csp_i_area > 0.) {
                 iparam_[scell].tcell_id.emplace_back(tcell);
                 iparam_[scell].src_weights.emplace_back(csp_i_area);
                 double target_weight = csp_i_area / t_csp.area();
                 iparam_[scell].tgt_weights.emplace_back( target_weight );
                 iparam_[scell].centroids.emplace_back(csp_i.centroid());
-                covered_area += csp_i_area;
+                src_cover_area += csp_i_area;
                 ATLAS_ASSERT( target_weight < 1.1 );
                 ATLAS_ASSERT( csp_i_area / s_csp_area < 1.1 );
             }
         }
-        const double loc_csp_error = s_csp_area - covered_area;
-        if (loc_csp_error > 1e-8 and std::get<1>(src_csp[scell]) == 0) {
+        const double src_cover_err = std::abs(s_csp_area - src_cover_area);
+        const double src_cover_err_percent = src_cover_err / s_csp_area;
+        if (src_cover_err_percent > 10. and std::get<1>(src_csp[scell]) == 0) {
+            // HACK: source cell at process boundary will not be covered by target cells, skip them
+            // TODO: mark these source cells beforehand and compute error in them among the processes
+#ifndef NDEBUG
             if ( mpi::size() == 1) {
-                // TODO: for mpi>1 there are src cells with flag 0 not entirely covered by tgt cells
-                Log::info() << "WARNING src cell area not fully covered: " << loc_csp_error << "\n";
-                //dump_intersection( s_csp, tgt_csp, tgt_cells );
+                Log::info() << "WARNING src cell covered: " << src_cover_err_percent << "%\n";
+                dump_intersection( s_csp, tgt_csp, tgt_cells );
             }
-            // HACK: partially covered src cells in parallel runs are not to be added, avoid them with
-            // loc_scp_error > 1e-8
-            area_coverage[TOTAL_SRC] += loc_csp_error;
-            area_coverage[MAX_SRC]   = std::max( area_coverage[MAX_SRC], loc_csp_error );
+#endif
+            area_coverage[TOTAL_SRC] += src_cover_err;
+            area_coverage[MAX_SRC]   = std::max( area_coverage[MAX_SRC], src_cover_err );
         }
         if (iparam_[scell].tcell_id.size() == 0) {
             num_pol[SRC_NONINTERSECT]++;
         }
-        if (normalise_intersections_ && loc_csp_error < 1e-5) {
-            double wfactor = s_csp.area() / (covered_area > 1e-10 ? covered_area : 1.);
+        if (normalise_intersections_ && src_cover_err_percent < 10.) {
+            double wfactor = s_csp.area() / (src_cover_area > 0. ? src_cover_area : 1.);
             for (idx_t i = 0; i < iparam_[scell].src_weights.size(); i++) {
                 iparam_[scell].src_weights[i] *= wfactor;
                 iparam_[scell].tgt_weights[i] *= wfactor;
@@ -1277,10 +1280,10 @@ void ConservativeMethod::remap_stat(const FieldArray& src_vals, const FieldArray
 template <class TargetCellsIDs>
 void ConservativeMethod::dump_intersection(const CSPolygon& s_csp, const CSPolygonArray& tgt_csp,
                                            const TargetCellsIDs& tgt_cells) const {
-    Log::info().flush();
     Log::info() << "\n === DEBUG ===\n\n";
     Log::info() << "* SRC       : " << std::setprecision(10) << s_csp << "\n";
     Log::info() << "* area(SRC) : " << s_csp.area() << "\n\n";
+    Log::info().indent();
 
     double area_ncov = s_csp.area();
     for (int i = 0; i < tgt_cells.size(); ++i) {
@@ -1288,8 +1291,8 @@ void ConservativeMethod::dump_intersection(const CSPolygon& s_csp, const CSPolyg
         const auto& t_csp = std::get<0>(tgt_csp[tcell]);
         auto iplg          = s_csp.intersect(t_csp);
         auto jplg          = t_csp.intersect(s_csp);
-        const double darea = std::abs(iplg.area() - jplg.area());
-        if (darea > 1e-12) {
+        const double darea = std::abs(iplg.area() - jplg.area()) / s_csp.area();
+        if (darea > 1e-6) {
             s_csp.intersect(t_csp);
             Log::info() << "* TGT      :" << t_csp << "\n";
             Log::info() << "* (!!) SRC^TGT                 : " << iplg << "\n";
@@ -1297,7 +1300,7 @@ void ConservativeMethod::dump_intersection(const CSPolygon& s_csp, const CSPolyg
             Log::info() << "* (!!) area(SRC^TGT - TGT^SRC) : " << darea << "\n";
             Log::info() << "* (!!) area(TGT^SRC)           : " << jplg.area() << "\n";
             t_csp.intersect(s_csp);
-            ATLAS_ASSERT( false, "SRC.intersect.TGT =/= TGT.intersect.SRC.");
+            //ATLAS_ASSERT( false, "SRC.intersect.TGT =/= TGT.intersect.SRC.");
         }
         int pout;
         int pin = inside_vertices(s_csp, t_csp, pout);
@@ -1309,11 +1312,11 @@ void ConservativeMethod::dump_intersection(const CSPolygon& s_csp, const CSPolyg
             Log::info() << "* area(SRC^TGT) : " << iplg.area() << "\n";
             Log::info() << "\n";
             area_ncov -= iplg.area();
-            ATLAS_ASSERT( false, "SRC must intersect TGT." );
+            //ATLAS_ASSERT( false, "SRC must intersect TGT." );
         }
     }
-    Log::info() << "non covered: " << area_ncov << "\n";
-    ATLAS_ASSERT( area_ncov < 1e-12 );
+    Log::info().unindent();
+    Log::info() << "non covered: " << area_ncov / s_csp.area() << "\n";
     Log::info() << "\n=== END DEBUG ===\n\n";
 }
 
