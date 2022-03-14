@@ -116,9 +116,6 @@ public:
 
     int next(const int index) const { return (index == size_ - 1) ? 0 : index + 1; };
 
-    /// Check if there are two vertices of "plg", one inside and one outside of this polygon
-    bool empty_intersection( const ConvexSphericalPolygon& plg, int& pin, int& pout ) const;
-
 private:
     struct SubTriangle {
         PointXYZ centroid;
