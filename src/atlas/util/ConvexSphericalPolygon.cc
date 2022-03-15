@@ -442,7 +442,7 @@ void ConvexSphericalPolygon::clip(const GreatCircleSegment& great_circle) {
     StackVector<int> vertex_in(size_);
     int num_vertices_in = 0;
     for (int i = 0; i < size_; i++) {
-        vertex_in[i] = great_circle.inLeftHemisphere(sph_coords_[i], -EPS);
+        vertex_in[i] = great_circle.inLeftHemisphere(sph_coords_[i], -TOL);
         num_vertices_in += vertex_in[i] ? 1 : 0;
     }
 

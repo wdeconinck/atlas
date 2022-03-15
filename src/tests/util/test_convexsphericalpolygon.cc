@@ -263,7 +263,7 @@ CASE("edge cases") {
         EXPECT_APPROX_EQ(iplg.area(), jplg.area(), 2e-15); // can not take 1e-15
         EXPECT_EQ(iplg.size(), 3);
         EXPECT_EQ(jplg.size(), 3);
-        EXPECT(iplg.equals(jplg, 1.e-12));
+        EXPECT(iplg.equals(jplg, 2.e-12));
         Log::info() << "Intersection area difference: " << std::abs(iplg.area() - jplg.area()) << "\n";
     }
     SECTION("CS-LFR-2 -> O48 problem polygon intersection") {
