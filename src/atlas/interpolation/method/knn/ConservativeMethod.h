@@ -98,11 +98,11 @@ protected:
     void intersect_polygons(const CSPolygonArray& src_csp, const CSPolygonArray& tgt_scp);
     void setup_1st_order_matrix();
     void setup_2nd_order_matrix();
-    void dump_intersection(const util::ConvexSphericalPolygon& s_csp, const CSPolygonArray& tgt_csp,
-                           const std::vector<idx_t>& tgt_cells) const;
+    void dump_intersection(const CSPolygon& plg_1, const CSPolygonArray& plg_2_array,
+                                           const std::vector<idx_t>& plg_2_idx_array) const;
     template <class TargetCellsIDs>
-    void dump_intersection(const util::ConvexSphericalPolygon& s_csp, const CSPolygonArray& tgt_csp,
-                           const TargetCellsIDs& tgt_cells) const;
+    void dump_intersection(const CSPolygon& plg_1, const CSPolygonArray& plg_2_array,
+                                           const TargetCellsIDs& plg_2_idx_array) const;
     std::vector<idx_t> sort_cell_edges(Mesh& mesh, idx_t cell_id) const;
     std::vector<idx_t> sort_node_edges(Mesh& mesh, idx_t cell_id) const;
     std::vector<idx_t> get_cell_neighbours(Mesh& mesh, idx_t jcell) const;

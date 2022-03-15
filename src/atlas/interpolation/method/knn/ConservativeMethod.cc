@@ -27,6 +27,8 @@
 #include "atlas/util/KDTree.h"
 #include "atlas/util/Topology.h"
 
+#define PLG_DEBUG 0
+
 namespace atlas {
 namespace interpolation {
 namespace method {
@@ -626,7 +628,7 @@ void ConservativeMethod::intersect_polygons(const CSPolygonArray& src_csp, const
     enum AreaCoverageId {TOTAL_SRC, MAX_SRC};
     std::array<double,2> area_coverage{0.,0.};
     src_iparam_.resize(src_csp.size());
-#ifndef NDEBUG
+#if PLG_DEBUG
     std::vector<InterpolationParameters> tgt_iparam;
     tgt_iparam.resize(tgt_csp.size());
 #endif
@@ -646,14 +648,14 @@ void ConservativeMethod::intersect_polygons(const CSPolygonArray& src_csp, const
             const auto& t_csp = std::get<0>(tgt_csp[tcell]);
             CSPolygon csp_i   = s_csp.intersect(t_csp);
             double csp_i_area = csp_i.area();
-#ifndef NDEBUG
+#if PLG_DEBUG
             int pout;
             if ( inside_vertices(s_csp, t_csp, pout) > 2 && csp_i.area() < 3e-16 ) {
                 dump_intersection( s_csp, tgt_csp, tgt_cells );
             }
 #endif
             if (csp_i_area > 0.) {
-#ifndef NDEBUG
+#if PLG_DEBUG
                 tgt_iparam[tcell].cell_idx.emplace_back(scell);
                 tgt_iparam[tcell].tgt_weights.emplace_back(csp_i_area);
 #endif
@@ -669,12 +671,12 @@ void ConservativeMethod::intersect_polygons(const CSPolygonArray& src_csp, const
         }
         const double src_cover_err = std::abs(s_csp_area - src_cover_area);
         const double src_cover_err_percent = src_cover_err / s_csp_area;
-        if (src_cover_err_percent > 10. and std::get<1>(src_csp[scell]) == 0) {
+        if (src_cover_err_percent > 1. and std::get<1>(src_csp[scell]) == 0) {
             // HACK: source cell at process boundary will not be covered by target cells, skip them
             // TODO: mark these source cells beforehand and compute error in them among the processes
-#ifndef NDEBUG
+#if PLG_DEBUG
             if ( mpi::size() == 1) {
-                Log::info() << "WARNING src cell covered: " << src_cover_err_percent << "%\n";
+                Log::info() << "WARNING src cell covering error : " << src_cover_err_percent << "%\n";
                 dump_intersection( s_csp, tgt_csp, tgt_cells );
             }
 #endif
@@ -684,7 +686,7 @@ void ConservativeMethod::intersect_polygons(const CSPolygonArray& src_csp, const
         if (src_iparam_[scell].cell_idx.size() == 0) {
             num_pol[SRC_NONINTERSECT]++;
         }
-        if (normalise_intersections_ && src_cover_err_percent < 10.) {
+        if (normalise_intersections_ && src_cover_err_percent < 1.) {
             double wfactor = s_csp.area() / (src_cover_area > 0. ? src_cover_area : 1.);
             for (idx_t i = 0; i < src_iparam_[scell].src_weights.size(); i++) {
                 src_iparam_[scell].src_weights[i] *= wfactor;
@@ -726,18 +728,17 @@ void ConservativeMethod::intersect_polygons(const CSPolygonArray& src_csp, const
     remap_stat_.errors[RemapStat::Errors::GEO_L1] = 0.25 * M_1_PI * geo_err_l1;
     remap_stat_.errors[RemapStat::Errors::GEO_LINF] = geo_err_linf;
     remap_stat_.setup_computed = true;
-#ifndef NDEBUG
+#if PLG_DEBUG
     for (idx_t tcell = 0; tcell < tgt_csp.size(); ++tcell) {
         const auto& t_csp = std::get<0>( tgt_csp[tcell] );
-        double tgt_cover_area = t_csp.area();
-        auto& tiparam = tgt_iparam[tcell];
+        double tgt_cover_area = 0.;
+        const auto& tiparam = tgt_iparam[tcell];
         for (idx_t icell = 0; icell < tiparam.cell_idx.size(); ++icell) {
-            tgt_cover_area -= tiparam.tgt_weights[icell];
+            tgt_cover_area += tiparam.tgt_weights[icell];
         }
-        const double tgt_cover_err = std::abs(t_csp.area() - tgt_cover_area);
-        const double tgt_cover_err_percent = tgt_cover_err / t_csp.area();
-        if (tgt_cover_err_percent > 10. and std::get<1>(tgt_csp[tcell]) == 0) {
-            Log::info() << "WARNING tgt cell covered: " << tgt_cover_err_percent << "%\n";
+        const double tgt_cover_err_percent = std::abs(t_csp.area() - tgt_cover_area) / t_csp.area();
+        if (tgt_cover_err_percent > 1e-6 and std::get<1>(tgt_csp[tcell]) == 0) {
+            Log::info() << "WARNING tgt cell covering error : " << tgt_cover_err_percent << " %\n";
             dump_intersection( t_csp, src_csp, tiparam.cell_idx );
         }
     }
@@ -839,8 +840,6 @@ void ConservativeMethod::setup_2nd_order_matrix() {
             const auto nb_cells = get_cell_neighbours(src_mesh_, scell);
             const auto& iparam  = src_iparam_[scell];
             if (iparam.centroids.size() == 0 && not src_halo(scell)) {
-//                Log::info() << " WARNING source cell " << scell << " not covered"
-//                            << "\n";
                 continue;
             }
             /* // better conservation after Kritsikis et al. (2017)
@@ -1307,7 +1306,7 @@ auto debug_polygons = [](const CSPolygon& plg_1, const CSPolygon& plg_2) {
     const double darea = std::abs(iplg.area() - jplg.area()) / plg_1.area();
     if (darea > 1e-6) {
         Log::info() << "* PLG_1       : " << std::setprecision(10) << plg_1 << "\n";
-        Log::info() << "* area(PLG_1) : " << plg_1.area() << "\n\n";
+        Log::info() << "* area(PLG_1) : " << plg_1.area() << "\n";
         Log::info() << "* PLG_2      :" << plg_2 << "\n";
         Log::info() << "* (!!) PLG_12 = PLG_1 ^ PLG_2  : " << iplg << "\n";
         Log::info() << "* (!!) PLG_21 = PLG_2 ^ PLG_1  : " << jplg << "\n";
@@ -1328,22 +1327,22 @@ auto debug_polygons = [](const CSPolygon& plg_1, const CSPolygon& plg_2) {
     }
 };
 
-void ConservativeMethod::dump_intersection(const CSPolygon& s_csp, const CSPolygonArray& tgt_csp,
-                                           const std::vector<idx_t>& tgt_cells) const {
-    for (int i = 0; i < tgt_cells.size(); ++i) {
-        const auto tcell  = tgt_cells[i];
-        const auto& t_csp = std::get<0>(tgt_csp[tcell]);
-        debug_polygons(s_csp, t_csp);
+void ConservativeMethod::dump_intersection(const CSPolygon& plg_1, const CSPolygonArray& plg_2_array,
+                                           const std::vector<idx_t>& plg_2_idx_array) const {
+    for (int i = 0; i < plg_2_idx_array.size(); ++i) {
+        const auto plg_2_idx  = plg_2_idx_array[i];
+        const auto& plg_2     = std::get<0>(plg_2_array[plg_2_idx]);
+        debug_polygons(plg_1, plg_2);
     }
 }
 
 template <class TargetCellsIDs>
-void ConservativeMethod::dump_intersection(const CSPolygon& s_csp, const CSPolygonArray& tgt_csp,
-                                           const TargetCellsIDs& tgt_cells) const {
-    for (int i = 0; i < tgt_cells.size(); ++i) {
-        const auto tcell  = tgt_cells[i].payload();
-        const auto& t_csp = std::get<0>(tgt_csp[tcell]);
-        debug_polygons(s_csp, t_csp);
+void ConservativeMethod::dump_intersection(const CSPolygon& plg_1, const CSPolygonArray& plg_2_array,
+                                           const TargetCellsIDs& plg_2_idx_array) const {
+    for (int i = 0; i < plg_2_idx_array.size(); ++i) {
+        const auto plg_2_idx  = plg_2_idx_array[i].payload();
+        const auto& plg_2     = std::get<0>(plg_2_array[plg_2_idx]);
+        debug_polygons(plg_1, plg_2);
     }
 }
 
