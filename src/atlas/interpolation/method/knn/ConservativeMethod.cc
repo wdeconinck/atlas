@@ -649,6 +649,7 @@ void ConservativeMethod::intersect_polygons(const CSPolygonArray& src_csp, const
             CSPolygon csp_i   = s_csp.intersect(t_csp);
             double csp_i_area = csp_i.area();
 #if PLG_DEBUG
+            // check zero area intersections with inside_vertices
             int pout;
             if ( inside_vertices(s_csp, t_csp, pout) > 2 && csp_i.area() < 3e-16 ) {
                 dump_intersection( s_csp, tgt_csp, tgt_cells );
@@ -670,8 +671,8 @@ void ConservativeMethod::intersect_polygons(const CSPolygonArray& src_csp, const
             }
         }
         const double src_cover_err = std::abs(s_csp_area - src_cover_area);
-        const double src_cover_err_percent = src_cover_err / s_csp_area;
-        if (src_cover_err_percent > 1. and std::get<1>(src_csp[scell]) == 0) {
+        const double src_cover_err_percent = 100. * src_cover_err / s_csp_area;
+        if (src_cover_err_percent > 10. and std::get<1>(src_csp[scell]) == 0) {
             // HACK: source cell at process boundary will not be covered by target cells, skip them
             // TODO: mark these source cells beforehand and compute error in them among the processes
 #if PLG_DEBUG
@@ -736,8 +737,8 @@ void ConservativeMethod::intersect_polygons(const CSPolygonArray& src_csp, const
         for (idx_t icell = 0; icell < tiparam.cell_idx.size(); ++icell) {
             tgt_cover_area += tiparam.tgt_weights[icell];
         }
-        const double tgt_cover_err_percent = std::abs(t_csp.area() - tgt_cover_area) / t_csp.area();
-        if (tgt_cover_err_percent > 1e-6 and std::get<1>(tgt_csp[tcell]) == 0) {
+        const double tgt_cover_err_percent = 100. * std::abs(t_csp.area() - tgt_cover_area) / t_csp.area();
+        if (tgt_cover_err_percent > 1e-4 and std::get<1>(tgt_csp[tcell]) == 0) {
             Log::info() << "WARNING tgt cell covering error : " << tgt_cover_err_percent << " %\n";
             dump_intersection( t_csp, src_csp, tiparam.cell_idx );
         }
@@ -1303,15 +1304,16 @@ void ConservativeMethod::remap_stat(const FieldArray& src_vals, const FieldArray
 auto debug_polygons = [](const CSPolygon& plg_1, const CSPolygon& plg_2) {
     auto iplg          = plg_1.intersect( plg_2 );
     auto jplg          = plg_2.intersect( plg_1 );
-    const double darea = std::abs(iplg.area() - jplg.area()) / plg_1.area();
-    if (darea > 1e-6) {
-        Log::info() << "* PLG_1       : " << std::setprecision(10) << plg_1 << "\n";
-        Log::info() << "* area(PLG_1) : " << plg_1.area() << "\n";
-        Log::info() << "* PLG_2      :" << plg_2 << "\n";
-        Log::info() << "* (!!) PLG_12 = PLG_1 ^ PLG_2  : " << iplg << "\n";
-        Log::info() << "* (!!) PLG_21 = PLG_2 ^ PLG_1  : " << jplg << "\n";
-        Log::info() << "* (!!) area(PLG_12 - PLG_21)   : " << darea << "\n";
-        Log::info() << "* (!!) area(PLG_21)            : " << jplg.area() << "\n";
+    const double intersection_comm_err = std::abs(iplg.area() - jplg.area()) / (plg_1.area() > 0 ? plg_1.area() : 1.);
+    Log::info().indent();
+    if (intersection_comm_err > 1e-6) {
+        Log::info() << "PLG_1       : " << std::setprecision(10) << plg_1 << "\n";
+        Log::info() << "area(PLG_1) : " << plg_1.area() << "\n";
+        Log::info() << "PLG_2      :" << plg_2 << "\n";
+        Log::info() << "PLG_12 = PLG_1 ^ PLG_2  : " << iplg << "\n";
+        Log::info() << "PLG_21 = PLG_2 ^ PLG_1  : " << jplg << "\n";
+        Log::info() << "area(PLG_12 - PLG_21)   : " << intersection_comm_err << "\n";
+        Log::info() << "area(PLG_21)            : " << jplg.area() << "\n";
         //ATLAS_ASSERT( false, "SRC.intersect.TGT =/= TGT.intersect.SRC.");
     }
     int pout;
@@ -1319,12 +1321,12 @@ auto debug_polygons = [](const CSPolygon& plg_1, const CSPolygon& plg_2) {
     if ( pin > 2 && iplg.area() < 3e-16 ) {
         Log::info() << " pin : " << pin << ", pout :" << pout 
                     << ", total vertices : " << plg_2.size()<< "\n";
-        Log::info() << "* PLG_2                   :" << plg_2 << "\n";
-        Log::info() << "* PLG_12 = PLG_1 ^ PLG_2  : " << iplg << "\n";
-        Log::info() << "* area(PLG_12)            : " << iplg.area() << "\n";
-        Log::info() << "\n";
+        Log::info() << "PLG_2                   :" << plg_2 << "\n";
+        Log::info() << "PLG_12 = PLG_1 ^ PLG_2  : " << iplg << "\n";
+        Log::info() << "area(PLG_12)            : " << iplg.area() << "\n\n";
         //ATLAS_ASSERT( false, "SRC must intersect TGT." );
     }
+    Log::info().unindent();
 };
 
 void ConservativeMethod::dump_intersection(const CSPolygon& plg_1, const CSPolygonArray& plg_2_array,
