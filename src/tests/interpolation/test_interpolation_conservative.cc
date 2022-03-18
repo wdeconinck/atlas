@@ -37,8 +37,8 @@ using ConservativeMethod = interpolation::method::ConservativeMethod;
 using RemapStat          = ConservativeMethod::RemapStat;
 using FieldArray         = array::ArrayView<double, 1>;
 
-void do_remapping_test(Grid src_grid, Grid tgt_grid, double func(const PointLonLat&),
-                       RemapStat& remap_stat_1, RemapStat& remap_stat_2) {
+void do_remapping_test(Grid src_grid, Grid tgt_grid, double func(const PointLonLat&), RemapStat& remap_stat_1,
+                       RemapStat& remap_stat_2) {
     Log::info().indent();
     // setup conservative remap: compute weights, polygon intersection, etc
     util::Config config;
@@ -49,19 +49,19 @@ void do_remapping_test(Grid src_grid, Grid tgt_grid, double func(const PointLonL
     consMethod.setup_stat();
 
     // create source field from analytic function "func"
-    const auto& src_fs   = consMethod.source();
-    const auto& tgt_fs   = consMethod.target();
-    auto src_field       = src_fs.createField<double>();
-    auto tgt_field       = tgt_fs.createField<double>();
-    auto src_vals        = array::make_view<double, 1>(src_field);
-    auto tgt_vals        = array::make_view<double, 1>(tgt_field);
+    const auto& src_fs = consMethod.source();
+    const auto& tgt_fs = consMethod.target();
+    auto src_field     = src_fs.createField<double>();
+    auto tgt_field     = tgt_fs.createField<double>();
+    auto src_vals      = array::make_view<double, 1>(src_field);
+    auto tgt_vals      = array::make_view<double, 1>(tgt_field);
     for (idx_t spt = 0; spt < src_vals.size(); ++spt) {
         auto p = consMethod.src_points(spt);
         PointLonLat pll;
         eckit::geometry::Sphere::convertCartesianToSpherical(1., p, pll);
         src_vals(spt) = func(pll);
     }
-  
+
     // project source field to target mesh in 1st order
     consMethod.set_order(1);
     consMethod.do_execute(src_field, tgt_field);
@@ -75,37 +75,31 @@ void do_remapping_test(Grid src_grid, Grid tgt_grid, double func(const PointLonL
     remap_stat_2 = consMethod.remap_stat();
 }
 
-void check(const RemapStat remap_stat_1, RemapStat remap_stat_2, std::array<double,6> tol) {
-    auto improvement = [](double& e, double& r){ return 100.*(r-e)/r; };
+void check(const RemapStat remap_stat_1, RemapStat remap_stat_2, std::array<double, 6> tol) {
+    auto improvement = [](double& e, double& r) { return 100. * (r - e) / r; };
     double err;
     // check polygon intersections
     err = remap_stat_1.errors[RemapStat::Errors::GEO_DIFF];
-    Log::info() << "Polygon area computation improvement: "
-                << improvement(err, tol[0]) << " %" << std::endl;
+    Log::info() << "Polygon area computation improvement: " << improvement(err, tol[0]) << " %" << std::endl;
     EXPECT(err < tol[0]);
     err = remap_stat_1.errors[RemapStat::Errors::GEO_L1];
-    Log::info() << "Polygon intersection improvement    : "
-                << improvement(err, tol[1]) << " %" << std::endl;
+    Log::info() << "Polygon intersection improvement    : " << improvement(err, tol[1]) << " %" << std::endl;
     EXPECT(err < tol[1]);
 
     // check remap accuracy
     err = remap_stat_1.errors[RemapStat::Errors::REMAP_L2];
-    Log::info() << "1st order accuracy improvement      : "
-                << improvement(err, tol[2]) << " %" << std::endl;
+    Log::info() << "1st order accuracy improvement      : " << improvement(err, tol[2]) << " %" << std::endl;
     EXPECT(err < tol[2]);
     err = remap_stat_2.errors[RemapStat::Errors::REMAP_L2];
-    Log::info() << "2nd order accuracy improvement      : "
-                << improvement(err, tol[3]) << " %" << std::endl;
+    Log::info() << "2nd order accuracy improvement      : " << improvement(err, tol[3]) << " %" << std::endl;
     EXPECT(err < tol[3]);
 
     // check mass conservation
     err = remap_stat_1.errors[RemapStat::Errors::REMAP_CONS];
-    Log::info() << "1st order conservation improvement  : "
-                << improvement(err, tol[4]) << " %" << std::endl;
+    Log::info() << "1st order conservation improvement  : " << improvement(err, tol[4]) << " %" << std::endl;
     EXPECT(err < tol[4]);
     err = remap_stat_2.errors[RemapStat::Errors::REMAP_CONS];
-    Log::info() << "2nd order conservation improvement  : "
-                << improvement(err, tol[5]) << " %" << std::endl
+    Log::info() << "2nd order conservation improvement  : " << improvement(err, tol[5]) << " %" << std::endl
                 << std::endl;
     EXPECT(err < tol[5]);
     Log::info().unindent();

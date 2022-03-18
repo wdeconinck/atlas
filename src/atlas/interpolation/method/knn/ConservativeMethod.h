@@ -25,7 +25,6 @@ namespace method {
 
 
 class ConservativeMethod : public Method {
-
 private:
     struct InterpolationParameters {
         std::vector<idx_t> cell_idx;
@@ -38,24 +37,26 @@ public:
     struct RemapStat {
         bool setup_computed = false;
         bool remap_computed = false;
-        enum Counts { 
-            SRC_PLG = 0,    // index, number of source polygons
-            TGT_PLG,    // index, number of target polygons
-            INT_PLG,    // index, number of intersection polygons
-            UNCVR_SRC   // index, number of uncovered source polygons
+        enum Counts
+        {
+            SRC_PLG = 0,  // index, number of source polygons
+            TGT_PLG,      // index, number of target polygons
+            INT_PLG,      // index, number of intersection polygons
+            UNCVR_SRC     // index, number of uncovered source polygons
         };
         std::array<int, 4> counts;
-        enum Errors {
-            SRC_PLG_L1 = 0,   // index, over/undershoot in source subpolygon creation
-            SRC_PLG_LINF, 
-            TGT_PLG_L1,   // index, over/untershoot in target subpolygon creation
-            TGT_PLG_LINF, 
-            GEO_L1,       // index, cumulative area mismatch in polygon intersections
-            GEO_LINF,     // index, like GEO_L1 but in L_infinity norm
-            GEO_DIFF,     // index, difference in earth area coverages
-            REMAP_CONS,   // index, error in mass conservation
-            REMAP_L2,     // index, error accuracy for given analytical function
-            REMAP_LINF    // index, like REMAP_L2 but in L_infinity norm
+        enum Errors
+        {
+            SRC_PLG_L1 = 0,  // index, over/undershoot in source subpolygon creation
+            SRC_PLG_LINF,
+            TGT_PLG_L1,  // index, over/untershoot in target subpolygon creation
+            TGT_PLG_LINF,
+            GEO_L1,      // index, cumulative area mismatch in polygon intersections
+            GEO_LINF,    // index, like GEO_L1 but in L_infinity norm
+            GEO_DIFF,    // index, difference in earth area coverages
+            REMAP_CONS,  // index, error in mass conservation
+            REMAP_L2,    // index, error accuracy for given analytical function
+            REMAP_LINF   // index, like REMAP_L2 but in L_infinity norm
         };
         std::array<double, 10> errors;
     };
@@ -76,8 +77,8 @@ public:
 
     void set_order(int order);
     void setup_stat() const;
-    void remap_stat(const FieldArray& src_field, const FieldArray& tgt_field,
-                            FieldArray* diff_field, double func(const PointLonLat&)) const;
+    void remap_stat(const FieldArray& src_field, const FieldArray& tgt_field, FieldArray* diff_field,
+                    double func(const PointLonLat&)) const;
     void print(std::ostream& out) const { out << "ConservativeMethod[]"; }
 
     RemapStat& remap_stat() const;
@@ -99,10 +100,10 @@ protected:
     void setup_1st_order_matrix();
     void setup_2nd_order_matrix();
     void dump_intersection(const CSPolygon& plg_1, const CSPolygonArray& plg_2_array,
-                                           const std::vector<idx_t>& plg_2_idx_array) const;
+                           const std::vector<idx_t>& plg_2_idx_array) const;
     template <class TargetCellsIDs>
     void dump_intersection(const CSPolygon& plg_1, const CSPolygonArray& plg_2_array,
-                                           const TargetCellsIDs& plg_2_idx_array) const;
+                           const TargetCellsIDs& plg_2_idx_array) const;
     std::vector<idx_t> sort_cell_edges(Mesh& mesh, idx_t cell_id) const;
     std::vector<idx_t> sort_node_edges(Mesh& mesh, idx_t cell_id) const;
     std::vector<idx_t> get_cell_neighbours(Mesh& mesh, idx_t jcell) const;
@@ -110,11 +111,11 @@ protected:
     CSPolygonArray get_polygons_celldata(Mesh& mesh) const;
     CSPolygonArray get_polygons_nodedata(Mesh& mesh, std::vector<idx_t>& csp2node,
                                          std::vector<std::vector<idx_t>>& node2csp,
-                                         std::array<double,2>& errors) const;
+                                         std::array<double, 2>& errors) const;
 
 private:
-    int next_index(int current_index, int size, int offset = 1) const; 
-    int prev_index(int current_index, int size, int offset = 1) const; 
+    int next_index(int current_index, int size, int offset = 1) const;
+    int prev_index(int current_index, int size, int offset = 1) const;
 
 protected:
     bool src_cell_data_;
@@ -127,7 +128,7 @@ protected:
     int order_;
     bool matrix_free_;
     mutable RemapStat remap_stat_;
-    std::vector<InterpolationParameters> src_iparam_;   // TODO: remove after setup
+    std::vector<InterpolationParameters> src_iparam_;  // TODO: remove after setup
 
     // position and effective area of data points
     idx_t n_spoints_;

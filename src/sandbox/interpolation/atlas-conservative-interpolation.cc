@@ -52,16 +52,14 @@ Grid localgrid(int nx, int ny) {
 
 void print_remap_errors(ConservativeMethod& consMethod, std::ofstream& outfile) {
     const auto& remap_stat = consMethod.remap_stat();
-    Log::info() << "    " << consMethod.order() << "-order remap analytical error : (L2) " 
+    Log::info() << "    " << consMethod.order() << "-order remap analytical error : (L2) "
                 << remap_stat.errors[RemapStat::Errors::REMAP_L2] << " (Lmax) "
                 << remap_stat.errors[RemapStat::Errors::REMAP_LINF] << "\n";
-    Log::info() << "    " << consMethod.order() << "-order global mass conservation error : " 
-                << remap_stat.errors[RemapStat::Errors::REMAP_CONS] << "\n";
-    outfile << std::setw(10) 
-            << remap_stat.errors[RemapStat::Errors::REMAP_L2] 
-            << std::setw(10)
-            << remap_stat.errors[RemapStat::Errors::REMAP_LINF] 
-            << std::setw(10) 
+    Log::info() << "    " << consMethod.order()
+                << "-order global mass conservation error : " << remap_stat.errors[RemapStat::Errors::REMAP_CONS]
+                << "\n";
+    outfile << std::setw(10) << remap_stat.errors[RemapStat::Errors::REMAP_L2] << std::setw(10)
+            << remap_stat.errors[RemapStat::Errors::REMAP_LINF] << std::setw(10)
             << remap_stat.errors[RemapStat::Errors::REMAP_CONS];
 }
 
@@ -69,25 +67,25 @@ void do_remapping_test(Grid src_grid, Grid tgt_grid, double func(const PointLonL
     util::Config gmsh_config;
     // Allow command-line argument to change coordinates output to lonlat; e.g.
     //    <program> --coordinates lonlat
-    gmsh_config.set("coordinates", eckit::Resource<std::string>("--coordinates","lonlat"));
+    gmsh_config.set("coordinates", eckit::Resource<std::string>("--coordinates", "lonlat"));
     gmsh_config.set("ghost", true);
     util::Config config;
     auto cell_data = [](const std::string& resource, const Grid& grid) -> bool {
         bool resource_default = grid.name()[0] == 'H' ? true : false;
-        bool retval = eckit::Resource<bool>(resource,resource_default);
+        bool retval           = eckit::Resource<bool>(resource, resource_default);
         return retval;
     };
-    config.set("src_cell_data", cell_data("--src-cell-data",src_grid));
-    config.set("tgt_cell_data", cell_data("--tgt-cell-data",tgt_grid));
-    config.set("matrix_free", eckit::Resource<bool>("--matrix-free",false));
-    config.set("normalise_intersections", eckit::Resource<bool>("--normalise",true));
+    config.set("src_cell_data", cell_data("--src-cell-data", src_grid));
+    config.set("tgt_cell_data", cell_data("--tgt-cell-data", tgt_grid));
+    config.set("matrix_free", eckit::Resource<bool>("--matrix-free", false));
+    config.set("normalise_intersections", eckit::Resource<bool>("--normalise", true));
     ConservativeMethod consMethod(config);
 
     outfile << std::setw(10) << src_grid.name() << std::setw(10) << tgt_grid.name();
 
-    Log::info() << "REMAPPING: " << src_grid.name() << " --> " << tgt_grid.name() 
-            << ", matrix-free: " << consMethod.matrix_free()
-            << ", normalise: " << consMethod.normalise_intersections() << std::endl;
+    Log::info() << "REMAPPING: " << src_grid.name() << " --> " << tgt_grid.name()
+                << ", matrix-free: " << consMethod.matrix_free()
+                << ", normalise: " << consMethod.normalise_intersections() << std::endl;
     Log::info().indent();
     auto start = std::chrono::system_clock::now();
     consMethod.do_setup(src_grid, tgt_grid);
@@ -127,35 +125,29 @@ void do_remapping_test(Grid src_grid, Grid tgt_grid, double func(const PointLonL
 
     // remap statistics
     auto& remap_stat = consMethod.remap_stat();
-    Log::info() << "Created " << remap_stat.counts[RemapStat::Counts::SRC_PLG] 
-                << " (sub)polygons from "
+    Log::info() << "Created " << remap_stat.counts[RemapStat::Counts::SRC_PLG] << " (sub)polygons from "
                 << src_mesh.cells().size() << " source mesh cells.\n";
-    Log::info() << "    Total sum of subpolygon over/undershoots : "
-                << remap_stat.errors[RemapStat::Errors::SRC_PLG_L1] << "\n";
-    Log::info() << "    Max over/undershoots per cell : "
-                << remap_stat.errors[RemapStat::Errors::SRC_PLG_LINF] << "\n";
-    Log::info() << "Created " << remap_stat.counts[RemapStat::Counts::TGT_PLG] 
-                << " (sub)polygons from "
+    Log::info() << "    Total sum of subpolygon over/undershoots : " << remap_stat.errors[RemapStat::Errors::SRC_PLG_L1]
+                << "\n";
+    Log::info() << "    Max over/undershoots per cell : " << remap_stat.errors[RemapStat::Errors::SRC_PLG_LINF] << "\n";
+    Log::info() << "Created " << remap_stat.counts[RemapStat::Counts::TGT_PLG] << " (sub)polygons from "
                 << tgt_mesh.cells().size() << " target mesh cells.\n";
-    Log::info() << "    Total sum of subpolygon over/undershoots : "
-                << remap_stat.errors[RemapStat::Errors::TGT_PLG_L1] << "\n";
-    Log::info() << "    Max over/undershoots per cell : "
-                << remap_stat.errors[RemapStat::Errors::TGT_PLG_LINF] << "\n";
-    Log::info() << "Intersection polygons : "
-                << remap_stat.counts[RemapStat::Counts::INT_PLG] << "\n";
+    Log::info() << "    Total sum of subpolygon over/undershoots : " << remap_stat.errors[RemapStat::Errors::TGT_PLG_L1]
+                << "\n";
+    Log::info() << "    Max over/undershoots per cell : " << remap_stat.errors[RemapStat::Errors::TGT_PLG_LINF] << "\n";
+    Log::info() << "Intersection polygons : " << remap_stat.counts[RemapStat::Counts::INT_PLG] << "\n";
     Log::info() << "    Total mismatch area in polygons intersections : "
                 << remap_stat.errors[RemapStat::Errors::GEO_L1] << "\n";
     Log::info() << "    Source-cell maximal mismatch area in polygons intersections : "
                 << remap_stat.errors[RemapStat::Errors::GEO_LINF] << "\n";
-    Log::info() << "Non covered source polygons : "
-                << remap_stat.counts[RemapStat::Counts::UNCVR_SRC] << "\n";
+    Log::info() << "Non covered source polygons : " << remap_stat.counts[RemapStat::Counts::UNCVR_SRC] << "\n";
     Log::info() << "Diff in source mesh vs target mesh coverage with polygons : "
                 << remap_stat.errors[RemapStat::Errors::GEO_DIFF] << "\n";
     Log::info() << "  1-order remap took " << elapsed_seconds.count() << " seconds.\n";
     outfile << std::setw(10) << elapsed_seconds.count();
     outfile << std::setw(10) << remap_stat.errors[RemapStat::Errors::GEO_DIFF];
-    outfile << std::setw(10) << remap_stat.errors[RemapStat::Errors::REMAP_L2]
-            << std::setw(10) << remap_stat.errors[RemapStat::Errors::REMAP_LINF];
+    outfile << std::setw(10) << remap_stat.errors[RemapStat::Errors::REMAP_L2] << std::setw(10)
+            << remap_stat.errors[RemapStat::Errors::REMAP_LINF];
     print_remap_errors(consMethod, outfile);
     output::Gmsh("cons-remap_tgtfield-1ord.msh", gmsh_config).write(tgt_field);
     output::Gmsh("cons-remap_difffield-1ord.msh", gmsh_config).write(diff_field);
@@ -167,7 +159,7 @@ void do_remapping_test(Grid src_grid, Grid tgt_grid, double func(const PointLonL
 
     // remap statistics
     consMethod.remap_stat(src_vals, tgt_vals, &diff_vals, func);
-	remap_stat = consMethod.remap_stat();
+    remap_stat = consMethod.remap_stat();
     Log::info() << "  2-order remap took " << elapsed_seconds.count() << " seconds.\n";
     outfile << std::setw(10) << elapsed_seconds.count();
     print_remap_errors(consMethod, outfile);
@@ -192,7 +184,7 @@ CASE("test_interpolation_conservative") {
     SECTION("analytic constfunc") {
         auto func = [](const PointLonLat& p) { return 1.; };
         std::ofstream outfile;
-//        int func_id = eckit::Resource<std::string>("--test", "Jones_Y22"));
+        //        int func_id = eckit::Resource<std::string>("--test", "Jones_Y22"));
         outfile.open("cons-remap_constfunc.dat", std::ios_base::app);
         outfile << "# Test -- analytic function = 1\n";
         outfile << std::scientific << std::setprecision(1);
@@ -201,7 +193,7 @@ CASE("test_interpolation_conservative") {
         //     <program> --src-grid O16 --tgt-grid O32
         auto src_grid = Grid{eckit::Resource<std::string>("--src-grid", "H16")};
         auto tgt_grid = Grid{eckit::Resource<std::string>("--tgt-grid", "H32")};
- //       do_remapping_test(src_grid, tgt_grid, func, outfile);
+        //       do_remapping_test(src_grid, tgt_grid, func, outfile);
         return;
 
 
