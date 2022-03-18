@@ -72,6 +72,7 @@ option/TransOptions.cc
 projection.h
 projection/Projection.cc
 projection/Projection.h
+projection/Jacobian.h
 projection/detail/CubedSphereEquiAnglProjection.cc
 projection/detail/CubedSphereEquiAnglProjection.h
 projection/detail/CubedSphereEquiDistProjection.cc
@@ -928,6 +929,7 @@ target_link_libraries( atlas PUBLIC
   eckit
   eckit_geometry
   eckit_linalg
+  eckit_maths
   eckit_mpi
   eckit_option
 )
