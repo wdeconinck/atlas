@@ -89,7 +89,7 @@ void do_remapping_test(Grid src_grid, Grid tgt_grid, double func(const PointLonL
                 << ", normalise: " << consMethod.normalise_intersections() << std::endl;
     Log::info().indent();
     auto start = std::chrono::system_clock::now();
-    consMethod.do_setup(src_grid, tgt_grid);
+    consMethod.setup(src_grid, tgt_grid);
     std::chrono::duration<double> elapsed_seconds = std::chrono::system_clock::now() - start;
     Log::info() << "Setup (computing supermesh) took " << elapsed_seconds.count() << " seconds.\n";
     outfile << std::setw(10) << elapsed_seconds.count();

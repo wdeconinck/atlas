@@ -24,6 +24,20 @@ Cache::Cache(const Cache& other) {
     add(other);
 }
 
+Cache::Cache(const Cache& other, const std::string& filter): Cache(other) {
+    std::shared_ptr<InterpolationCacheEntry> filtered;
+    for (auto& entry : cache_) {
+        if (entry.first == filter) {
+            filtered = entry.second;
+        }
+    }
+    cache_.clear();
+    if (filtered) {
+        cache_[filtered->type()] = filtered;
+    }
+}
+
+
 Cache::Cache(const Interpolation& interpolation): Cache(interpolation.createCache()) {}
 
 Cache::~Cache() = default;

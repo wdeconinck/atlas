@@ -25,7 +25,14 @@ namespace method {
 
 
 class ConservativeMethod : public Method {
-private:
+public:
+    struct InterpolationParameters {
+        std::vector<idx_t> cell_idx;
+        std::vector<PointXYZ> centroids;
+        std::vector<double> src_weights;
+        std::vector<double> tgt_weights;
+    };
+
     class CachableData : public InterpolationCacheEntry {
     public:
         ~CachableData() override = default;
@@ -48,12 +55,15 @@ private:
         std::vector<idx_t> tgt_csp2node_;
         std::vector<std::vector<idx_t>> src_node2csp_;
         std::vector<std::vector<idx_t>> tgt_node2csp_;
+
+        std::vector<InterpolationParameters> src_iparam_;  // TODO: remove after setup
     };
 
+public:
     class Cache final : public interpolation::Cache {
     public:
         Cache() = default;
-        //        Cache(const Cache& c);
+        Cache(const interpolation::Cache& c);
         //        Cache(const Interpolation&);
 
         operator bool() const { return entry_; }
@@ -66,15 +76,6 @@ private:
         const CachableData* entry_{nullptr};
     };
 
-
-    struct InterpolationParameters {
-        std::vector<idx_t> cell_idx;
-        std::vector<PointXYZ> centroids;
-        std::vector<double> src_weights;
-        std::vector<double> tgt_weights;
-    };
-
-public:
     struct RemapStat {
         bool setup_computed = false;
         bool remap_computed = false;
@@ -112,34 +113,36 @@ public:
     ConservativeMethod(const Config& = util::NoConfig());
 
     using Method::do_setup;
-    void do_setup(const FunctionSpace& src_fs, const FunctionSpace& tgt_fs);
-    void do_setup(const Grid& src_grid, const Grid& tgt_grid);
-    void do_setup(const Grid& src_grid, const Grid& tgt_grid, const interpolation::Cache&) { ATLAS_NOTIMPLEMENTED; }
-    void do_execute(const Field& src_field, Field& tgt_field);
+    void do_setup(const FunctionSpace& src_fs, const FunctionSpace& tgt_fs) override;
+    void do_setup_impl(const Grid& src_grid, const Grid& tgt_grid);
+    void do_setup(const Grid& src_grid, const Grid& tgt_grid, const interpolation::Cache&) override;
+    void do_execute(const Field& src_field, Field& tgt_field) const override;
 
     void set_order(int order);
     void setup_stat() const;
     void remap_stat(const FieldArray& src_field, const FieldArray& tgt_field, FieldArray* diff_field,
                     double func(const PointLonLat&)) const;
-    void print(std::ostream& out) const { out << "ConservativeMethod[]"; }
+    void print(std::ostream& out) const override { out << "ConservativeMethod[]"; }
 
     RemapStat& remap_stat() const;
     bool src_cell_data() const { return src_cell_data_; }
     bool tgt_cell_data() const { return tgt_cell_data_; }
-    const FunctionSpace& source() const { return src_fs_; }
-    const FunctionSpace& target() const { return tgt_fs_; }
+    const FunctionSpace& source() const override { return src_fs_; }
+    const FunctionSpace& target() const override { return tgt_fs_; }
     Mesh src_mesh() const { return src_mesh_; }
     Mesh tgt_mesh() const { return tgt_mesh_; }
     int normalise_intersections() const { return normalise_intersections_; }
     int order() const { return order_; }
     int matrix_free() const { return matrix_free_; }
-    inline const std::vector<InterpolationParameters>& iparam() const { return src_iparam_; }
+    inline const std::vector<InterpolationParameters>& iparam() const { return cachable_data_->src_iparam_; }
     inline const PointXYZ& src_points(size_t id) const { return cachable_data_->src_points_[id]; }
     inline const PointXYZ& tgt_points(size_t id) const { return cachable_data_->tgt_points_[id]; }
 
-    virtual interpolation::Cache createCache() const {
+    interpolation::Cache createCache() const override {
         interpolation::Cache cache;
-        cache.add(matrix_cache_);
+        if (not matrix_free_) {
+            cache.add(matrix_cache_);
+        }
         cache.add(cache_);
         return cache;
     }
@@ -171,16 +174,15 @@ protected:
     bool tgt_cell_data_;
     FunctionSpace src_fs_;
     FunctionSpace tgt_fs_;
-    Mesh src_mesh_;
-    Mesh tgt_mesh_;
+    mutable Mesh src_mesh_;
+    mutable Mesh tgt_mesh_;
     int normalise_intersections_;
     int order_;
     bool matrix_free_;
     mutable RemapStat remap_stat_;
-    std::vector<InterpolationParameters> src_iparam_;  // TODO: remove after setup
 
     std::shared_ptr<CachableData> cachable_data_shared_;
-    CachableData* cachable_data_;
+    const CachableData* cachable_data_;
     Cache cache_;
 
     // position and effective area of data points

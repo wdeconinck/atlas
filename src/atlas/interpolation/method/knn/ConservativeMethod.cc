@@ -55,6 +55,17 @@ size_t memory_of(const std::vector<std::vector<T>>& vector_of_vector) {
     return mem;
 }
 
+size_t memory_of(const std::vector<ConservativeMethod::InterpolationParameters>& vector_of_params) {
+    size_t mem = 0;
+    for (const auto& params : vector_of_params) {
+        mem += memory_of(params.cell_idx);
+        mem += memory_of(params.centroids);
+        mem += memory_of(params.src_weights);
+        mem += memory_of(params.tgt_weights);
+    }
+    return mem;
+}
+
 }  // namespace
 
 int inside_vertices(const CSPolygon& plg1, const CSPolygon& plg2, int& pout) {
@@ -422,7 +433,7 @@ CSPolygonArray ConservativeMethod::get_polygons_nodedata(Mesh& mesh, std::vector
     return cspolygons;
 }
 
-void ConservativeMethod::do_setup(const Grid& src_grid, const Grid& tgt_grid) {
+void ConservativeMethod::do_setup_impl(const Grid& src_grid, const Grid& tgt_grid) {
     ATLAS_TRACE("ConservativeMethod::do_setup( Grid, Grid )");
     ATLAS_ASSERT(src_grid);
     ATLAS_ASSERT(tgt_grid);
@@ -461,10 +472,36 @@ void ConservativeMethod::do_setup(const Grid& src_grid, const Grid& tgt_grid) {
     do_setup(src_fs_, tgt_fs_);
 }
 
+void ConservativeMethod::do_setup(const Grid& src_grid, const Grid& tgt_grid, const interpolation::Cache& cache) {
+    ATLAS_TRACE();
+    if (not matrix_free_ && interpolation::MatrixCache(cache)) {
+        Log::debug() << "Matrix found in cache -> no setup required at all" << std::endl;
+        matrix_cache_ = cache;
+        matrix_       = &matrix_cache_.matrix();
+        return;
+    }
+
+    if (Cache(cache)) {
+        Log::debug() << "Interpolation data found in cache -> no polygon intersections required" << std::endl;
+        cache_         = Cache(cache);
+        cachable_data_ = cache_.get();
+        cachable_data_shared_.reset();
+        if (order_ == 1 && matrix_free_) {
+            // We don't need to continue with setups required for first order matrix-free
+            // such as mesh generation and functionspace creation.
+            return;
+        }
+    }
+
+    do_setup_impl(src_grid, tgt_grid);
+}
+
 void ConservativeMethod::do_setup(const FunctionSpace& src_fs, const FunctionSpace& tgt_fs) {
     ATLAS_TRACE("ConservativeMethod::do_setup( FunctionSpace, FunctionSpace )");
     ATLAS_ASSERT(src_fs);
     ATLAS_ASSERT(tgt_fs);
+
+    bool compute_cache = cachable_data_->src_points_.empty();
 
     if (functionspace::CellColumns(src_fs)) {
         src_cell_data_ = true;
@@ -501,26 +538,26 @@ void ConservativeMethod::do_setup(const FunctionSpace& src_fs, const FunctionSpa
     CSPolygonArray src_csp;
     CSPolygonArray tgt_csp;
     std::array<double, 2> errors = {0., 0.};
-    {
+    if (compute_cache) {
         ATLAS_TRACE("Get source polygons");
         if (src_cell_data_) {
             src_csp = get_polygons_celldata(src_mesh_);
         }
         else {
-            src_csp =
-                get_polygons_nodedata(src_mesh_, cachable_data_->src_csp2node_, cachable_data_->src_node2csp_, errors);
+            src_csp = get_polygons_nodedata(src_mesh_, cachable_data_shared_->src_csp2node_,
+                                            cachable_data_shared_->src_node2csp_, errors);
         }
     }
     remap_stat_.errors[RemapStat::Errors::SRC_PLG_L1]   = errors[0];
     remap_stat_.errors[RemapStat::Errors::SRC_PLG_LINF] = errors[1];
-    {
+    if (compute_cache) {
         ATLAS_TRACE("Get target polygons");
         if (tgt_cell_data_) {
             tgt_csp = get_polygons_celldata(tgt_mesh_);
         }
         else {
-            tgt_csp =
-                get_polygons_nodedata(tgt_mesh_, cachable_data_->tgt_csp2node_, cachable_data_->tgt_node2csp_, errors);
+            tgt_csp = get_polygons_nodedata(tgt_mesh_, cachable_data_shared_->tgt_csp2node_,
+                                            cachable_data_shared_->tgt_node2csp_, errors);
         }
     }
     remap_stat_.counts[RemapStat::Counts::SRC_PLG]      = src_csp.size();
@@ -528,84 +565,89 @@ void ConservativeMethod::do_setup(const FunctionSpace& src_fs, const FunctionSpa
     remap_stat_.errors[RemapStat::Errors::TGT_PLG_L1]   = errors[0];
     remap_stat_.errors[RemapStat::Errors::TGT_PLG_LINF] = errors[1];
 
-    intersect_polygons(src_csp, tgt_csp);
+    n_spoints_ = src_fs_.size();
+    n_tpoints_ = tgt_fs_.size();
 
-    n_spoints_        = src_fs_.size();
-    n_tpoints_        = tgt_fs_.size();
-    auto& src_points_ = cachable_data_->src_points_;
-    auto& tgt_points_ = cachable_data_->tgt_points_;
-    src_points_.resize(n_spoints_);
-    tgt_points_.resize(n_tpoints_);
-    cachable_data_->src_areas_.resize(n_spoints_);
-    auto& src_areas_v = cachable_data_->src_areas_;
-    if (src_cell_data_) {
-        for (idx_t spt = 0; spt < n_spoints_; ++spt) {
-            const auto& s_csp = std::get<0>(src_csp[spt]);
-            src_points_[spt]  = s_csp.centroid();
-            src_areas_v[spt]  = s_csp.area();
+    if (compute_cache) {
+        intersect_polygons(src_csp, tgt_csp);
+
+        auto& src_points_ = cachable_data_shared_->src_points_;
+        auto& tgt_points_ = cachable_data_shared_->tgt_points_;
+        src_points_.resize(n_spoints_);
+        tgt_points_.resize(n_tpoints_);
+        cachable_data_shared_->src_areas_.resize(n_spoints_);
+        auto& src_areas_v = cachable_data_shared_->src_areas_;
+        if (src_cell_data_) {
+            for (idx_t spt = 0; spt < n_spoints_; ++spt) {
+                const auto& s_csp = std::get<0>(src_csp[spt]);
+                src_points_[spt]  = s_csp.centroid();
+                src_areas_v[spt]  = s_csp.area();
+            }
+        }
+        else {
+            auto& src_node2csp_ = cachable_data_shared_->src_node2csp_;
+            const auto lonlat   = array::make_view<double, 2>(src_mesh_.nodes().lonlat());
+            for (idx_t spt = 0; spt < n_spoints_; ++spt) {
+                if (src_node2csp_[spt].size() == 0) {
+                    // this is a node to which no subpolygon is associated
+                    // maximal twice per mesh we end here, and that is only when mesh has nodes on poles
+                    auto p = PointLonLat{lonlat(spt, 0), lonlat(spt, 1)};
+                    eckit::geometry::Sphere::convertSphericalToCartesian(1., p, src_points_[spt]);
+                }
+                else {
+                    // .. in the other case, start computing the barycentre
+                    src_points_[spt] = PointXYZ{0., 0., 0.};
+                }
+                src_areas_v[spt] = 0.;
+                for (idx_t isubcell = 0; isubcell < src_node2csp_[spt].size(); ++isubcell) {
+                    idx_t subcell     = src_node2csp_[spt][isubcell];
+                    const auto& s_csp = std::get<0>(src_csp[subcell]);
+                    src_areas_v[spt] += s_csp.area();
+                    src_points_[spt] = src_points_[spt] + PointXYZ::mul(s_csp.centroid(), s_csp.area());
+                }
+                double src_point_norm = PointXYZ::norm(src_points_[spt]);
+                ATLAS_ASSERT(src_point_norm > 0.);
+                src_points_[spt] = PointXYZ::div(src_points_[spt], src_point_norm);
+            }
+        }
+        cachable_data_shared_->tgt_areas_.resize(n_tpoints_);
+        auto& tgt_areas_v = cachable_data_shared_->tgt_areas_;
+        if (tgt_cell_data_) {
+            for (idx_t tpt = 0; tpt < n_tpoints_; ++tpt) {
+                const auto& t_csp = std::get<0>(tgt_csp[tpt]);
+                tgt_points_[tpt]  = t_csp.centroid();
+                tgt_areas_v[tpt]  = t_csp.area();
+            }
+        }
+        else {
+            auto& tgt_node2csp_ = cachable_data_shared_->tgt_node2csp_;
+            const auto lonlat   = array::make_view<double, 2>(tgt_mesh_.nodes().lonlat());
+            for (idx_t tpt = 0; tpt < n_tpoints_; ++tpt) {
+                if (tgt_node2csp_[tpt].size() == 0) {
+                    // this is a node to which no subpolygon is associated
+                    // maximal twice per mesh we end here, and that is only when mesh has nodes on poles
+                    auto p = PointLonLat{lonlat(tpt, 0), lonlat(tpt, 1)};
+                    eckit::geometry::Sphere::convertSphericalToCartesian(1., p, tgt_points_[tpt]);
+                }
+                else {
+                    // .. in the other case, start computing the barycentre
+                    tgt_points_[tpt] = PointXYZ{0., 0., 0.};
+                }
+                tgt_areas_v[tpt] = 0.;
+                for (idx_t isubcell = 0; isubcell < tgt_node2csp_[tpt].size(); ++isubcell) {
+                    idx_t subcell     = tgt_node2csp_[tpt][isubcell];
+                    const auto& t_csp = std::get<0>(tgt_csp[subcell]);
+                    tgt_areas_v[tpt] += t_csp.area();
+                    tgt_points_[tpt] = tgt_points_[tpt] + PointXYZ::mul(t_csp.centroid(), t_csp.area());
+                }
+                double tgt_point_norm = PointXYZ::norm(tgt_points_[tpt]);
+                ATLAS_ASSERT(tgt_point_norm > 0.);
+                tgt_points_[tpt] = PointXYZ::div(tgt_points_[tpt], tgt_point_norm);
+            }
         }
     }
-    else {
-        auto& src_node2csp_ = cachable_data_->src_node2csp_;
-        const auto lonlat   = array::make_view<double, 2>(src_mesh_.nodes().lonlat());
-        for (idx_t spt = 0; spt < n_spoints_; ++spt) {
-            if (src_node2csp_[spt].size() == 0) {
-                // this is a node to which no subpolygon is associated
-                // maximal twice per mesh we end here, and that is only when mesh has nodes on poles
-                auto p = PointLonLat{lonlat(spt, 0), lonlat(spt, 1)};
-                eckit::geometry::Sphere::convertSphericalToCartesian(1., p, src_points_[spt]);
-            }
-            else {
-                // .. in the other case, start computing the barycentre
-                src_points_[spt] = PointXYZ{0., 0., 0.};
-            }
-            src_areas_v[spt] = 0.;
-            for (idx_t isubcell = 0; isubcell < src_node2csp_[spt].size(); ++isubcell) {
-                idx_t subcell     = src_node2csp_[spt][isubcell];
-                const auto& s_csp = std::get<0>(src_csp[subcell]);
-                src_areas_v[spt] += s_csp.area();
-                src_points_[spt] = src_points_[spt] + PointXYZ::mul(s_csp.centroid(), s_csp.area());
-            }
-            double src_point_norm = PointXYZ::norm(src_points_[spt]);
-            ATLAS_ASSERT(src_point_norm > 0.);
-            src_points_[spt] = PointXYZ::div(src_points_[spt], src_point_norm);
-        }
-    }
-    cachable_data_->tgt_areas_.resize(n_tpoints_);
-    auto& tgt_areas_v = cachable_data_->tgt_areas_;
-    if (tgt_cell_data_) {
-        for (idx_t tpt = 0; tpt < n_tpoints_; ++tpt) {
-            const auto& t_csp = std::get<0>(tgt_csp[tpt]);
-            tgt_points_[tpt]  = t_csp.centroid();
-            tgt_areas_v[tpt]  = t_csp.area();
-        }
-    }
-    else {
-        auto& tgt_node2csp_ = cachable_data_->tgt_node2csp_;
-        const auto lonlat   = array::make_view<double, 2>(tgt_mesh_.nodes().lonlat());
-        for (idx_t tpt = 0; tpt < n_tpoints_; ++tpt) {
-            if (tgt_node2csp_[tpt].size() == 0) {
-                // this is a node to which no subpolygon is associated
-                // maximal twice per mesh we end here, and that is only when mesh has nodes on poles
-                auto p = PointLonLat{lonlat(tpt, 0), lonlat(tpt, 1)};
-                eckit::geometry::Sphere::convertSphericalToCartesian(1., p, tgt_points_[tpt]);
-            }
-            else {
-                // .. in the other case, start computing the barycentre
-                tgt_points_[tpt] = PointXYZ{0., 0., 0.};
-            }
-            tgt_areas_v[tpt] = 0.;
-            for (idx_t isubcell = 0; isubcell < tgt_node2csp_[tpt].size(); ++isubcell) {
-                idx_t subcell     = tgt_node2csp_[tpt][isubcell];
-                const auto& t_csp = std::get<0>(tgt_csp[subcell]);
-                tgt_areas_v[tpt] += t_csp.area();
-                tgt_points_[tpt] = tgt_points_[tpt] + PointXYZ::mul(t_csp.centroid(), t_csp.area());
-            }
-            double tgt_point_norm = PointXYZ::norm(tgt_points_[tpt]);
-            ATLAS_ASSERT(tgt_point_norm > 0.);
-            tgt_points_[tpt] = PointXYZ::div(tgt_points_[tpt], tgt_point_norm);
-        }
-    }
+
+
     if (not matrix_free_) {
         switch (order_) {
             case 1: {
@@ -623,7 +665,8 @@ void ConservativeMethod::do_setup(const FunctionSpace& src_fs, const FunctionSpa
             }
         }
     }
-    cachable_data_->print(Log::info());
+
+    cachable_data_->print(Log::debug());
 }
 
 namespace {
@@ -695,6 +738,7 @@ void ConservativeMethod::intersect_polygons(const CSPolygonArray& src_csp, const
         MAX_SRC
     };
     std::array<double, 2> area_coverage{0., 0.};
+    auto& src_iparam_ = cachable_data_shared_->src_iparam_;
     src_iparam_.resize(src_csp.size());
 #if PLG_DEBUG
     std::vector<InterpolationParameters> tgt_iparam;
@@ -818,7 +862,8 @@ eckit::linalg::SparseMatrix ConservativeMethod::compute_1st_order_matrix() {
     ATLAS_TRACE("ConservativeMethod::setup: build cons-1 interpolant matrix");
     ATLAS_ASSERT(not matrix_free_);
     Triplets triplets;
-    size_t triplets_size = 0;
+    size_t triplets_size    = 0;
+    const auto& src_iparam_ = cachable_data_->src_iparam_;
     // determine the size of array of triplets used to define the sparse matrix
     if (src_cell_data_) {
         for (idx_t scell = 0; scell < n_spoints_; ++scell) {
@@ -897,7 +942,8 @@ eckit::linalg::SparseMatrix ConservativeMethod::compute_1st_order_matrix() {
 eckit::linalg::SparseMatrix ConservativeMethod::compute_2nd_order_matrix() {
     ATLAS_TRACE("ConservativeMethod::setup: build cons-2 interpolant matrix");
     ATLAS_ASSERT(not matrix_free_);
-    auto& src_points_ = cachable_data_->src_points_;
+    const auto& src_points_ = cachable_data_->src_points_;
+    const auto& src_iparam_ = cachable_data_->src_iparam_;
 
     Triplets triplets;
     size_t triplets_size    = 0;
@@ -1101,7 +1147,7 @@ eckit::linalg::SparseMatrix ConservativeMethod::compute_2nd_order_matrix() {
     return Matrix(n_tpoints_, n_spoints_, triplets);
 }
 
-void ConservativeMethod::do_execute(const Field& src_field, Field& tgt_field) {
+void ConservativeMethod::do_execute(const Field& src_field, Field& tgt_field) const {
     ATLAS_TRACE("ConservativeMethod::do_execute()");
     {
         ATLAS_TRACE("halo exchange source");
@@ -1109,7 +1155,7 @@ void ConservativeMethod::do_execute(const Field& src_field, Field& tgt_field) {
         src_field.haloExchange();
     }
     const auto& tgt_areas_v = cachable_data_->tgt_areas_;
-
+    const auto& src_iparam_ = cachable_data_->src_iparam_;
     if (order_ == 1) {
         if (matrix_free_) {
             ATLAS_TRACE("matrix_free_order_1");
@@ -1275,7 +1321,8 @@ void ConservativeMethod::remap_stat(const FieldArray& src_vals, const FieldArray
     double err_remap_cons     = 0.;
     double err_remap_l2       = 0.;
     double err_remap_linf     = 0.;
-    auto& tgt_csp2node_       = cachable_data_->tgt_csp2node_;
+    const auto& tgt_csp2node_ = cachable_data_->tgt_csp2node_;
+    const auto& src_iparam_   = cachable_data_->src_iparam_;
     if (src_cell_data_) {
         for (idx_t spt = 0; spt < src_vals.size(); ++spt) {
             if (src_cell_halo(spt)) {
@@ -1448,6 +1495,10 @@ void ConservativeMethod::dump_intersection(const CSPolygon& plg_1, const CSPolyg
 ConservativeMethod::Cache::Cache(std::shared_ptr<InterpolationCacheEntry> entry):
     interpolation::Cache(entry), entry_(dynamic_cast<CachableData*>(entry.get())) {}
 
+ConservativeMethod::Cache::Cache(const interpolation::Cache& c):
+    interpolation::Cache(c, CachableData::static_type()),
+    entry_{dynamic_cast<const CachableData*>(c.get(CachableData::static_type()))} {}
+
 size_t ConservativeMethod::CachableData::footprint() const {
     size_t mem_total{0};
     mem_total += memory_of(src_points_);
@@ -1458,21 +1509,22 @@ size_t ConservativeMethod::CachableData::footprint() const {
     mem_total += memory_of(tgt_csp2node_);
     mem_total += memory_of(src_node2csp_);
     mem_total += memory_of(tgt_node2csp_);
+    mem_total += memory_of(src_iparam_);
     return mem_total;
 }
 
 
 void ConservativeMethod::CachableData::print(std::ostream& out) const {
-    out << "Memory usage of ConservativeMerthod: " << eckit::Bytes(footprint()) << "\n";
-    out << "Breakdown:\n";
-    out << "- src_points_ \t" << eckit::Bytes(memory_of(src_points_)) << "\n";
-    out << "- tgt_points_ \t" << eckit::Bytes(memory_of(tgt_points_)) << "\n";
-    out << "- src_areas_  \t" << eckit::Bytes(memory_of(src_areas_)) << "\n";
-    out << "- tgt_areas_  \t" << eckit::Bytes(memory_of(tgt_areas_)) << "\n";
+    out << "Memory usage of ConservativeMethod: " << eckit::Bytes(footprint()) << "\n";
+    out << "- src_points_   \t" << eckit::Bytes(memory_of(src_points_)) << "\n";
+    out << "- tgt_points_   \t" << eckit::Bytes(memory_of(tgt_points_)) << "\n";
+    out << "- src_areas_    \t" << eckit::Bytes(memory_of(src_areas_)) << "\n";
+    out << "- tgt_areas_    \t" << eckit::Bytes(memory_of(tgt_areas_)) << "\n";
     out << "- src_csp2node_ \t" << eckit::Bytes(memory_of(src_csp2node_)) << "\n";
     out << "- tgt_csp2node_ \t" << eckit::Bytes(memory_of(tgt_csp2node_)) << "\n";
     out << "- src_node2csp_ \t" << eckit::Bytes(memory_of(src_node2csp_)) << "\n";
     out << "- tgt_node2csp_ \t" << eckit::Bytes(memory_of(tgt_node2csp_)) << "\n";
+    out << "- src_iparam_   \t" << eckit::Bytes(memory_of(src_iparam_)) << "\n";
 }
 
 

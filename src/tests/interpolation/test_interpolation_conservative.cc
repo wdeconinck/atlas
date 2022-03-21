@@ -18,6 +18,7 @@
 #include "atlas/array/MakeView.h"
 #include "atlas/field.h"
 #include "atlas/grid.h"
+#include "atlas/interpolation/Interpolation.h"
 #include "atlas/interpolation/method/knn/ConservativeMethod.h"
 #include "atlas/mesh.h"
 #include "atlas/mesh/Mesh.h"
@@ -43,7 +44,7 @@ void do_remapping_test(Grid src_grid, Grid tgt_grid, double func(const PointLonL
     // setup conservative remap: compute weights, polygon intersection, etc
     util::Config config;
     ConservativeMethod consMethod(config);
-    consMethod.do_setup(src_grid, tgt_grid);
+    consMethod.setup(src_grid, tgt_grid);
 
     // get errors in polygon intersections
     consMethod.setup_stat();
@@ -68,11 +69,35 @@ void do_remapping_test(Grid src_grid, Grid tgt_grid, double func(const PointLonL
     consMethod.remap_stat(src_vals, tgt_vals, nullptr, func);
     remap_stat_1 = consMethod.remap_stat();
 
-    // project source field to target mesh in 2nd order
-    consMethod.set_order(2);
-    consMethod.do_execute(src_field, tgt_field);
-    consMethod.remap_stat(src_vals, tgt_vals, nullptr, func);
-    remap_stat_2 = consMethod.remap_stat();
+    ATLAS_TRACE_SCOPE("test caching") {
+        // We can create the interpolation without polygon intersections
+        auto cache = consMethod.createCache();
+        util::Config cfg;
+        cfg.set(option::type("conservative"));
+        cfg.set("matrix_free", false);
+        {
+            ATLAS_TRACE("cached -> 1st order");
+            auto interpolation = Interpolation(cfg | util::Config("order", 1), src_grid, tgt_grid, cache);
+            interpolation.execute(src_field, tgt_field);
+        }
+        {
+            ATLAS_TRACE("cached -> 2nd order");
+            auto interpolation =
+                Interpolation(cfg | util::Config("order", 2), src_grid, tgt_grid, ConservativeMethod::Cache(cache));
+            interpolation.execute(src_field, tgt_field);
+        }
+    }
+
+
+    // TODO: We should not be allowed to change order like that. Rather a new interpolation object should
+    //       be created of second order.
+    {
+        // project source field to target mesh in 2nd order
+        consMethod.set_order(2);
+        consMethod.execute(src_field, tgt_field);
+        consMethod.remap_stat(src_vals, tgt_vals, nullptr, func);
+        remap_stat_2 = consMethod.remap_stat();
+    }
 }
 
 void check(const RemapStat remap_stat_1, RemapStat remap_stat_2, std::array<double, 6> tol) {
@@ -106,6 +131,7 @@ void check(const RemapStat remap_stat_1, RemapStat remap_stat_2, std::array<doub
 }
 
 CASE("test_interpolation_conservative") {
+#if 1
     SECTION("analytic constfunc") {
         auto func = [](const PointLonLat& p) { return 1.; };
         RemapStat remap_stat_1;
@@ -124,6 +150,7 @@ CASE("test_interpolation_conservative") {
         do_remapping_test(Grid("H47"), Grid("H48"), func, remap_stat_1, remap_stat_2);
         check(remap_stat_1, remap_stat_2, {1.e-13, 5.e-8, 4.8e-4, 1.1e-4, 8.9e-5, 1.1e-4});
     }
+#endif
 }
 
 }  // namespace test
