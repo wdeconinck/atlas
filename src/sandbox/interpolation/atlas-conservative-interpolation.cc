@@ -13,6 +13,7 @@
 #include <fstream>
 
 #include "eckit/geometry/Sphere.h"
+#include "eckit/log/Bytes.h"
 #include "eckit/types/FloatCompare.h"
 
 #include "atlas/array.h"
@@ -151,6 +152,11 @@ void do_remapping_test(Grid src_grid, Grid tgt_grid, double func(const PointLonL
     print_remap_errors(consMethod, outfile);
     output::Gmsh("cons-remap_tgtfield-1ord.msh", gmsh_config).write(tgt_field);
     output::Gmsh("cons-remap_difffield-1ord.msh", gmsh_config).write(diff_field);
+
+
+    auto cache = consMethod.createCache();
+
+    ATLAS_DEBUG("cache.footprint(): " << eckit::Bytes(cache.footprint()));
 
     consMethod.set_order(2);
     start = std::chrono::system_clock::now();

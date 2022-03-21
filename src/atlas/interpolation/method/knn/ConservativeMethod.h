@@ -26,6 +26,47 @@ namespace method {
 
 class ConservativeMethod : public Method {
 private:
+    class CachableData : public InterpolationCacheEntry {
+    public:
+        ~CachableData() override = default;
+        size_t footprint() const override;
+        static std::string static_type() { return "ConservativeMethod"; }
+        std::string type() const override { return static_type(); }
+
+        void print(std::ostream& out) const;
+
+    private:
+        friend class ConservativeMethod;
+        // position and effective area of data points
+        std::vector<PointXYZ> src_points_;
+        std::vector<PointXYZ> tgt_points_;
+        std::vector<double> src_areas_;
+        std::vector<double> tgt_areas_;
+
+        // indexing of subpolygons
+        std::vector<idx_t> src_csp2node_;
+        std::vector<idx_t> tgt_csp2node_;
+        std::vector<std::vector<idx_t>> src_node2csp_;
+        std::vector<std::vector<idx_t>> tgt_node2csp_;
+    };
+
+    class Cache final : public interpolation::Cache {
+    public:
+        Cache() = default;
+        //        Cache(const Cache& c);
+        //        Cache(const Interpolation&);
+
+        operator bool() const { return entry_; }
+        size_t footprint() const;
+        const CachableData* get() const { return entry_; }
+
+    private:
+        friend class ConservativeMethod;
+        Cache(std::shared_ptr<InterpolationCacheEntry> entry);
+        const CachableData* entry_{nullptr};
+    };
+
+
     struct InterpolationParameters {
         std::vector<idx_t> cell_idx;
         std::vector<PointXYZ> centroids;
@@ -61,6 +102,7 @@ public:
         std::array<double, 10> errors;
     };
 
+
 public:
     typedef util::ConvexSphericalPolygon CSPolygon;
     typedef std::vector<std::pair<CSPolygon, int>> PolygonArray;
@@ -72,7 +114,7 @@ public:
     using Method::do_setup;
     void do_setup(const FunctionSpace& src_fs, const FunctionSpace& tgt_fs);
     void do_setup(const Grid& src_grid, const Grid& tgt_grid);
-    void do_setup(const Grid& src_grid, const Grid& tgt_grid, const Cache&) { ATLAS_NOTIMPLEMENTED; }
+    void do_setup(const Grid& src_grid, const Grid& tgt_grid, const interpolation::Cache&) { ATLAS_NOTIMPLEMENTED; }
     void do_execute(const Field& src_field, Field& tgt_field);
 
     void set_order(int order);
@@ -92,13 +134,20 @@ public:
     int order() const { return order_; }
     int matrix_free() const { return matrix_free_; }
     inline const std::vector<InterpolationParameters>& iparam() const { return src_iparam_; }
-    inline const PointXYZ& src_points(size_t id) const { return src_points_[id]; }
-    inline const PointXYZ& tgt_points(size_t id) const { return tgt_points_[id]; }
+    inline const PointXYZ& src_points(size_t id) const { return cachable_data_->src_points_[id]; }
+    inline const PointXYZ& tgt_points(size_t id) const { return cachable_data_->tgt_points_[id]; }
+
+    virtual interpolation::Cache createCache() const {
+        interpolation::Cache cache;
+        cache.add(matrix_cache_);
+        cache.add(cache_);
+        return cache;
+    }
 
 protected:
     void intersect_polygons(const CSPolygonArray& src_csp, const CSPolygonArray& tgt_scp);
-    void setup_1st_order_matrix();
-    void setup_2nd_order_matrix();
+    Matrix compute_1st_order_matrix();
+    Matrix compute_2nd_order_matrix();
     void dump_intersection(const CSPolygon& plg_1, const CSPolygonArray& plg_2_array,
                            const std::vector<idx_t>& plg_2_idx_array) const;
     template <class TargetCellsIDs>
@@ -130,19 +179,13 @@ protected:
     mutable RemapStat remap_stat_;
     std::vector<InterpolationParameters> src_iparam_;  // TODO: remove after setup
 
+    std::shared_ptr<CachableData> cachable_data_shared_;
+    CachableData* cachable_data_;
+    Cache cache_;
+
     // position and effective area of data points
     idx_t n_spoints_;
     idx_t n_tpoints_;
-    std::vector<PointXYZ> src_points_;
-    std::vector<PointXYZ> tgt_points_;
-    Field src_areas_;
-    Field tgt_areas_;
-
-    // indexing of subpolygons
-    std::vector<idx_t> src_csp2node_;
-    std::vector<idx_t> tgt_csp2node_;
-    std::vector<std::vector<idx_t>> src_node2csp_;
-    std::vector<std::vector<idx_t>> tgt_node2csp_;
 };
 
 
