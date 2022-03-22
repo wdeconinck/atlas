@@ -14,6 +14,7 @@
 #include "eckit/log/ProgressTimer.h"
 
 #include "atlas/grid.h"
+#include "atlas/interpolation/Interpolation.h"
 #include "atlas/interpolation/method/MethodFactory.h"
 #include "atlas/interpolation/method/knn/ConservativeMethod.h"
 #include "atlas/mesh/actions/BuildHalo.h"
@@ -1274,6 +1275,7 @@ void ConservativeMethod::do_execute(const Field& src_field, Field& tgt_field, Me
             Method::do_execute(src_field, tgt_field, metadata);
         }
     }
+    remap_stat_.fillMetadata(metadata);
     {
         ATLAS_TRACE("halo exchange target");
         tgt_field.set_dirty(true);
@@ -1323,8 +1325,15 @@ void ConservativeMethod::setup_stat() const {
     remap_stat_.errors[RemapStat::Errors::GEO_DIFF] = geo_create_err;
 }
 
-void ConservativeMethod::remap_stat(const FieldArray& src_vals, const FieldArray& tgt_vals, FieldArray* diff_vals,
-                                    double func(const PointLonLat&)) const {
+void ConservativeMethod::RemapStat::compute(const ConservativeMethod& consMethod,
+                                            const array::ArrayView<double, 1> src_vals,
+                                            const array::ArrayView<double, 1> tgt_vals,
+                                            array::ArrayView<double, 1>* diff_vals, double func(const PointLonLat&)) {
+    auto cachable_data_       = ConservativeMethod::Cache(consMethod.createCache()).get();
+    auto src_mesh_            = consMethod.src_mesh();
+    auto tgt_mesh_            = consMethod.tgt_mesh();
+    auto src_cell_data_       = consMethod.src_cell_data();
+    auto tgt_cell_data_       = consMethod.tgt_cell_data();
     const auto src_cell_halo  = array::make_view<int, 1>(src_mesh_.cells().halo());
     const auto src_node_ghost = array::make_view<int, 1>(src_mesh_.nodes().ghost());
     const auto src_node_halo  = array::make_view<int, 1>(src_mesh_.nodes().halo());
@@ -1434,10 +1443,10 @@ void ConservativeMethod::remap_stat(const FieldArray& src_vals, const FieldArray
         mpi::comm().allReduceInPlace(&err_remap_l2, 1, eckit::mpi::sum());
         mpi::comm().allReduceInPlace(&err_remap_linf, 1, eckit::mpi::max());
     }
-    remap_stat_.errors[RemapStat::Errors::REMAP_L2]   = std::sqrt(err_remap_l2 * 0.25 * M_1_PI);
-    remap_stat_.errors[RemapStat::Errors::REMAP_LINF] = err_remap_linf;
-    remap_stat_.errors[RemapStat::Errors::REMAP_CONS] = std::sqrt(std::abs(err_remap_cons) * 0.25 * M_1_PI);
-    remap_stat_.remap_computed                        = true;
+    this->errors[RemapStat::Errors::REMAP_L2]   = std::sqrt(err_remap_l2 * 0.25 * M_1_PI);
+    this->errors[RemapStat::Errors::REMAP_LINF] = err_remap_linf;
+    this->errors[RemapStat::Errors::REMAP_CONS] = std::sqrt(std::abs(err_remap_cons) * 0.25 * M_1_PI);
+    this->remap_computed                        = true;
 }
 
 auto debug_intersection = [](const CSPolygon& plg_1, const CSPolygon& plg_2, const CSPolygon& iplg,
@@ -1514,6 +1523,8 @@ ConservativeMethod::Cache::Cache(const interpolation::Cache& c):
     interpolation::Cache(c, CachableData::static_type()),
     entry_{dynamic_cast<const CachableData*>(c.get(CachableData::static_type()))} {}
 
+ConservativeMethod::Cache::Cache(const Interpolation& interpolation): Cache(interpolation::Cache(interpolation)) {}
+
 size_t ConservativeMethod::CachableData::footprint() const {
     size_t mem_total{0};
     mem_total += memory_of(src_points_);
@@ -1540,6 +1551,46 @@ void ConservativeMethod::CachableData::print(std::ostream& out) const {
     out << "- src_node2csp_ \t" << eckit::Bytes(memory_of(src_node2csp_)) << "\n";
     out << "- tgt_node2csp_ \t" << eckit::Bytes(memory_of(tgt_node2csp_)) << "\n";
     out << "- src_iparam_   \t" << eckit::Bytes(memory_of(src_iparam_)) << "\n";
+}
+
+void RemapStat::fillMetadata(Metadata& metadata) {
+    // counts
+    metadata.set("counts.SRC_PLG", counts[SRC_PLG]);
+    metadata.set("counts.TGT_PLG", counts[TGT_PLG]);
+    metadata.set("counts.INT_PLG", counts[INT_PLG]);
+    metadata.set("counts.UNCVR_SRC", counts[UNCVR_SRC]);
+
+    // errors
+    metadata.set("errors.SRC_PLG_L1", errors[SRC_PLG_L1]);
+    metadata.set("errors.SRC_PLG_LINF", errors[SRC_PLG_LINF]);
+    metadata.set("errors.TGT_PLG_L1", errors[TGT_PLG_L1]);
+    metadata.set("errors.TGT_PLG_LINF", errors[TGT_PLG_LINF]);
+    metadata.set("errors.GEO_L1", errors[GEO_L1]);
+    metadata.set("errors.GEO_LINF", errors[GEO_LINF]);
+    metadata.set("errors.GEO_DIFF", errors[GEO_DIFF]);
+    metadata.set("errors.REMAP_CONS", errors[REMAP_CONS]);
+    metadata.set("errors.REMAP_L2", errors[REMAP_L2]);
+    metadata.set("errors.REMAP_LINF", errors[REMAP_LINF]);
+}
+
+RemapStat::RemapStat(const Metadata& metadata) {
+    // counts
+    metadata.get("counts.SRC_PLG", counts[SRC_PLG]);
+    metadata.get("counts.TGT_PLG", counts[TGT_PLG]);
+    metadata.get("counts.INT_PLG", counts[INT_PLG]);
+    metadata.get("counts.UNCVR_SRC", counts[UNCVR_SRC]);
+
+    // errors
+    metadata.get("errors.SRC_PLG_L1", errors[SRC_PLG_L1]);
+    metadata.get("errors.SRC_PLG_LINF", errors[SRC_PLG_LINF]);
+    metadata.get("errors.TGT_PLG_L1", errors[TGT_PLG_L1]);
+    metadata.get("errors.TGT_PLG_LINF", errors[TGT_PLG_LINF]);
+    metadata.get("errors.GEO_L1", errors[GEO_L1]);
+    metadata.get("errors.GEO_LINF", errors[GEO_LINF]);
+    metadata.get("errors.GEO_DIFF", errors[GEO_DIFF]);
+    metadata.get("errors.REMAP_CONS", errors[REMAP_CONS]);
+    metadata.get("errors.REMAP_L2", errors[REMAP_L2]);
+    metadata.get("errors.REMAP_LINF", errors[REMAP_LINF]);
 }
 
 

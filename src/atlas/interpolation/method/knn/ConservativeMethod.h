@@ -71,7 +71,7 @@ public:
     public:
         Cache() = default;
         Cache(const interpolation::Cache& c);
-        //        Cache(const Interpolation&);
+        Cache(const Interpolation&);
 
         operator bool() const { return entry_; }
         size_t footprint() const;
@@ -108,6 +108,15 @@ public:
             REMAP_LINF   // index, like REMAP_L2 but in L_infinity norm
         };
         std::array<double, 10> errors;
+
+        void fillMetadata(Metadata&);
+
+        RemapStat() = default;
+        RemapStat(const Metadata&);
+
+        void compute(const ConservativeMethod&, const array::ArrayView<double, 1> src_vals,
+                     const array::ArrayView<double, 1> tgt_vals, array::ArrayView<double, 1>* diff_vals,
+                     double func(const PointLonLat&));
     };
 
 
@@ -127,8 +136,6 @@ public:
 
     void set_order(int order);
     void setup_stat() const;
-    void remap_stat(const FieldArray& src_field, const FieldArray& tgt_field, FieldArray* diff_field,
-                    double func(const PointLonLat&)) const;
     void print(std::ostream& out) const override { out << "ConservativeMethod[]"; }
 
     RemapStat& remap_stat() const;
@@ -175,6 +182,9 @@ protected:
 private:
     int next_index(int current_index, int size, int offset = 1) const;
     int prev_index(int current_index, int size, int offset = 1) const;
+
+    void remap_stat(const FieldArray& src_field, const FieldArray& tgt_field, FieldArray* diff_field,
+                    double func(const PointLonLat&)) const;
 
 protected:
     bool src_cell_data_;

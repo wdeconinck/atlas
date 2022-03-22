@@ -51,8 +51,7 @@ Grid localgrid(int nx, int ny) {
     return Grid{gridspec};
 }
 
-void print_remap_errors(ConservativeMethod& consMethod, std::ofstream& outfile) {
-    const auto& remap_stat = consMethod.remap_stat();
+void print_remap_errors(ConservativeMethod& consMethod, const RemapStat& remap_stat, std::ofstream& outfile) {
     Log::info() << "    " << consMethod.order() << "-order remap analytical error : (L2) "
                 << remap_stat.errors[RemapStat::Errors::REMAP_L2] << " (Lmax) "
                 << remap_stat.errors[RemapStat::Errors::REMAP_LINF] << "\n";
@@ -116,17 +115,16 @@ void do_remapping_test(Grid src_grid, Grid tgt_grid, double func(const PointLonL
 
     consMethod.set_order(1);
     start = std::chrono::system_clock::now();
-    ConservativeMethod::Metadata metadata;
-    consMethod.do_execute(src_field, tgt_field, metadata);
+
+    auto remap_stat = ConservativeMethod::RemapStat(consMethod.execute(src_field, tgt_field));
     elapsed_seconds = std::chrono::system_clock::now() - start;
 
     // compute difference field
     auto diff_field = src_fs.createField<double>();
     auto diff_vals  = array::make_view<double, 1>(diff_field);
-    consMethod.remap_stat(src_vals, tgt_vals, &diff_vals, func);
+    remap_stat.compute(consMethod, src_vals, tgt_vals, &diff_vals, func);
 
     // remap statistics
-    auto& remap_stat = consMethod.remap_stat();
     Log::info() << "Created " << remap_stat.counts[RemapStat::Counts::SRC_PLG] << " (sub)polygons from "
                 << src_mesh.cells().size() << " source mesh cells.\n";
     Log::info() << "    Total sum of subpolygon over/undershoots : " << remap_stat.errors[RemapStat::Errors::SRC_PLG_L1]
@@ -150,7 +148,7 @@ void do_remapping_test(Grid src_grid, Grid tgt_grid, double func(const PointLonL
     outfile << std::setw(10) << remap_stat.errors[RemapStat::Errors::GEO_DIFF];
     outfile << std::setw(10) << remap_stat.errors[RemapStat::Errors::REMAP_L2] << std::setw(10)
             << remap_stat.errors[RemapStat::Errors::REMAP_LINF];
-    print_remap_errors(consMethod, outfile);
+    print_remap_errors(consMethod, remap_stat, outfile);
     output::Gmsh("cons-remap_tgtfield-1ord.msh", gmsh_config).write(tgt_field);
     output::Gmsh("cons-remap_difffield-1ord.msh", gmsh_config).write(diff_field);
 
@@ -160,16 +158,15 @@ void do_remapping_test(Grid src_grid, Grid tgt_grid, double func(const PointLonL
     ATLAS_DEBUG("cache.footprint(): " << eckit::Bytes(cache.footprint()));
 
     consMethod.set_order(2);
-    start = std::chrono::system_clock::now();
-    consMethod.do_execute(src_field, tgt_field, metadata);
-    elapsed_seconds = std::chrono::system_clock::now() - start;
+    start             = std::chrono::system_clock::now();
+    auto remap_stat_2 = ConservativeMethod::RemapStat(consMethod.execute(src_field, tgt_field));
+    elapsed_seconds   = std::chrono::system_clock::now() - start;
 
     // remap statistics
-    consMethod.remap_stat(src_vals, tgt_vals, &diff_vals, func);
-    remap_stat = consMethod.remap_stat();
+    remap_stat_2.compute(consMethod, src_vals, tgt_vals, &diff_vals, func);
     Log::info() << "  2-order remap took " << elapsed_seconds.count() << " seconds.\n";
     outfile << std::setw(10) << elapsed_seconds.count();
-    print_remap_errors(consMethod, outfile);
+    print_remap_errors(consMethod, remap_stat_2, outfile);
     output::Gmsh("cons-remap_tgtfield-2ord.msh", gmsh_config).write(tgt_field);
     output::Gmsh("cons-remap_difffield-2ord.msh", gmsh_config).write(diff_field);
 

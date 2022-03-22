@@ -65,9 +65,8 @@ void do_remapping_test(Grid src_grid, Grid tgt_grid, double func(const PointLonL
 
     // project source field to target mesh in 1st order
     // consMethod.set_order(1);
-    consMethod.execute(src_field, tgt_field);
-    consMethod.remap_stat(src_vals, tgt_vals, nullptr, func);
-    remap_stat_1 = consMethod.remap_stat();
+    remap_stat_1 = RemapStat(consMethod.execute(src_field, tgt_field));
+    remap_stat_1.compute(consMethod, src_vals, tgt_vals, nullptr, func);
 
     ATLAS_TRACE_SCOPE("test caching") {
         // We can create the interpolation without polygon intersections
@@ -128,9 +127,8 @@ void do_remapping_test(Grid src_grid, Grid tgt_grid, double func(const PointLonL
     {
         // project source field to target mesh in 2nd order
         consMethod.set_order(2);
-        consMethod.execute(src_field, tgt_field);
-        consMethod.remap_stat(src_vals, tgt_vals, nullptr, func);
-        remap_stat_2 = consMethod.remap_stat();
+        remap_stat_2 = RemapStat(consMethod.execute(src_field, tgt_field));
+        remap_stat_2.compute(consMethod, src_vals, tgt_vals, nullptr, func);
     }
 }
 
