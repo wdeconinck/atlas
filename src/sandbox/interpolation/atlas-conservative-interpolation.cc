@@ -116,7 +116,8 @@ void do_remapping_test(Grid src_grid, Grid tgt_grid, double func(const PointLonL
 
     consMethod.set_order(1);
     start = std::chrono::system_clock::now();
-    consMethod.do_execute(src_field, tgt_field);
+    ConservativeMethod::Metadata metadata;
+    consMethod.do_execute(src_field, tgt_field, metadata);
     elapsed_seconds = std::chrono::system_clock::now() - start;
 
     // compute difference field
@@ -160,7 +161,7 @@ void do_remapping_test(Grid src_grid, Grid tgt_grid, double func(const PointLonL
 
     consMethod.set_order(2);
     start = std::chrono::system_clock::now();
-    consMethod.do_execute(src_field, tgt_field);
+    consMethod.do_execute(src_field, tgt_field, metadata);
     elapsed_seconds = std::chrono::system_clock::now() - start;
 
     // remap statistics

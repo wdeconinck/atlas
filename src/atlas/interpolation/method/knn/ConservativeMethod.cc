@@ -1162,7 +1162,7 @@ eckit::linalg::SparseMatrix ConservativeMethod::compute_2nd_order_matrix() {
     return Matrix(n_tpoints_, n_spoints_, triplets);
 }
 
-void ConservativeMethod::do_execute(const Field& src_field, Field& tgt_field) const {
+void ConservativeMethod::do_execute(const Field& src_field, Field& tgt_field, Metadata& metadata) const {
     ATLAS_TRACE("ConservativeMethod::do_execute()");
     {
         ATLAS_TRACE("halo exchange source");
@@ -1194,7 +1194,7 @@ void ConservativeMethod::do_execute(const Field& src_field, Field& tgt_field) co
         }
         else {
             ATLAS_TRACE("matrix_order_1");
-            Method::do_execute(src_field, tgt_field);
+            Method::do_execute(src_field, tgt_field, metadata);
         }
     }
     else if (order_ == 2) {
@@ -1271,7 +1271,7 @@ void ConservativeMethod::do_execute(const Field& src_field, Field& tgt_field) co
         }
         else {
             ATLAS_TRACE("matrix_order_2");
-            Method::do_execute(src_field, tgt_field);
+            Method::do_execute(src_field, tgt_field, metadata);
         }
     }
     {

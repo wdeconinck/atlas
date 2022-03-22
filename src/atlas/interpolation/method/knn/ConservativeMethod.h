@@ -123,7 +123,7 @@ public:
     void do_setup(const FunctionSpace& src_fs, const FunctionSpace& tgt_fs) override;
     void do_setup_impl(const Grid& src_grid, const Grid& tgt_grid);
     void do_setup(const Grid& src_grid, const Grid& tgt_grid, const interpolation::Cache&) override;
-    void do_execute(const Field& src_field, Field& tgt_field) const override;
+    void do_execute(const Field& src_field, Field& tgt_field, Metadata&) const override;
 
     void set_order(int order);
     void setup_stat() const;
