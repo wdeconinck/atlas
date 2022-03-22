@@ -84,8 +84,6 @@ public:
     };
 
     struct RemapStat {
-        bool setup_computed = false;
-        bool remap_computed = false;
         enum Counts
         {
             SRC_PLG = 0,  // index, number of source polygons
@@ -111,12 +109,23 @@ public:
 
         void fillMetadata(Metadata&);
 
-        RemapStat() = default;
+        RemapStat() {
+            std::fill(std::begin(counts), std::end(counts), 0);
+            std::fill(std::begin(errors), std::end(errors), 0.);
+        }
         RemapStat(const Metadata&);
 
-        void compute(const ConservativeMethod&, const array::ArrayView<double, 1> src_vals,
-                     const array::ArrayView<double, 1> tgt_vals, array::ArrayView<double, 1>* diff_vals,
-                     double func(const PointLonLat&));
+        void accuracy(const ConservativeMethod& consMethod, const Field target, double func(const PointLonLat&));
+
+        void accuracy(const Interpolation& interpolation, const Field target, double func(const PointLonLat&));
+
+
+        // compute difference field of source and target mass
+        Field diff(const Interpolation&, const Field source, const Field target);
+
+    private:
+        friend class ConservativeMethod;
+        bool errors_REMAP_CONS_;
     };
 
 
@@ -196,6 +205,8 @@ protected:
     int normalise_intersections_;
     int order_;
     bool matrix_free_;
+    bool compute_stats_;
+
     mutable RemapStat remap_stat_;
 
     std::shared_ptr<CachableData> cachable_data_shared_;

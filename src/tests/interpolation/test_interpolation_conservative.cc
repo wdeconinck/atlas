@@ -42,32 +42,40 @@ void do_remapping_test(Grid src_grid, Grid tgt_grid, double func(const PointLonL
                        RemapStat& remap_stat_2) {
     Log::info().indent();
     // setup conservative remap: compute weights, polygon intersection, etc
-    util::Config config("order", 1);
-    ConservativeMethod consMethod(config);
-    consMethod.setup(src_grid, tgt_grid);
+    util::Config config("type", "conservative");
+    config.set("order", 1);
+    config.set("statistics.intersection", true);
+    config.set("statistics.conservation", true);
+
+    auto conservative_interpolation = Interpolation(config, src_grid, tgt_grid);
 
     // create source field from analytic function "func"
-    const auto& src_fs = consMethod.source();
-    const auto& tgt_fs = consMethod.target();
+    const auto& src_fs = conservative_interpolation.source();
+    const auto& tgt_fs = conservative_interpolation.target();
     auto src_field     = src_fs.createField<double>();
     auto tgt_field     = tgt_fs.createField<double>();
     auto src_vals      = array::make_view<double, 1>(src_field);
     auto tgt_vals      = array::make_view<double, 1>(tgt_field);
-    for (idx_t spt = 0; spt < src_vals.size(); ++spt) {
-        auto p = consMethod.src_points(spt);
-        PointLonLat pll;
-        eckit::geometry::Sphere::convertCartesianToSpherical(1., p, pll);
-        src_vals(spt) = func(pll);
+
+    {
+        ATLAS_TRACE("initial condition");
+        // A bit of a hack here...
+        ConservativeMethod& consMethod = dynamic_cast<ConservativeMethod&>(*conservative_interpolation.get());
+        for (idx_t spt = 0; spt < src_vals.size(); ++spt) {
+            auto p = consMethod.src_points(spt);
+            PointLonLat pll;
+            eckit::geometry::Sphere::convertCartesianToSpherical(1., p, pll);
+            src_vals(spt) = func(pll);
+        }
     }
 
     // project source field to target mesh in 1st order
-    // consMethod.set_order(1);
-    remap_stat_1 = RemapStat(consMethod.execute(src_field, tgt_field));
-    remap_stat_1.compute(consMethod, src_vals, tgt_vals, nullptr, func);
+    remap_stat_1 = RemapStat(conservative_interpolation.execute(src_field, tgt_field));
+    remap_stat_1.accuracy(conservative_interpolation, tgt_field, func);
 
     ATLAS_TRACE_SCOPE("test caching") {
         // We can create the interpolation without polygon intersections
-        auto cache = consMethod.createCache();
+        auto cache = interpolation::Cache(conservative_interpolation);
         // cache = ConservativeMethod::Cache + MatrixCache (1st order)
         util::Config cfg(option::type("conservative"));
         {
@@ -119,13 +127,12 @@ void do_remapping_test(Grid src_grid, Grid tgt_grid, double func(const PointLonL
     }
 
 
-    // TODO: We should not be allowed to change order like that. Rather a new interpolation object should
-    //       be created of second order.
     {
         // project source field to target mesh in 2nd order
-        consMethod.set_order(2);
-        remap_stat_2 = RemapStat(consMethod.execute(src_field, tgt_field));
-        remap_stat_2.compute(consMethod, src_vals, tgt_vals, nullptr, func);
+        config.set("order", 2);
+        conservative_interpolation = Interpolation(config, src_grid, tgt_grid);
+        remap_stat_2               = RemapStat(conservative_interpolation.execute(src_field, tgt_field));
+        remap_stat_2.accuracy(conservative_interpolation, tgt_field, func);
     }
 }
 

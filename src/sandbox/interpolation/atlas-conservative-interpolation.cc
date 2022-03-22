@@ -20,6 +20,7 @@
 #include "atlas/array/MakeView.h"
 #include "atlas/field.h"
 #include "atlas/grid.h"
+#include "atlas/interpolation/Interpolation.h"
 #include "atlas/interpolation/method/knn/ConservativeMethod.h"
 #include "atlas/mesh.h"
 #include "atlas/mesh/Mesh.h"
@@ -75,35 +76,41 @@ void do_remapping_test(Grid src_grid, Grid tgt_grid, double func(const PointLonL
         bool retval           = eckit::Resource<bool>(resource, resource_default);
         return retval;
     };
+    config.set("type", "conservative");
     config.set("src_cell_data", cell_data("--src-cell-data", src_grid));
     config.set("tgt_cell_data", cell_data("--tgt-cell-data", tgt_grid));
     config.set("matrix_free", eckit::Resource<bool>("--matrix-free", false));
     config.set("normalise_intersections", eckit::Resource<bool>("--normalise", true));
-    ConservativeMethod consMethod(config);
+    config.set("statistics.intersection", true);
+    config.set("statistics.conservation", true);
+    config.set("statistics.accuracy", true);
+
+    Log::info() << "REMAPPING: " << src_grid.name() << " --> " << tgt_grid.name()
+                << ", matrix-free: " << config.getBool("matrix_free")
+                << ", normalise: " << config.getBool("normalise_intersections") << std::endl;
 
     outfile << std::setw(10) << src_grid.name() << std::setw(10) << tgt_grid.name();
 
-    Log::info() << "REMAPPING: " << src_grid.name() << " --> " << tgt_grid.name()
-                << ", matrix-free: " << consMethod.matrix_free()
-                << ", normalise: " << consMethod.normalise_intersections() << std::endl;
     Log::info().indent();
     auto start = std::chrono::system_clock::now();
-    consMethod.setup(src_grid, tgt_grid);
+
+    Interpolation interpolation(config, src_grid, tgt_grid);
+    auto& consMethod = dynamic_cast<ConservativeMethod&>(*interpolation.get());
+
     std::chrono::duration<double> elapsed_seconds = std::chrono::system_clock::now() - start;
     Log::info() << "Setup (computing supermesh) took " << elapsed_seconds.count() << " seconds.\n";
     outfile << std::setw(10) << elapsed_seconds.count();
 
-    const auto& src_mesh = consMethod.src_mesh();
-    const auto& tgt_mesh = consMethod.tgt_mesh();
-    const auto& src_fs   = consMethod.source();
-    const auto& tgt_fs   = consMethod.target();
-    auto src_field       = src_fs.createField<double>();
-    auto tgt_field       = tgt_fs.createField<double>();
-    auto src_vals        = array::make_view<double, 1>(src_field);
-    auto tgt_vals        = array::make_view<double, 1>(tgt_field);
+    const auto& src_fs = interpolation.source();
+    const auto& tgt_fs = interpolation.target();
+    auto src_field     = src_fs.createField<double>();
+    auto tgt_field     = tgt_fs.createField<double>();
 
     output::Gmsh("cons-remap_srcmesh.msh", gmsh_config).write(consMethod.src_mesh());
     output::Gmsh("cons-remap_tgtmesh.msh", gmsh_config).write(consMethod.tgt_mesh());
+
+    auto src_vals = array::make_view<double, 1>(src_field);
+    auto tgt_vals = array::make_view<double, 1>(tgt_field);
 
     for (idx_t spt = 0; spt < src_vals.size(); ++spt) {
         PointLonLat pll;
@@ -115,22 +122,29 @@ void do_remapping_test(Grid src_grid, Grid tgt_grid, double func(const PointLonL
     consMethod.set_order(1);
     start = std::chrono::system_clock::now();
 
-    auto remap_stat = ConservativeMethod::RemapStat(consMethod.execute(src_field, tgt_field));
+    auto remap_stat = ConservativeMethod::RemapStat(interpolation.execute(src_field, tgt_field));
+
     elapsed_seconds = std::chrono::system_clock::now() - start;
 
+    // compute remapping errors
+    if (config.getBool("statistics.accuracy")) {
+        remap_stat.accuracy(interpolation, tgt_field, func);
+    }
+
     // compute difference field
-    auto diff_field = src_fs.createField<double>();
-    auto diff_vals  = array::make_view<double, 1>(diff_field);
-    remap_stat.compute(consMethod, src_vals, tgt_vals, &diff_vals, func);
+    Field diff_field;
+    if (config.getBool("statistics.conservation")) {
+        diff_field = remap_stat.diff(interpolation, src_field, tgt_field);
+    }
 
     // remap statistics
     Log::info() << "Created " << remap_stat.counts[RemapStat::Counts::SRC_PLG] << " (sub)polygons from "
-                << src_mesh.cells().size() << " source mesh cells.\n";
+                << consMethod.src_mesh().cells().size() << " source mesh cells.\n";
     Log::info() << "    Total sum of subpolygon over/undershoots : " << remap_stat.errors[RemapStat::Errors::SRC_PLG_L1]
                 << "\n";
     Log::info() << "    Max over/undershoots per cell : " << remap_stat.errors[RemapStat::Errors::SRC_PLG_LINF] << "\n";
     Log::info() << "Created " << remap_stat.counts[RemapStat::Counts::TGT_PLG] << " (sub)polygons from "
-                << tgt_mesh.cells().size() << " target mesh cells.\n";
+                << consMethod.tgt_mesh().cells().size() << " target mesh cells.\n";
     Log::info() << "    Total sum of subpolygon over/undershoots : " << remap_stat.errors[RemapStat::Errors::TGT_PLG_L1]
                 << "\n";
     Log::info() << "    Max over/undershoots per cell : " << remap_stat.errors[RemapStat::Errors::TGT_PLG_LINF] << "\n";
@@ -149,7 +163,9 @@ void do_remapping_test(Grid src_grid, Grid tgt_grid, double func(const PointLonL
             << remap_stat.errors[RemapStat::Errors::REMAP_LINF];
     print_remap_errors(consMethod, remap_stat, outfile);
     output::Gmsh("cons-remap_tgtfield-1ord.msh", gmsh_config).write(tgt_field);
-    output::Gmsh("cons-remap_difffield-1ord.msh", gmsh_config).write(diff_field);
+    if (diff_field) {
+        output::Gmsh("cons-remap_difffield-1ord.msh", gmsh_config).write(diff_field);
+    }
 
 
     auto cache = consMethod.createCache();
@@ -161,13 +177,23 @@ void do_remapping_test(Grid src_grid, Grid tgt_grid, double func(const PointLonL
     auto remap_stat_2 = ConservativeMethod::RemapStat(consMethod.execute(src_field, tgt_field));
     elapsed_seconds   = std::chrono::system_clock::now() - start;
 
-    // remap statistics
-    remap_stat_2.compute(consMethod, src_vals, tgt_vals, &diff_vals, func);
+    // compute remapping errors
+    if (config.getBool("statistics.accuracy")) {
+        remap_stat_2.accuracy(interpolation, tgt_field, func);
+    }
+
+    // compute difference field
+    if (config.getBool("statistics.conservation")) {
+        diff_field = remap_stat.diff(interpolation, src_field, tgt_field);
+    }
+
     Log::info() << "  2-order remap took " << elapsed_seconds.count() << " seconds.\n";
     outfile << std::setw(10) << elapsed_seconds.count();
     print_remap_errors(consMethod, remap_stat_2, outfile);
     output::Gmsh("cons-remap_tgtfield-2ord.msh", gmsh_config).write(tgt_field);
-    output::Gmsh("cons-remap_difffield-2ord.msh", gmsh_config).write(diff_field);
+    if (diff_field) {
+        output::Gmsh("cons-remap_difffield-2ord.msh", gmsh_config).write(diff_field);
+    }
 
     (outfile << "\n").flush();
     Log::info().unindent();

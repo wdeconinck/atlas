@@ -96,9 +96,10 @@ ConservativeMethod::ConservativeMethod(const Config& config): Method(config) {
     config.get("matrix_free", matrix_free_ = false);
     config.get("src_cell_data", src_cell_data_ = true);
     config.get("tgt_cell_data", tgt_cell_data_ = true);
-    remap_stat_.setup_computed = false;
-    remap_stat_.remap_computed = false;
 
+
+    config.get("statistics.intersection", compute_stats_ = false);
+    config.get("statistics.conservation", remap_stat_.errors_REMAP_CONS_ = false);
 
     cachable_data_shared_ = std::make_shared<CachableData>();
     cache_                = Cache(cachable_data_shared_);
@@ -139,7 +140,6 @@ void ConservativeMethod::set_order(int order) {
         else {
             ATLAS_NOTIMPLEMENTED;
         }
-        remap_stat_.remap_computed = false;
     }
 }
 
@@ -475,6 +475,21 @@ void ConservativeMethod::do_setup_impl(const Grid& src_grid, const Grid& tgt_gri
     do_setup(src_fs_, tgt_fs_);
 }
 
+
+namespace {
+Mesh extract_mesh(FunctionSpace fs) {
+    if (functionspace::CellColumns(fs)) {
+        return functionspace::CellColumns(fs).mesh();
+    }
+    else if (functionspace::NodeColumns(fs)) {
+        return functionspace::NodeColumns(fs).mesh();
+    }
+    else {
+        ATLAS_THROW_EXCEPTION("Cannot extract mesh from FunctionSpace" << fs.type());
+    }
+}
+}  // namespace
+
 void ConservativeMethod::do_setup(const Grid& src_grid, const Grid& tgt_grid, const interpolation::Cache& cache) {
     ATLAS_TRACE();
 
@@ -486,6 +501,12 @@ void ConservativeMethod::do_setup(const Grid& src_grid, const Grid& tgt_grid, co
 
         src_fs_ = cachable_data_->src_fs_;
         tgt_fs_ = cachable_data_->tgt_fs_;
+
+        src_cell_data_ = functionspace::CellColumns(src_fs_);
+        tgt_cell_data_ = functionspace::CellColumns(tgt_fs_);
+
+        src_mesh_ = extract_mesh(src_fs_);
+        tgt_mesh_ = extract_mesh(tgt_fs_);
 
         if (order_ == 1 && matrix_free_) {
             // We don't need to continue with setups required for first order matrix-free
@@ -512,32 +533,13 @@ void ConservativeMethod::do_setup(const FunctionSpace& src_fs, const FunctionSpa
 
     bool compute_cache = cachable_data_->src_points_.empty();
 
-    if (functionspace::CellColumns(src_fs)) {
-        src_cell_data_ = true;
-        src_fs_        = functionspace::CellColumns(src_fs);
-        src_mesh_      = functionspace::CellColumns(src_fs).mesh();
-    }
-    else if (functionspace::NodeColumns(src_fs)) {
-        src_cell_data_ = false;
-        src_fs_        = functionspace::NodeColumns(src_fs);
-        src_mesh_      = functionspace::NodeColumns(src_fs).mesh();
-    }
-    else {
-        ATLAS_THROW_EXCEPTION("ConservativeMethod: source function space invalid");
-    }
-    if (functionspace::CellColumns(tgt_fs)) {
-        tgt_cell_data_ = true;
-        tgt_fs_        = functionspace::CellColumns(tgt_fs);
-        tgt_mesh_      = functionspace::CellColumns(tgt_fs).mesh();
-    }
-    else if (functionspace::NodeColumns(tgt_fs)) {
-        tgt_cell_data_ = false;
-        tgt_fs_        = functionspace::NodeColumns(tgt_fs);
-        tgt_mesh_      = functionspace::NodeColumns(tgt_fs).mesh();
-    }
-    else {
-        ATLAS_THROW_EXCEPTION("ConservativeMethod: target function space invalid");
-    }
+
+    src_cell_data_ = functionspace::CellColumns(src_fs_);
+    tgt_cell_data_ = functionspace::CellColumns(tgt_fs_);
+
+    src_mesh_ = extract_mesh(src_fs_);
+    tgt_mesh_ = extract_mesh(tgt_fs_);
+
     {
         // we need src_halo_size >= 2, whereas tgt_halo_size >= 0 is enough
         int src_halo_size = 0;
@@ -677,8 +679,9 @@ void ConservativeMethod::do_setup(const FunctionSpace& src_fs, const FunctionSpa
 
     cachable_data_->print(Log::debug());
 
-    // TODO: Should be optional depending on configuration
-    setup_stat();
+    if (compute_stats_) {
+        setup_stat();
+    }
 }
 
 namespace {
@@ -852,7 +855,7 @@ void ConservativeMethod::intersect_polygons(const CSPolygonArray& src_csp, const
     }
     remap_stat_.errors[RemapStat::Errors::GEO_L1]   = 0.25 * M_1_PI * geo_err_l1;
     remap_stat_.errors[RemapStat::Errors::GEO_LINF] = geo_err_linf;
-    remap_stat_.setup_computed                      = true;
+
 #if PLG_DEBUG
     for (idx_t tcell = 0; tcell < tgt_csp.size(); ++tcell) {
         const auto& t_csp     = std::get<0>(tgt_csp[tcell]);
@@ -1271,8 +1274,103 @@ void ConservativeMethod::do_execute(const Field& src_field, Field& tgt_field, Me
             Method::do_execute(src_field, tgt_field, metadata);
         }
     }
-    remap_stat_.fillMetadata(metadata);
+
+    auto remap_stat = remap_stat_;
+    if (remap_stat.errors_REMAP_CONS_) {
+        const auto src_cell_halo  = array::make_view<int, 1>(src_mesh_.cells().halo());
+        const auto src_node_ghost = array::make_view<int, 1>(src_mesh_.nodes().ghost());
+        const auto src_node_halo  = array::make_view<int, 1>(src_mesh_.nodes().halo());
+        const auto tgt_cell_halo  = array::make_view<int, 1>(tgt_mesh_.cells().halo());
+        const auto tgt_node_ghost = array::make_view<int, 1>(tgt_mesh_.nodes().ghost());
+        const auto tgt_node_halo  = array::make_view<int, 1>(tgt_mesh_.nodes().halo());
+        const auto& src_areas_v   = cachable_data_->src_areas_;
+        const auto& tgt_areas_v   = cachable_data_->tgt_areas_;
+
+        const auto src_vals = array::make_view<double, 1>(src_field);
+        const auto tgt_vals = array::make_view<double, 1>(tgt_field);
+
+        double err_remap_cons     = 0.;
+        const auto& tgt_csp2node_ = cachable_data_->tgt_csp2node_;
+        const auto& src_iparam_   = cachable_data_->src_iparam_;
+        if (src_cell_data_) {
+            for (idx_t spt = 0; spt < src_vals.size(); ++spt) {
+                if (src_cell_halo(spt)) {
+                    continue;
+                }
+                double diff = src_vals(spt) * src_areas_v[spt];
+                err_remap_cons += diff;
+                const auto& iparam = src_iparam_[spt];
+                if (tgt_cell_data_) {
+                    for (idx_t icell = 0; icell < iparam.src_weights.size(); ++icell) {
+                        idx_t tcell = iparam.cell_idx[icell];
+                        if (tgt_cell_halo(tcell) < 1) {
+                            diff -= tgt_vals(iparam.cell_idx[icell]) * iparam.src_weights[icell];
+                        }
+                    }
+                }
+                else {
+                    for (idx_t icell = 0; icell < iparam.src_weights.size(); ++icell) {
+                        idx_t tcell = iparam.cell_idx[icell];
+                        idx_t tnode = tgt_csp2node_[tcell];
+                        if (tgt_node_halo(tnode) < 1) {
+                            diff -= tgt_vals(tnode) * iparam.src_weights[icell];
+                        }
+                    }
+                }
+            }
+        }
+        else {
+            auto& src_node2csp_ = cachable_data_->src_node2csp_;
+            for (idx_t spt = 0; spt < src_vals.size(); ++spt) {
+                if (src_node_ghost(spt) or src_areas_v[spt] < 1e-14) {
+                    continue;
+                }
+                double diff = src_vals(spt) * src_areas_v[spt];
+                err_remap_cons += diff;
+                const auto& node2csp = src_node2csp_[spt];
+                for (idx_t subcell = 0; subcell < node2csp.size(); ++subcell) {
+                    const auto& iparam = src_iparam_[node2csp[subcell]];
+                    if (tgt_cell_data_) {
+                        for (idx_t icell = 0; icell < iparam.src_weights.size(); ++icell) {
+                            diff -= tgt_vals(iparam.cell_idx[icell]) * iparam.src_weights[icell];
+                        }
+                    }
+                    else {
+                        for (idx_t icell = 0; icell < iparam.src_weights.size(); ++icell) {
+                            idx_t tcell = iparam.cell_idx[icell];
+                            idx_t tnode = tgt_csp2node_[tcell];
+                            diff -= tgt_vals(tnode) * iparam.src_weights[icell];
+                        }
+                    }
+                }
+            }
+        }
+        auto& tgt_points_ = cachable_data_->tgt_points_;
+        if (tgt_cell_data_) {
+            for (idx_t tpt = 0; tpt < tgt_vals.size(); ++tpt) {
+                if (tgt_cell_halo(tpt)) {
+                    continue;
+                }
+                err_remap_cons -= tgt_vals(tpt) * tgt_areas_v[tpt];
+            }
+        }
+        else {
+            for (idx_t tpt = 0; tpt < tgt_vals.size(); ++tpt) {
+                if (tgt_node_ghost(tpt)) {
+                    continue;
+                }
+                err_remap_cons -= tgt_vals(tpt) * tgt_areas_v[tpt];
+            }
+        }
+        ATLAS_TRACE_MPI(ALLREDUCE) { mpi::comm().allReduceInPlace(&err_remap_cons, 1, eckit::mpi::sum()); }
+        remap_stat.errors[RemapStat::Errors::REMAP_CONS] = std::sqrt(std::abs(err_remap_cons) * 0.25 * M_1_PI);
+    }
+    if (compute_stats_ || remap_stat.errors_REMAP_CONS_) {
+        remap_stat.fillMetadata(metadata);
+    }
+
     {
+        // TODO: should disappear
         ATLAS_TRACE("halo exchange target");
         tgt_field.set_dirty(true);
         tgt_field.haloExchange();
@@ -1321,10 +1419,14 @@ void ConservativeMethod::setup_stat() const {
     remap_stat_.errors[RemapStat::Errors::GEO_DIFF] = geo_create_err;
 }
 
-void ConservativeMethod::RemapStat::compute(const ConservativeMethod& consMethod,
-                                            const array::ArrayView<double, 1> src_vals,
-                                            const array::ArrayView<double, 1> tgt_vals,
-                                            array::ArrayView<double, 1>* diff_vals, double func(const PointLonLat&)) {
+Field ConservativeMethod::RemapStat::diff(const Interpolation& interpolation, const Field source, const Field target) {
+    Field diff     = interpolation.source().createField(source, option::name("diff"));
+    auto src_vals  = array::make_view<double, 1>(source);
+    auto tgt_vals  = array::make_view<double, 1>(target);
+    auto diff_vals = array::make_view<double, 1>(diff);
+
+    auto& consMethod = dynamic_cast<const ConservativeMethod&>(*interpolation.get());
+
     auto cachable_data_       = ConservativeMethod::Cache(consMethod.createCache()).get();
     auto src_mesh_            = consMethod.src_mesh();
     auto tgt_mesh_            = consMethod.tgt_mesh();
@@ -1338,7 +1440,6 @@ void ConservativeMethod::RemapStat::compute(const ConservativeMethod& consMethod
     const auto tgt_node_halo  = array::make_view<int, 1>(tgt_mesh_.nodes().halo());
     const auto& src_areas_v   = cachable_data_->src_areas_;
     const auto& tgt_areas_v   = cachable_data_->tgt_areas_;
-    double err_remap_cons     = 0.;
     double err_remap_l2       = 0.;
     double err_remap_linf     = 0.;
     const auto& tgt_csp2node_ = cachable_data_->tgt_csp2node_;
@@ -1348,8 +1449,7 @@ void ConservativeMethod::RemapStat::compute(const ConservativeMethod& consMethod
             if (src_cell_halo(spt)) {
                 continue;
             }
-            double diff = src_vals(spt) * src_areas_v[spt];
-            err_remap_cons += diff;
+            double diff        = src_vals(spt) * src_areas_v[spt];
             const auto& iparam = src_iparam_[spt];
             if (tgt_cell_data_) {
                 for (idx_t icell = 0; icell < iparam.src_weights.size(); ++icell) {
@@ -1368,22 +1468,17 @@ void ConservativeMethod::RemapStat::compute(const ConservativeMethod& consMethod
                     }
                 }
             }
-            if (diff_vals) {
-                (*diff_vals)(spt) = std::abs(diff) / src_areas_v[spt];
-            }
+            diff_vals(spt) = std::abs(diff) / src_areas_v[spt];
         }
     }
     else {
         auto& src_node2csp_ = cachable_data_->src_node2csp_;
         for (idx_t spt = 0; spt < src_vals.size(); ++spt) {
             if (src_node_ghost(spt) or src_areas_v[spt] < 1e-14) {
-                if (diff_vals) {
-                    (*diff_vals)(spt) = 0.;
-                }
+                diff_vals(spt) = 0.;
                 continue;
             }
-            double diff = src_vals(spt) * src_areas_v[spt];
-            err_remap_cons += diff;
+            double diff          = src_vals(spt) * src_areas_v[spt];
             const auto& node2csp = src_node2csp_[spt];
             for (idx_t subcell = 0; subcell < node2csp.size(); ++subcell) {
                 const auto& iparam = src_iparam_[node2csp[subcell]];
@@ -1400,18 +1495,35 @@ void ConservativeMethod::RemapStat::compute(const ConservativeMethod& consMethod
                     }
                 }
             }
-            if (diff_vals) {
-                (*diff_vals)(spt) = std::abs(diff) / src_areas_v[spt];
-            }
+            diff_vals(spt) = std::abs(diff) / src_areas_v[spt];
         }
     }
-    auto& tgt_points_ = cachable_data_->tgt_points_;
+    return diff;
+}
+
+void ConservativeMethod::RemapStat::accuracy(const Interpolation& interpolation, const Field target,
+                                             double func(const PointLonLat&)) {
+    accuracy(dynamic_cast<const ConservativeMethod&>(*interpolation.get()), target, func);
+}
+
+void ConservativeMethod::RemapStat::accuracy(const ConservativeMethod& consMethod, const Field target,
+                                             double func(const PointLonLat&)) {
+    auto tgt_vals             = array::make_view<double, 1>(target);
+    auto cachable_data_       = ConservativeMethod::Cache(consMethod.createCache()).get();
+    auto tgt_mesh_            = consMethod.tgt_mesh();
+    auto src_cell_data_       = consMethod.src_cell_data();
+    auto tgt_cell_data_       = consMethod.tgt_cell_data();
+    const auto tgt_cell_halo  = array::make_view<int, 1>(tgt_mesh_.cells().halo());
+    const auto tgt_node_ghost = array::make_view<int, 1>(tgt_mesh_.nodes().ghost());
+    const auto& tgt_areas_v   = cachable_data_->tgt_areas_;
+    double err_remap_l2       = 0.;
+    double err_remap_linf     = 0.;
+    auto& tgt_points_         = cachable_data_->tgt_points_;
     if (tgt_cell_data_) {
         for (idx_t tpt = 0; tpt < tgt_vals.size(); ++tpt) {
             if (tgt_cell_halo(tpt)) {
                 continue;
             }
-            err_remap_cons -= tgt_vals(tpt) * tgt_areas_v[tpt];
             auto p = tgt_points_[tpt];
             PointLonLat pll;
             eckit::geometry::Sphere::convertCartesianToSpherical(1., p, pll);
@@ -1425,7 +1537,6 @@ void ConservativeMethod::RemapStat::compute(const ConservativeMethod& consMethod
             if (tgt_node_ghost(tpt)) {
                 continue;
             }
-            err_remap_cons -= tgt_vals(tpt) * tgt_areas_v[tpt];
             auto p = tgt_points_[tpt];
             PointLonLat pll;
             eckit::geometry::Sphere::convertCartesianToSpherical(1., p, pll);
@@ -1435,14 +1546,11 @@ void ConservativeMethod::RemapStat::compute(const ConservativeMethod& consMethod
         }
     }
     ATLAS_TRACE_MPI(ALLREDUCE) {
-        mpi::comm().allReduceInPlace(&err_remap_cons, 1, eckit::mpi::sum());
         mpi::comm().allReduceInPlace(&err_remap_l2, 1, eckit::mpi::sum());
         mpi::comm().allReduceInPlace(&err_remap_linf, 1, eckit::mpi::max());
     }
     this->errors[RemapStat::Errors::REMAP_L2]   = std::sqrt(err_remap_l2 * 0.25 * M_1_PI);
     this->errors[RemapStat::Errors::REMAP_LINF] = err_remap_linf;
-    this->errors[RemapStat::Errors::REMAP_CONS] = std::sqrt(std::abs(err_remap_cons) * 0.25 * M_1_PI);
-    this->remap_computed                        = true;
 }
 
 auto debug_intersection = [](const CSPolygon& plg_1, const CSPolygon& plg_2, const CSPolygon& iplg,
@@ -1569,7 +1677,7 @@ void RemapStat::fillMetadata(Metadata& metadata) {
     metadata.set("errors.REMAP_LINF", errors[REMAP_LINF]);
 }
 
-RemapStat::RemapStat(const Metadata& metadata) {
+RemapStat::RemapStat(const Metadata& metadata): RemapStat() {
     // counts
     metadata.get("counts.SRC_PLG", counts[SRC_PLG]);
     metadata.get("counts.TGT_PLG", counts[TGT_PLG]);
