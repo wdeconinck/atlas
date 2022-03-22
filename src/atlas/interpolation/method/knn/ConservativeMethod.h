@@ -26,11 +26,12 @@ namespace method {
 
 class ConservativeMethod : public Method {
 public:
-    struct InterpolationParameters {
-        std::vector<idx_t> cell_idx;
-        std::vector<PointXYZ> centroids;
-        std::vector<double> src_weights;
-        std::vector<double> tgt_weights;
+    struct InterpolationParameters {      // one polygon intersection
+        std::vector<idx_t> cell_idx;      // target cells used for intersection
+        std::vector<PointXYZ> centroids;  // intersection cell centroids
+        std::vector<double> src_weights;  // intersection cell areas
+                                          // TODO: tgt_weights can be computed on the fly
+        std::vector<double> tgt_weights;  // (intersection cell areas) / (target cell area)
     };
 
     class CachableData : public InterpolationCacheEntry {
@@ -44,6 +45,7 @@ public:
 
     private:
         friend class ConservativeMethod;
+
         // position and effective area of data points
         std::vector<PointXYZ> src_points_;
         std::vector<PointXYZ> tgt_points_;
@@ -57,6 +59,11 @@ public:
         std::vector<std::vector<idx_t>> tgt_node2csp_;
 
         std::vector<InterpolationParameters> src_iparam_;  // TODO: remove after setup
+
+
+        // Reconstructible if need be
+        FunctionSpace src_fs_;
+        FunctionSpace tgt_fs_;
     };
 
 public:
@@ -127,8 +134,8 @@ public:
     RemapStat& remap_stat() const;
     bool src_cell_data() const { return src_cell_data_; }
     bool tgt_cell_data() const { return tgt_cell_data_; }
-    const FunctionSpace& source() const override { return src_fs_; }
-    const FunctionSpace& target() const override { return tgt_fs_; }
+    const FunctionSpace& source() const override { return cachable_data_->src_fs_; }
+    const FunctionSpace& target() const override { return cachable_data_->tgt_fs_; }
     Mesh src_mesh() const { return src_mesh_; }
     Mesh tgt_mesh() const { return tgt_mesh_; }
     int normalise_intersections() const { return normalise_intersections_; }

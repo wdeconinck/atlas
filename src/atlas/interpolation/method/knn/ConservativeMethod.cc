@@ -437,43 +437,69 @@ void ConservativeMethod::do_setup_impl(const Grid& src_grid, const Grid& tgt_gri
     ATLAS_TRACE("ConservativeMethod::do_setup( Grid, Grid )");
     ATLAS_ASSERT(src_grid);
     ATLAS_ASSERT(tgt_grid);
-    auto src_mesh_config = src_grid.meshgenerator() | option::halo(2);
-    auto tgt_mesh_config = tgt_grid.meshgenerator() | option::halo(0);
-    ATLAS_TRACE_SCOPE("Generate target mesh") { tgt_mesh_ = MeshGenerator(tgt_mesh_config).generate(tgt_grid); }
-    ATLAS_TRACE_SCOPE("Generate source mesh") {
-        if (mpi::size() > 1) {
-            src_mesh_ = MeshGenerator(src_mesh_config).generate(src_grid, grid::MatchingPartitioner(tgt_mesh_));
+
+    tgt_fs_ = cachable_data_->tgt_fs_;
+    src_fs_ = cachable_data_->src_fs_;
+
+    if (not tgt_fs_) {
+        auto tgt_mesh_config = tgt_grid.meshgenerator() | option::halo(0);
+        ATLAS_TRACE_SCOPE("Generate target mesh") { tgt_mesh_ = MeshGenerator(tgt_mesh_config).generate(tgt_grid); }
+        ATLAS_TRACE_SCOPE("Create target functionspace") {
+            if (tgt_cell_data_) {
+                tgt_fs_ = functionspace::CellColumns(tgt_mesh_, option::halo(0));
+            }
+            else {
+                tgt_fs_ = functionspace::NodeColumns(tgt_mesh_, option::halo(0));
+            }
         }
-        else {
-            src_mesh_ = MeshGenerator(src_mesh_config).generate(src_grid);
-        }
+        cachable_data_shared_->tgt_fs_ = tgt_fs_;
+        ATLAS_ASSERT(cachable_data_->tgt_fs_);
     }
 
-    ATLAS_TRACE_SCOPE("Create source functionspace") {
-        if (src_cell_data_) {
-            functionspace::CellColumns src_fs(src_mesh_, option::halo(2));
-            src_fs_ = src_fs;
+    if (not src_fs_) {
+        auto src_mesh_config = src_grid.meshgenerator() | option::halo(2);
+        ATLAS_TRACE_SCOPE("Generate source mesh") {
+            if (mpi::size() > 1) {
+                src_mesh_ = MeshGenerator(src_mesh_config).generate(src_grid, grid::MatchingPartitioner(tgt_mesh_));
+            }
+            else {
+                src_mesh_ = MeshGenerator(src_mesh_config).generate(src_grid);
+            }
         }
-        else {
-            functionspace::NodeColumns src_fs(src_mesh_, option::halo(2));
-            src_fs_ = src_fs;
+        ATLAS_TRACE_SCOPE("Create source functionspace") {
+            if (src_cell_data_) {
+                src_fs_ = functionspace::CellColumns(src_mesh_, option::halo(2));
+            }
+            else {
+                src_fs_ = functionspace::NodeColumns(src_mesh_, option::halo(2));
+            }
         }
+        cachable_data_shared_->src_fs_ = src_fs_;
+        ATLAS_ASSERT(cachable_data_->tgt_fs_);
     }
-    ATLAS_TRACE_SCOPE("Create target functionspace") {
-        if (tgt_cell_data_) {
-            functionspace::CellColumns tgt_fs(tgt_mesh_, option::halo(0));
-            tgt_fs_ = tgt_fs;
-        }
-        else {
-            functionspace::NodeColumns tgt_fs(tgt_mesh_, option::halo(0));
-            tgt_fs_ = tgt_fs;
-        }
-    }
+
     do_setup(src_fs_, tgt_fs_);
 }
 
 void ConservativeMethod::do_setup(const Grid& src_grid, const Grid& tgt_grid, const interpolation::Cache& cache) {
     ATLAS_TRACE();
+
+    if (Cache(cache)) {
+        Log::debug() << "Interpolation data found in cache -> no polygon intersections required" << std::endl;
+        cache_         = Cache(cache);
+        cachable_data_ = cache_.get();
+        cachable_data_shared_.reset();
+
+        src_fs_ = cachable_data_->src_fs_;
+        tgt_fs_ = cachable_data_->tgt_fs_;
+
+        if (order_ == 1 && matrix_free_) {
+            // We don't need to continue with setups required for first order matrix-free
+            // such as mesh generation and functionspace creation.
+            return;
+        }
+    }
+
     if (not matrix_free_ && interpolation::MatrixCache(cache)) {
         Log::debug() << "Matrix found in cache -> no setup required at all" << std::endl;
         matrix_cache_ = cache;
@@ -481,17 +507,6 @@ void ConservativeMethod::do_setup(const Grid& src_grid, const Grid& tgt_grid, co
         return;
     }
 
-    if (Cache(cache)) {
-        Log::debug() << "Interpolation data found in cache -> no polygon intersections required" << std::endl;
-        cache_         = Cache(cache);
-        cachable_data_ = cache_.get();
-        cachable_data_shared_.reset();
-        if (order_ == 1 && matrix_free_) {
-            // We don't need to continue with setups required for first order matrix-free
-            // such as mesh generation and functionspace creation.
-            return;
-        }
-    }
 
     do_setup_impl(src_grid, tgt_grid);
 }

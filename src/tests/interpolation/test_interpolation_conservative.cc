@@ -42,7 +42,7 @@ void do_remapping_test(Grid src_grid, Grid tgt_grid, double func(const PointLonL
                        RemapStat& remap_stat_2) {
     Log::info().indent();
     // setup conservative remap: compute weights, polygon intersection, etc
-    util::Config config;
+    util::Config config("order", 1);
     ConservativeMethod consMethod(config);
     consMethod.setup(src_grid, tgt_grid);
 
@@ -64,26 +64,60 @@ void do_remapping_test(Grid src_grid, Grid tgt_grid, double func(const PointLonL
     }
 
     // project source field to target mesh in 1st order
-    consMethod.set_order(1);
-    consMethod.do_execute(src_field, tgt_field);
+    // consMethod.set_order(1);
+    consMethod.execute(src_field, tgt_field);
     consMethod.remap_stat(src_vals, tgt_vals, nullptr, func);
     remap_stat_1 = consMethod.remap_stat();
 
     ATLAS_TRACE_SCOPE("test caching") {
         // We can create the interpolation without polygon intersections
         auto cache = consMethod.createCache();
-        util::Config cfg;
-        cfg.set(option::type("conservative"));
-        cfg.set("matrix_free", false);
+        // cache = ConservativeMethod::Cache + MatrixCache (1st order)
+        util::Config cfg(option::type("conservative"));
         {
-            ATLAS_TRACE("cached -> 1st order");
-            auto interpolation = Interpolation(cfg | util::Config("order", 1), src_grid, tgt_grid, cache);
+            ATLAS_TRACE("cached -> 1st order using cached matrix");
+            cfg.set("matrix_free", false);
+            cfg.set("order", 1);
+            auto interpolation = Interpolation(cfg, src_grid, tgt_grid, cache);
+            interpolation.execute(src_field, tgt_field);
+            Log::info() << interpolation.source().type() << std::endl;
+            Log::info() << interpolation.target().type() << std::endl;
+        }
+        {
+            ATLAS_TRACE("cached -> 1st order constructing new matrix");
+            cfg.set("matrix_free", false);
+            cfg.set("order", 1);
+            auto interpolation = Interpolation(cfg, src_grid, tgt_grid, ConservativeMethod::Cache(cache));
             interpolation.execute(src_field, tgt_field);
         }
         {
-            ATLAS_TRACE("cached -> 2nd order");
-            auto interpolation =
-                Interpolation(cfg | util::Config("order", 2), src_grid, tgt_grid, ConservativeMethod::Cache(cache));
+            ATLAS_TRACE("cached -> 1st order matrix-free");
+            cfg.set("matrix_free", true);
+            cfg.set("order", 1);
+            auto interpolation = Interpolation(cfg, src_grid, tgt_grid, cache);
+            interpolation.execute(src_field, tgt_field);
+        }
+        auto cache_2 = interpolation::Cache{};
+        {
+            ATLAS_TRACE("cached -> 2nd order constructing new matrix");
+            cfg.set("matrix_free", false);
+            cfg.set("order", 2);
+            auto interpolation = Interpolation(cfg, src_grid, tgt_grid, ConservativeMethod::Cache(cache));
+            interpolation.execute(src_field, tgt_field);
+            cache_2 = interpolation.createCache();
+        }
+        {
+            ATLAS_TRACE("cached -> 2nd order matrix-free");
+            cfg.set("matrix_free", true);
+            cfg.set("order", 2);
+            auto interpolation = Interpolation(cfg, src_grid, tgt_grid, cache);
+            interpolation.execute(src_field, tgt_field);
+        }
+        {
+            ATLAS_TRACE("cached -> 2nd order using cached matrix");
+            cfg.set("matrix_free", false);
+            cfg.set("order", 2);
+            auto interpolation = Interpolation(cfg, src_grid, tgt_grid, cache_2);
             interpolation.execute(src_field, tgt_field);
         }
     }

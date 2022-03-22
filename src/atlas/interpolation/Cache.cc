@@ -71,7 +71,8 @@ private:
 
 
 MatrixCache::MatrixCache(const Cache& c):
-    Cache(c), matrix_{dynamic_cast<const MatrixCacheEntry*>(c.get(MatrixCacheEntry::static_type()))} {}
+    Cache(c, MatrixCacheEntry::static_type()),
+    matrix_{dynamic_cast<const MatrixCacheEntry*>(c.get(MatrixCacheEntry::static_type()))} {}
 
 MatrixCache::MatrixCache(Matrix&& m): MatrixCache(std::make_shared<MatrixCacheEntryOwned>(std::move(m))) {}
 
@@ -109,7 +110,8 @@ const IndexKDTreeCacheEntry::IndexKDTree& IndexKDTreeCacheEntry::tree() const {
 }
 
 IndexKDTreeCache::IndexKDTreeCache(const Cache& c):
-    Cache(c), tree_{dynamic_cast<const IndexKDTreeCacheEntry*>(c.get(IndexKDTreeCacheEntry::static_type()))} {}
+    Cache(c, IndexKDTreeCacheEntry::static_type()),
+    tree_{dynamic_cast<const IndexKDTreeCacheEntry*>(c.get(IndexKDTreeCacheEntry::static_type()))} {}
 
 IndexKDTreeCache::IndexKDTreeCache(const IndexKDTree& tree): Cache(std::make_shared<IndexKDTreeCacheEntry>(tree)) {
     tree_ = dynamic_cast<const IndexKDTreeCacheEntry*>(get(IndexKDTreeCacheEntry::static_type()));
