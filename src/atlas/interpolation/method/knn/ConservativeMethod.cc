@@ -118,13 +118,6 @@ int ConservativeMethod::prev_index(int current_index, int size, int offset) cons
     return (current_index >= offset) ? current_index - offset : current_index - offset + size;
 }
 
-RemapStat& ConservativeMethod::remap_stat() const {
-    if (not remap_stat_.setup_computed or not remap_stat_.remap_computed) {
-        std::cerr << "WARNING RemapStat not computed before accessed.\n";
-    }
-    return remap_stat_;
-}
-
 void ConservativeMethod::set_order(int order) {
     if (order != order_) {
         order_ = order;
@@ -683,6 +676,9 @@ void ConservativeMethod::do_setup(const FunctionSpace& src_fs, const FunctionSpa
     }
 
     cachable_data_->print(Log::debug());
+
+    // TODO: Should be optional depending on configuration
+    setup_stat();
 }
 
 namespace {

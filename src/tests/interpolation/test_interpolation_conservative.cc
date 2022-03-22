@@ -46,9 +46,6 @@ void do_remapping_test(Grid src_grid, Grid tgt_grid, double func(const PointLonL
     ConservativeMethod consMethod(config);
     consMethod.setup(src_grid, tgt_grid);
 
-    // get errors in polygon intersections
-    consMethod.setup_stat();
-
     // create source field from analytic function "func"
     const auto& src_fs = consMethod.source();
     const auto& tgt_fs = consMethod.target();

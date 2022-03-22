@@ -102,7 +102,6 @@ void do_remapping_test(Grid src_grid, Grid tgt_grid, double func(const PointLonL
     auto src_vals        = array::make_view<double, 1>(src_field);
     auto tgt_vals        = array::make_view<double, 1>(tgt_field);
 
-    consMethod.setup_stat();
     output::Gmsh("cons-remap_srcmesh.msh", gmsh_config).write(consMethod.src_mesh());
     output::Gmsh("cons-remap_tgtmesh.msh", gmsh_config).write(consMethod.tgt_mesh());
 

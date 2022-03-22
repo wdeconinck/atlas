@@ -135,10 +135,8 @@ public:
     void do_execute(const Field& src_field, Field& tgt_field, Metadata&) const override;
 
     void set_order(int order);
-    void setup_stat() const;
     void print(std::ostream& out) const override { out << "ConservativeMethod[]"; }
 
-    RemapStat& remap_stat() const;
     bool src_cell_data() const { return src_cell_data_; }
     bool tgt_cell_data() const { return tgt_cell_data_; }
     const FunctionSpace& source() const override { return cachable_data_->src_fs_; }
@@ -185,6 +183,8 @@ private:
 
     void remap_stat(const FieldArray& src_field, const FieldArray& tgt_field, FieldArray* diff_field,
                     double func(const PointLonLat&)) const;
+
+    void setup_stat() const;
 
 protected:
     bool src_cell_data_;
