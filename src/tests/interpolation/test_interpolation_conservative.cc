@@ -38,8 +38,8 @@ using ConservativeMethod = interpolation::method::ConservativeMethod;
 using RemapStat          = ConservativeMethod::RemapStat;
 using FieldArray         = array::ArrayView<double, 1>;
 
-void do_remapping_test(Grid src_grid, Grid tgt_grid, double func(const PointLonLat&), RemapStat& remap_stat_1,
-                       RemapStat& remap_stat_2) {
+void do_remapping_test(Grid src_grid, Grid tgt_grid, std::function<double(const PointLonLat&)> func,
+                       RemapStat& remap_stat_1, RemapStat& remap_stat_2) {
     Log::info().indent();
     // setup conservative remap: compute weights, polygon intersection, etc
     util::Config config("type", "conservative");

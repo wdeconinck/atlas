@@ -67,6 +67,18 @@ size_t memory_of(const std::vector<ConservativeMethod::InterpolationParameters>&
     return mem;
 }
 
+Mesh extract_mesh(FunctionSpace fs) {
+    if (functionspace::CellColumns(fs)) {
+        return functionspace::CellColumns(fs).mesh();
+    }
+    else if (functionspace::NodeColumns(fs)) {
+        return functionspace::NodeColumns(fs).mesh();
+    }
+    else {
+        ATLAS_THROW_EXCEPTION("Cannot extract mesh from FunctionSpace" << fs.type());
+    }
+}
+
 }  // namespace
 
 int inside_vertices(const CSPolygon& plg1, const CSPolygon& plg2, int& pout) {
@@ -98,8 +110,8 @@ ConservativeMethod::ConservativeMethod(const Config& config): Method(config) {
     config.get("tgt_cell_data", tgt_cell_data_ = true);
 
 
-    config.get("statistics.intersection", compute_stats_ = false);
-    config.get("statistics.conservation", remap_stat_.errors_REMAP_CONS_ = false);
+    config.get("statistics.intersection", statistics_intersection_ = false);
+    config.get("statistics.conservation", statistics_conservation_ = false);
 
     cachable_data_shared_ = std::make_shared<CachableData>();
     cache_                = Cache(cachable_data_shared_);
@@ -476,20 +488,6 @@ void ConservativeMethod::do_setup_impl(const Grid& src_grid, const Grid& tgt_gri
 }
 
 
-namespace {
-Mesh extract_mesh(FunctionSpace fs) {
-    if (functionspace::CellColumns(fs)) {
-        return functionspace::CellColumns(fs).mesh();
-    }
-    else if (functionspace::NodeColumns(fs)) {
-        return functionspace::NodeColumns(fs).mesh();
-    }
-    else {
-        ATLAS_THROW_EXCEPTION("Cannot extract mesh from FunctionSpace" << fs.type());
-    }
-}
-}  // namespace
-
 void ConservativeMethod::do_setup(const Grid& src_grid, const Grid& tgt_grid, const interpolation::Cache& cache) {
     ATLAS_TRACE();
 
@@ -679,13 +677,13 @@ void ConservativeMethod::do_setup(const FunctionSpace& src_fs, const FunctionSpa
 
     cachable_data_->print(Log::debug());
 
-    if (compute_stats_) {
+    if (statistics_intersection_) {
         setup_stat();
     }
 }
 
 namespace {
-// needed for intersect_polygons only
+// needed for intersect_polygons only, merely for detecting duplicate points
 struct ComparePointXYZ {
     bool operator()(const PointXYZ& f, const PointXYZ& s) const {
         // eps = ConvexSphericalPolygon::EPS which is the threshold when two points are "same"
@@ -1276,7 +1274,7 @@ void ConservativeMethod::do_execute(const Field& src_field, Field& tgt_field, Me
     }
 
     auto remap_stat = remap_stat_;
-    if (remap_stat.errors_REMAP_CONS_) {
+    if (statistics_conservation_) {
         const auto src_cell_halo  = array::make_view<int, 1>(src_mesh_.cells().halo());
         const auto src_node_ghost = array::make_view<int, 1>(src_mesh_.nodes().ghost());
         const auto src_node_halo  = array::make_view<int, 1>(src_mesh_.nodes().halo());
@@ -1365,7 +1363,7 @@ void ConservativeMethod::do_execute(const Field& src_field, Field& tgt_field, Me
         ATLAS_TRACE_MPI(ALLREDUCE) { mpi::comm().allReduceInPlace(&err_remap_cons, 1, eckit::mpi::sum()); }
         remap_stat.errors[RemapStat::Errors::REMAP_CONS] = std::sqrt(std::abs(err_remap_cons) * 0.25 * M_1_PI);
     }
-    if (compute_stats_ || remap_stat.errors_REMAP_CONS_) {
+    if (statistics_intersection_ || statistics_conservation_) {
         remap_stat.fillMetadata(metadata);
     }
 
@@ -1421,29 +1419,29 @@ void ConservativeMethod::setup_stat() const {
 
 Field ConservativeMethod::RemapStat::diff(const Interpolation& interpolation, const Field source, const Field target) {
     Field diff     = interpolation.source().createField(source, option::name("diff"));
-    auto src_vals  = array::make_view<double, 1>(source);
-    auto tgt_vals  = array::make_view<double, 1>(target);
     auto diff_vals = array::make_view<double, 1>(diff);
 
-    auto& consMethod = dynamic_cast<const ConservativeMethod&>(*interpolation.get());
+    const auto src_vals = array::make_view<double, 1>(source);
+    const auto tgt_vals = array::make_view<double, 1>(target);
 
-    auto cachable_data_       = ConservativeMethod::Cache(consMethod.createCache()).get();
-    auto src_mesh_            = consMethod.src_mesh();
-    auto tgt_mesh_            = consMethod.tgt_mesh();
-    auto src_cell_data_       = consMethod.src_cell_data();
-    auto tgt_cell_data_       = consMethod.tgt_cell_data();
+    auto cachable_data_       = ConservativeMethod::Cache(interpolation).get();
+    const auto& src_areas_v   = cachable_data_->src_areas_;
+    const auto& tgt_areas_v   = cachable_data_->tgt_areas_;
+    const auto& tgt_csp2node_ = cachable_data_->tgt_csp2node_;
+    const auto& src_node2csp_ = cachable_data_->src_node2csp_;
+    const auto& src_iparam_   = cachable_data_->src_iparam_;
+    const auto& src_mesh_     = extract_mesh(cachable_data_->src_fs_);
+    const auto& tgt_mesh_     = extract_mesh(cachable_data_->tgt_fs_);
+    const auto src_cell_data_ = bool(functionspace::CellColumns(interpolation.source()));
+    const auto tgt_cell_data_ = bool(functionspace::CellColumns(interpolation.target()));
     const auto src_cell_halo  = array::make_view<int, 1>(src_mesh_.cells().halo());
     const auto src_node_ghost = array::make_view<int, 1>(src_mesh_.nodes().ghost());
     const auto src_node_halo  = array::make_view<int, 1>(src_mesh_.nodes().halo());
     const auto tgt_cell_halo  = array::make_view<int, 1>(tgt_mesh_.cells().halo());
     const auto tgt_node_ghost = array::make_view<int, 1>(tgt_mesh_.nodes().ghost());
     const auto tgt_node_halo  = array::make_view<int, 1>(tgt_mesh_.nodes().halo());
-    const auto& src_areas_v   = cachable_data_->src_areas_;
-    const auto& tgt_areas_v   = cachable_data_->tgt_areas_;
     double err_remap_l2       = 0.;
     double err_remap_linf     = 0.;
-    const auto& tgt_csp2node_ = cachable_data_->tgt_csp2node_;
-    const auto& src_iparam_   = cachable_data_->src_iparam_;
     if (src_cell_data_) {
         for (idx_t spt = 0; spt < src_vals.size(); ++spt) {
             if (src_cell_halo(spt)) {
@@ -1472,7 +1470,6 @@ Field ConservativeMethod::RemapStat::diff(const Interpolation& interpolation, co
         }
     }
     else {
-        auto& src_node2csp_ = cachable_data_->src_node2csp_;
         for (idx_t spt = 0; spt < src_vals.size(); ++spt) {
             if (src_node_ghost(spt) or src_areas_v[spt] < 1e-14) {
                 diff_vals(spt) = 0.;
@@ -1502,16 +1499,15 @@ Field ConservativeMethod::RemapStat::diff(const Interpolation& interpolation, co
 }
 
 void ConservativeMethod::RemapStat::accuracy(const Interpolation& interpolation, const Field target,
-                                             double func(const PointLonLat&)) {
+                                             std::function<double(const PointLonLat&)> func) {
     accuracy(dynamic_cast<const ConservativeMethod&>(*interpolation.get()), target, func);
 }
 
 void ConservativeMethod::RemapStat::accuracy(const ConservativeMethod& consMethod, const Field target,
-                                             double func(const PointLonLat&)) {
+                                             std::function<double(const PointLonLat&)> func) {
     auto tgt_vals             = array::make_view<double, 1>(target);
     auto cachable_data_       = ConservativeMethod::Cache(consMethod.createCache()).get();
     auto tgt_mesh_            = consMethod.tgt_mesh();
-    auto src_cell_data_       = consMethod.src_cell_data();
     auto tgt_cell_data_       = consMethod.tgt_cell_data();
     const auto tgt_cell_halo  = array::make_view<int, 1>(tgt_mesh_.cells().halo());
     const auto tgt_node_ghost = array::make_view<int, 1>(tgt_mesh_.nodes().ghost());

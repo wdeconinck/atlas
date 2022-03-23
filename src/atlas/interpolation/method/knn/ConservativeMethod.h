@@ -115,17 +115,15 @@ public:
         }
         RemapStat(const Metadata&);
 
-        void accuracy(const ConservativeMethod& consMethod, const Field target, double func(const PointLonLat&));
+        void accuracy(const ConservativeMethod& consMethod, const Field target,
+                      std::function<double(const PointLonLat&)> func);
 
-        void accuracy(const Interpolation& interpolation, const Field target, double func(const PointLonLat&));
+        void accuracy(const Interpolation& interpolation, const Field target,
+                      std::function<double(const PointLonLat&)> func);
 
 
         // compute difference field of source and target mass
         Field diff(const Interpolation&, const Field source, const Field target);
-
-    private:
-        friend class ConservativeMethod;
-        bool errors_REMAP_CONS_;
     };
 
 
@@ -205,7 +203,8 @@ protected:
     int normalise_intersections_;
     int order_;
     bool matrix_free_;
-    bool compute_stats_;
+    bool statistics_intersection_;
+    bool statistics_conservation_;
 
     mutable RemapStat remap_stat_;
 
