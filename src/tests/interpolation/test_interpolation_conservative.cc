@@ -18,8 +18,8 @@
 #include "atlas/array/MakeView.h"
 #include "atlas/field.h"
 #include "atlas/grid.h"
-#include "atlas/interpolation/Interpolation.h"
-#include "atlas/interpolation/method/knn/ConservativeMethod.h"
+#include "atlas/interpolation.h"
+#include "atlas/interpolation/method/unstructured/ConservativeSphericalPolygonInterpolation.h"
 #include "atlas/mesh.h"
 #include "atlas/mesh/Mesh.h"
 #include "atlas/meshgenerator.h"
@@ -33,16 +33,14 @@
 namespace atlas {
 namespace test {
 
-using CSPolygon          = util::ConvexSphericalPolygon;
-using ConservativeMethod = interpolation::method::ConservativeMethod;
-using RemapStat          = ConservativeMethod::RemapStat;
-using FieldArray         = array::ArrayView<double, 1>;
+using ConservativeMethod = interpolation::method::ConservativeSphericalPolygonInterpolation;
+using Statistics         = ConservativeMethod::Statistics;
 
 void do_remapping_test(Grid src_grid, Grid tgt_grid, std::function<double(const PointLonLat&)> func,
-                       RemapStat& remap_stat_1, RemapStat& remap_stat_2) {
+                       Statistics& remap_stat_1, Statistics& remap_stat_2) {
     Log::info().indent();
     // setup conservative remap: compute weights, polygon intersection, etc
-    util::Config config("type", "conservative");
+    util::Config config("type", "conservative-spherical-polygon");
     config.set("order", 1);
     config.set("statistics.intersection", true);
     config.set("statistics.conservation", true);
@@ -71,14 +69,14 @@ void do_remapping_test(Grid src_grid, Grid tgt_grid, std::function<double(const 
     }
 
     // project source field to target mesh in 1st order
-    remap_stat_1 = RemapStat(conservative_interpolation.execute(src_field, tgt_field));
+    remap_stat_1 = conservative_interpolation.execute(src_field, tgt_field);
     remap_stat_1.accuracy(conservative_interpolation, tgt_field, func);
 
     ATLAS_TRACE_SCOPE("test caching") {
         // We can create the interpolation without polygon intersections
         auto cache = interpolation::Cache(conservative_interpolation);
         // cache = ConservativeMethod::Cache + MatrixCache (1st order)
-        util::Config cfg(option::type("conservative"));
+        util::Config cfg(option::type("conservative-spherical-polygon"));
         {
             ATLAS_TRACE("cached -> 1st order using cached matrix");
             cfg.set("matrix_free", false);
@@ -137,35 +135,35 @@ void do_remapping_test(Grid src_grid, Grid tgt_grid, std::function<double(const 
         config.set("order", 2);
         conservative_interpolation = Interpolation(config, src_grid, tgt_grid);
         Log::info() << conservative_interpolation << std::endl;
-        remap_stat_2 = RemapStat(conservative_interpolation.execute(src_field, tgt_field));
+        remap_stat_2 = conservative_interpolation.execute(src_field, tgt_field);
         remap_stat_2.accuracy(conservative_interpolation, tgt_field, func);
     }
 }
 
-void check(const RemapStat remap_stat_1, RemapStat remap_stat_2, std::array<double, 6> tol) {
+void check(const Statistics remap_stat_1, Statistics remap_stat_2, std::array<double, 6> tol) {
     auto improvement = [](double& e, double& r) { return 100. * (r - e) / r; };
     double err;
     // check polygon intersections
-    err = remap_stat_1.errors[RemapStat::Errors::GEO_DIFF];
+    err = remap_stat_1.errors[Statistics::Errors::GEO_DIFF];
     Log::info() << "Polygon area computation improvement: " << improvement(err, tol[0]) << " %" << std::endl;
     EXPECT(err < tol[0]);
-    err = remap_stat_1.errors[RemapStat::Errors::GEO_L1];
+    err = remap_stat_1.errors[Statistics::Errors::GEO_L1];
     Log::info() << "Polygon intersection improvement    : " << improvement(err, tol[1]) << " %" << std::endl;
     EXPECT(err < tol[1]);
 
     // check remap accuracy
-    err = remap_stat_1.errors[RemapStat::Errors::REMAP_L2];
+    err = remap_stat_1.errors[Statistics::Errors::REMAP_L2];
     Log::info() << "1st order accuracy improvement      : " << improvement(err, tol[2]) << " %" << std::endl;
     EXPECT(err < tol[2]);
-    err = remap_stat_2.errors[RemapStat::Errors::REMAP_L2];
+    err = remap_stat_2.errors[Statistics::Errors::REMAP_L2];
     Log::info() << "2nd order accuracy improvement      : " << improvement(err, tol[3]) << " %" << std::endl;
     EXPECT(err < tol[3]);
 
     // check mass conservation
-    err = remap_stat_1.errors[RemapStat::Errors::REMAP_CONS];
+    err = remap_stat_1.errors[Statistics::Errors::REMAP_CONS];
     Log::info() << "1st order conservation improvement  : " << improvement(err, tol[4]) << " %" << std::endl;
     EXPECT(err < tol[4]);
-    err = remap_stat_2.errors[RemapStat::Errors::REMAP_CONS];
+    err = remap_stat_2.errors[Statistics::Errors::REMAP_CONS];
     Log::info() << "2nd order conservation improvement  : " << improvement(err, tol[5]) << " %" << std::endl
                 << std::endl;
     EXPECT(err < tol[5]);
@@ -176,8 +174,8 @@ CASE("test_interpolation_conservative") {
 #if 1
     SECTION("analytic constfunc") {
         auto func = [](const PointLonLat& p) { return 1.; };
-        RemapStat remap_stat_1;
-        RemapStat remap_stat_2;
+        Statistics remap_stat_1;
+        Statistics remap_stat_2;
         do_remapping_test(Grid("H47"), Grid("H48"), func, remap_stat_1, remap_stat_2);
         check(remap_stat_1, remap_stat_2, {1.e-13, 5.e-8, 2.9e-7, 2.9e-7, 5.5e-5, 5.5e-5});
     }
@@ -187,8 +185,8 @@ CASE("test_interpolation_conservative") {
             double cos = std::cos(0.025 * p[0]);
             return 2. + cos * cos * std::cos(2 * 0.025 * p[1]);
         };
-        RemapStat remap_stat_1;
-        RemapStat remap_stat_2;
+        Statistics remap_stat_1;
+        Statistics remap_stat_2;
         do_remapping_test(Grid("H47"), Grid("H48"), func, remap_stat_1, remap_stat_2);
         check(remap_stat_1, remap_stat_2, {1.e-13, 5.e-8, 4.8e-4, 1.1e-4, 8.9e-5, 1.1e-4});
     }

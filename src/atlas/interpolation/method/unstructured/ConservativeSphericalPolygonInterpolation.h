@@ -11,40 +11,37 @@
 
 #pragma once
 
-#include "atlas/interpolation/method/knn/KNearestNeighboursBase.h"
-
-#include <forward_list>
-
 #include "atlas/functionspace.h"
+#include "atlas/interpolation/method/Method.h"
 #include "atlas/util/ConvexSphericalPolygon.h"
-
 
 namespace atlas {
 namespace interpolation {
 namespace method {
 
 
-class ConservativeMethod : public Method {
+class ConservativeSphericalPolygonInterpolation : public Method {
 public:
     struct InterpolationParameters {      // one polygon intersection
         std::vector<idx_t> cell_idx;      // target cells used for intersection
         std::vector<PointXYZ> centroids;  // intersection cell centroids
         std::vector<double> src_weights;  // intersection cell areas
-                                          // TODO: tgt_weights can be computed on the fly
+
+        // TODO: tgt_weights can be computed on the fly
         std::vector<double> tgt_weights;  // (intersection cell areas) / (target cell area)
     };
 
-    class CachableData : public InterpolationCacheEntry {
+private:
+    class Data : public InterpolationCacheEntry {
     public:
-        ~CachableData() override = default;
+        ~Data() override = default;
         size_t footprint() const override;
-        static std::string static_type() { return "ConservativeMethod"; }
+        static std::string static_type() { return "ConservativeSphericalPolygonInterpolation"; }
         std::string type() const override { return static_type(); }
-
         void print(std::ostream& out) const;
 
     private:
-        friend class ConservativeMethod;
+        friend class ConservativeSphericalPolygonInterpolation;
 
         // position and effective area of data points
         std::vector<PointXYZ> src_points_;
@@ -58,8 +55,7 @@ public:
         std::vector<std::vector<idx_t>> src_node2csp_;
         std::vector<std::vector<idx_t>> tgt_node2csp_;
 
-        std::vector<InterpolationParameters> src_iparam_;  // TODO: remove after setup
-
+        std::vector<InterpolationParameters> src_iparam_;  // TODO: remove after setup?
 
         // Reconstructible if need be
         FunctionSpace src_fs_;
@@ -74,15 +70,15 @@ public:
         Cache(const Interpolation&);
 
         operator bool() const { return entry_; }
-        const CachableData* get() const { return entry_; }
+        const Data* get() const { return entry_; }
 
     private:
-        friend class ConservativeMethod;
+        friend class ConservativeSphericalPolygonInterpolation;
         Cache(std::shared_ptr<InterpolationCacheEntry> entry);
-        const CachableData* entry_{nullptr};
+        const Data* entry_{nullptr};
     };
 
-    struct RemapStat {
+    struct Statistics {
         enum Counts
         {
             SRC_PLG = 0,  // index, number of source polygons
@@ -108,14 +104,8 @@ public:
 
         void fillMetadata(Metadata&);
 
-        RemapStat() {
-            std::fill(std::begin(counts), std::end(counts), 0);
-            std::fill(std::begin(errors), std::end(errors), 0.);
-        }
-        RemapStat(const Metadata&);
-
-        void accuracy(const ConservativeMethod& consMethod, const Field target,
-                      std::function<double(const PointLonLat&)> func);
+        Statistics();
+        Statistics(const Metadata&);
 
         void accuracy(const Interpolation& interpolation, const Field target,
                       std::function<double(const PointLonLat&)> func);
@@ -127,43 +117,37 @@ public:
 
 
 public:
-    using CSPolygon      = util::ConvexSphericalPolygon;
-    using PolygonArray   = std::vector<std::pair<CSPolygon, int>>;
-    using CSPolygonArray = std::vector<std::tuple<CSPolygon, int>>;
-
-    ConservativeMethod(const Config& = util::NoConfig());
+    ConservativeSphericalPolygonInterpolation(const Config& = util::NoConfig());
 
     using Method::do_setup;
     void do_setup(const FunctionSpace& src_fs, const FunctionSpace& tgt_fs) override;
-    void do_setup_impl(const Grid& src_grid, const Grid& tgt_grid);
     void do_setup(const Grid& src_grid, const Grid& tgt_grid, const interpolation::Cache&) override;
     void do_execute(const Field& src_field, Field& tgt_field, Metadata&) const override;
 
     void print(std::ostream& out) const override;
 
-    const FunctionSpace& source() const override { return cachable_data_->src_fs_; }
-    const FunctionSpace& target() const override { return cachable_data_->tgt_fs_; }
+    const FunctionSpace& source() const override { return data_->src_fs_; }
+    const FunctionSpace& target() const override { return data_->tgt_fs_; }
 
-    inline const PointXYZ& src_points(size_t id) const { return cachable_data_->src_points_[id]; }
-    inline const PointXYZ& tgt_points(size_t id) const { return cachable_data_->tgt_points_[id]; }
+    inline const PointXYZ& src_points(size_t id) const { return data_->src_points_[id]; }
+    inline const PointXYZ& tgt_points(size_t id) const { return data_->tgt_points_[id]; }
 
-    interpolation::Cache createCache() const override {
-        interpolation::Cache cache;
-        if (not matrix_free_) {
-            cache.add(matrix_cache_);
-        }
-        cache.add(cache_);
-        return cache;
-    }
+    interpolation::Cache createCache() const override;
 
 private:
+    using ConvexSphericalPolygon = util::ConvexSphericalPolygon;
+    using PolygonArray           = std::vector<std::pair<ConvexSphericalPolygon, int>>;
+    using CSPolygonArray         = std::vector<std::tuple<ConvexSphericalPolygon, int>>;
+
+    void do_setup_impl(const Grid& src_grid, const Grid& tgt_grid);
+
     void intersect_polygons(const CSPolygonArray& src_csp, const CSPolygonArray& tgt_scp);
     Matrix compute_1st_order_matrix();
     Matrix compute_2nd_order_matrix();
-    void dump_intersection(const CSPolygon& plg_1, const CSPolygonArray& plg_2_array,
+    void dump_intersection(const ConvexSphericalPolygon& plg_1, const CSPolygonArray& plg_2_array,
                            const std::vector<idx_t>& plg_2_idx_array) const;
     template <class TargetCellsIDs>
-    void dump_intersection(const CSPolygon& plg_1, const CSPolygonArray& plg_2_array,
+    void dump_intersection(const ConvexSphericalPolygon& plg_1, const CSPolygonArray& plg_2_array,
                            const TargetCellsIDs& plg_2_idx_array) const;
     std::vector<idx_t> sort_cell_edges(Mesh& mesh, idx_t cell_id) const;
     std::vector<idx_t> sort_node_edges(Mesh& mesh, idx_t cell_id) const;
@@ -193,11 +177,11 @@ private:
     bool statistics_intersection_;
     bool statistics_conservation_;
 
-    mutable RemapStat remap_stat_;
+    mutable Statistics remap_stat_;
 
-    std::shared_ptr<CachableData> cachable_data_shared_;
-    const CachableData* cachable_data_;
-    Cache cache_;
+    Cache cache_;                          // Storage of cache if any was passed to constructor
+    std::shared_ptr<Data> sharable_data_;  // Storage of new data_, only allocated if cache is empty
+    const Data* data_;                     // Read-only access to data, pointing either to cache_ or sharable_data_
 
     // position and effective area of data points
     idx_t n_spoints_;

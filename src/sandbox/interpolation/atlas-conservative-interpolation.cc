@@ -21,7 +21,7 @@
 #include "atlas/field.h"
 #include "atlas/grid.h"
 #include "atlas/interpolation/Interpolation.h"
-#include "atlas/interpolation/method/knn/ConservativeMethod.h"
+#include "atlas/interpolation/method/unstructured/ConservativeSphericalPolygonInterpolation.h"
 #include "atlas/mesh.h"
 #include "atlas/mesh/Mesh.h"
 #include "atlas/meshgenerator.h"
@@ -35,22 +35,8 @@
 namespace atlas {
 namespace test {
 
-using CSPolygon          = util::ConvexSphericalPolygon;
-using ConservativeMethod = interpolation::method::ConservativeMethod;
-using RemapStat          = ConservativeMethod::RemapStat;
-using FieldArray         = array::ArrayView<double, 1>;
-
-Grid localgrid(int nx, int ny) {
-    util::Config gridspec;
-    gridspec.set("type", "regional");
-    gridspec.set("nx", nx);
-    gridspec.set("ny", ny);
-    gridspec.set("north", 80);
-    gridspec.set("south", 0);
-    gridspec.set("west", 0);
-    gridspec.set("east", 90);
-    return Grid{gridspec};
-}
+using interpolation::method::ConservativeSphericalPolygonInterpolation;
+using Statistics = ConservativeSphericalPolygonInterpolation::Statistics;
 
 Mesh extract_mesh(FunctionSpace fs) {
     if (functionspace::CellColumns(fs)) {
@@ -64,20 +50,20 @@ Mesh extract_mesh(FunctionSpace fs) {
     }
 }
 
-void print_remap_errors(int order, const RemapStat& remap_stat, std::ofstream& outfile) {
+void print_remap_errors(int order, const Statistics& remap_stat, std::ostream& outfile) {
     Log::info() << "    " << order << "-order remap analytical error : (L2) "
-                << remap_stat.errors[RemapStat::Errors::REMAP_L2] << " (Lmax) "
-                << remap_stat.errors[RemapStat::Errors::REMAP_LINF] << "\n";
+                << remap_stat.errors[Statistics::Errors::REMAP_L2] << " (Lmax) "
+                << remap_stat.errors[Statistics::Errors::REMAP_LINF] << "\n";
     Log::info() << "    " << order
-                << "-order global mass conservation error : " << remap_stat.errors[RemapStat::Errors::REMAP_CONS]
+                << "-order global mass conservation error : " << remap_stat.errors[Statistics::Errors::REMAP_CONS]
                 << "\n";
-    outfile << std::setw(10) << remap_stat.errors[RemapStat::Errors::REMAP_L2] << std::setw(10)
-            << remap_stat.errors[RemapStat::Errors::REMAP_LINF] << std::setw(10)
-            << remap_stat.errors[RemapStat::Errors::REMAP_CONS];
+    outfile << std::setw(10) << remap_stat.errors[Statistics::Errors::REMAP_L2] << std::setw(10)
+            << remap_stat.errors[Statistics::Errors::REMAP_LINF] << std::setw(10)
+            << remap_stat.errors[Statistics::Errors::REMAP_CONS];
 }
 
 void do_remapping_test(Grid src_grid, Grid tgt_grid, std::function<double(const PointLonLat&)> func,
-                       std::ofstream& outfile) {
+                       std::ostream& outfile) {
     util::Config gmsh_config;
     // Allow command-line argument to change coordinates output to lonlat; e.g.
     //    <program> --coordinates lonlat
@@ -89,7 +75,7 @@ void do_remapping_test(Grid src_grid, Grid tgt_grid, std::function<double(const 
         bool retval           = eckit::Resource<bool>(resource, resource_default);
         return retval;
     };
-    config.set("type", "conservative");
+    config.set("type", "conservative-spherical-polygon");
     config.set("src_cell_data", cell_data("--src-cell-data", src_grid));
     config.set("tgt_cell_data", cell_data("--tgt-cell-data", tgt_grid));
     config.set("matrix_free", eckit::Resource<bool>("--matrix-free", false));
@@ -128,7 +114,7 @@ void do_remapping_test(Grid src_grid, Grid tgt_grid, std::function<double(const 
     // Initialise source field
     {
         // a bit of a hack
-        auto& consMethod = dynamic_cast<ConservativeMethod&>(*interpolation.get());
+        auto& consMethod = dynamic_cast<ConservativeSphericalPolygonInterpolation&>(*interpolation.get());
         for (idx_t spt = 0; spt < src_vals.size(); ++spt) {
             PointLonLat pll;
             eckit::geometry::Sphere::convertCartesianToSpherical(1., consMethod.src_points(spt), pll);
@@ -139,7 +125,7 @@ void do_remapping_test(Grid src_grid, Grid tgt_grid, std::function<double(const 
 
     start = std::chrono::system_clock::now();
 
-    auto remap_stat = ConservativeMethod::RemapStat(interpolation.execute(src_field, tgt_field));
+    Statistics remap_stat = interpolation.execute(src_field, tgt_field);
 
     elapsed_seconds = std::chrono::system_clock::now() - start;
 
@@ -155,29 +141,31 @@ void do_remapping_test(Grid src_grid, Grid tgt_grid, std::function<double(const 
     }
 
     // remap statistics
-    Log::info() << "Created " << remap_stat.counts[RemapStat::Counts::SRC_PLG] << " (sub)polygons from "
+    Log::info() << "Created " << remap_stat.counts[Statistics::Counts::SRC_PLG] << " (sub)polygons from "
                 << extract_mesh(interpolation.source()).cells().size() << " source mesh cells.\n";
-    Log::info() << "    Total sum of subpolygon over/undershoots : " << remap_stat.errors[RemapStat::Errors::SRC_PLG_L1]
+    Log::info() << "    Total sum of subpolygon over/undershoots : "
+                << remap_stat.errors[Statistics::Errors::SRC_PLG_L1] << "\n";
+    Log::info() << "    Max over/undershoots per cell : " << remap_stat.errors[Statistics::Errors::SRC_PLG_LINF]
                 << "\n";
-    Log::info() << "    Max over/undershoots per cell : " << remap_stat.errors[RemapStat::Errors::SRC_PLG_LINF] << "\n";
-    Log::info() << "Created " << remap_stat.counts[RemapStat::Counts::TGT_PLG] << " (sub)polygons from "
+    Log::info() << "Created " << remap_stat.counts[Statistics::Counts::TGT_PLG] << " (sub)polygons from "
                 << extract_mesh(interpolation.target()).cells().size() << " target mesh cells.\n";
-    Log::info() << "    Total sum of subpolygon over/undershoots : " << remap_stat.errors[RemapStat::Errors::TGT_PLG_L1]
+    Log::info() << "    Total sum of subpolygon over/undershoots : "
+                << remap_stat.errors[Statistics::Errors::TGT_PLG_L1] << "\n";
+    Log::info() << "    Max over/undershoots per cell : " << remap_stat.errors[Statistics::Errors::TGT_PLG_LINF]
                 << "\n";
-    Log::info() << "    Max over/undershoots per cell : " << remap_stat.errors[RemapStat::Errors::TGT_PLG_LINF] << "\n";
-    Log::info() << "Intersection polygons : " << remap_stat.counts[RemapStat::Counts::INT_PLG] << "\n";
+    Log::info() << "Intersection polygons : " << remap_stat.counts[Statistics::Counts::INT_PLG] << "\n";
     Log::info() << "    Total mismatch area in polygons intersections : "
-                << remap_stat.errors[RemapStat::Errors::GEO_L1] << "\n";
+                << remap_stat.errors[Statistics::Errors::GEO_L1] << "\n";
     Log::info() << "    Source-cell maximal mismatch area in polygons intersections : "
-                << remap_stat.errors[RemapStat::Errors::GEO_LINF] << "\n";
-    Log::info() << "Non covered source polygons : " << remap_stat.counts[RemapStat::Counts::UNCVR_SRC] << "\n";
+                << remap_stat.errors[Statistics::Errors::GEO_LINF] << "\n";
+    Log::info() << "Non covered source polygons : " << remap_stat.counts[Statistics::Counts::UNCVR_SRC] << "\n";
     Log::info() << "Diff in source mesh vs target mesh coverage with polygons : "
-                << remap_stat.errors[RemapStat::Errors::GEO_DIFF] << "\n";
+                << remap_stat.errors[Statistics::Errors::GEO_DIFF] << "\n";
     Log::info() << "  1-order remap took " << elapsed_seconds.count() << " seconds.\n";
     outfile << std::setw(10) << elapsed_seconds.count();
-    outfile << std::setw(10) << remap_stat.errors[RemapStat::Errors::GEO_DIFF];
-    outfile << std::setw(10) << remap_stat.errors[RemapStat::Errors::REMAP_L2] << std::setw(10)
-            << remap_stat.errors[RemapStat::Errors::REMAP_LINF];
+    outfile << std::setw(10) << remap_stat.errors[Statistics::Errors::GEO_DIFF];
+    outfile << std::setw(10) << remap_stat.errors[Statistics::Errors::REMAP_L2] << std::setw(10)
+            << remap_stat.errors[Statistics::Errors::REMAP_LINF];
     print_remap_errors(1, remap_stat, outfile);
     output::Gmsh("cons-remap_tgtfield-1ord.msh", gmsh_config).write(tgt_field);
     if (diff_field) {
@@ -185,7 +173,7 @@ void do_remapping_test(Grid src_grid, Grid tgt_grid, std::function<double(const 
     }
 
 
-    auto cache = ConservativeMethod::Cache{interpolation};  // don't include matrix in cache
+    auto cache = ConservativeSphericalPolygonInterpolation::Cache{interpolation};  // don't include matrix in cache
 
     Log::info() << "ConservativeMethod::Cache footprint: " << eckit::Bytes(cache.footprint()) << std::endl;
 
@@ -193,7 +181,7 @@ void do_remapping_test(Grid src_grid, Grid tgt_grid, std::function<double(const 
     interpolation = Interpolation(config | util::Config("order", 2), src_grid, tgt_grid, cache);
     Log::info() << interpolation << std::endl;
     start           = std::chrono::system_clock::now();
-    remap_stat      = ConservativeMethod::RemapStat(interpolation.execute(src_field, tgt_field));
+    remap_stat      = interpolation.execute(src_field, tgt_field);
     elapsed_seconds = std::chrono::system_clock::now() - start;
 
     // compute remapping errors
@@ -220,10 +208,20 @@ void do_remapping_test(Grid src_grid, Grid tgt_grid, std::function<double(const 
 
 CASE("test_interpolation_conservative") {
     std::stringstream ss;
-    ss << "# (1) s-grid   (2) t-grid   (3) setup [s]   (4) err.polygon.create";
-    ss << "   (5) err.polygon.intersecting.L1\n#(6) err.polygon.intersecting.Lmax   (7) Time 1st-rmp [sec]";
-    ss << "# (8) err.1st.ana.L2   (9) err.1st.ana.Lmax   (10) err.1st.global.cons\n#";
-    ss << " (11) Time 2nd-remap [sec]   (12) 2nd-ana-err.L2   (13) 2nd-ana-err.Lmax   (14) err.2nd.global.cons\n";
+    ss << "# (1)  s-grid"
+          "\n# (2)  t-grid"
+          "\n# (3)  setup [s]"
+          "\n# (4)  err.polygon.create"
+          "\n# (5)  err.polygon.intersecting.L1"
+          "\n# (6)  err.polygon.intersecting.Lmax"
+          "\n# (7)  Time 1st-rmp [sec]"
+          "\n# (8)  err.1st.ana.L2"
+          "\n# (9)  err.1st.ana.Lmax"
+          "\n# (10) err.1st.global.cons"
+          "\n# (11) Time 2nd-remap [sec]"
+          "\n# (12) 2nd-ana-err.L2"
+          "\n# (13) 2nd-ana-err.Lmax"
+          "\n# (14) err.2nd.global.cons\n";
     for (int i = 1; i < 15; ++i) {
         ss << std::setw(10) << i;
     }
@@ -262,11 +260,17 @@ CASE("test_interpolation_conservative") {
     }
 
     SECTION("analytic Y_2^2 as in Jones - scaling") {
+        eckit::PathName outfile_path("cons-remap_JonesY22_scaling.dat");
+        bool outfile_exists = outfile_path.exists();
+
         std::ofstream outfile;
-        outfile.open("cons-remap_JonesY22_scaling.dat", std::ios_base::app);
-        outfile << "# Test -- analytic Y_2^2 as in Jones\n";
+        outfile.open(outfile_path, std::ios_base::app);
         outfile << std::scientific << std::setprecision(1);
-        outfile << ss.str();
+        if (not outfile_exists) {
+            outfile << "# Test -- analytic Y_2^2 as in Jones\n";
+            outfile << ss.str();
+        }
+
         auto func = [](const PointLonLat& p) {
             double cos = std::cos(0.025 * p[0]);
             return 2. + cos * cos * std::cos(2 * 0.025 * p[1]);

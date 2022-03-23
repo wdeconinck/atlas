@@ -11,12 +11,13 @@
 #include <iomanip>
 #include <vector>
 
+#include "ConservativeSphericalPolygonInterpolation.h"
+
 #include "eckit/log/ProgressTimer.h"
 
 #include "atlas/grid.h"
 #include "atlas/interpolation/Interpolation.h"
 #include "atlas/interpolation/method/MethodFactory.h"
-#include "atlas/interpolation/method/knn/ConservativeMethod.h"
 #include "atlas/mesh/actions/BuildHalo.h"
 #include "atlas/mesh/actions/BuildNode2CellConnectivity.h"
 #include "atlas/meshgenerator.h"
@@ -36,12 +37,12 @@ namespace atlas {
 namespace interpolation {
 namespace method {
 
-using CSPolygon      = util::ConvexSphericalPolygon;
-using CSPolygonArray = ConservativeMethod::CSPolygonArray;
-using RemapStat      = ConservativeMethod::RemapStat;
+using util::ConvexSphericalPolygon;
+
 
 namespace {
-MethodBuilder<ConservativeMethod> __builder("conservative");
+
+MethodBuilder<ConservativeSphericalPolygonInterpolation> __builder("conservative-spherical-polygon");
 
 template <typename T>
 size_t memory_of(const std::vector<T>& vector) {
@@ -56,7 +57,8 @@ size_t memory_of(const std::vector<std::vector<T>>& vector_of_vector) {
     return mem;
 }
 
-size_t memory_of(const std::vector<ConservativeMethod::InterpolationParameters>& vector_of_params) {
+size_t memory_of(
+    const std::vector<ConservativeSphericalPolygonInterpolation::InterpolationParameters>& vector_of_params) {
     size_t mem = 0;
     for (const auto& params : vector_of_params) {
         mem += memory_of(params.cell_idx);
@@ -103,14 +105,14 @@ void sort_and_accumulate_triplets(std::vector<eckit::linalg::Triplet>& triplets)
 
 }  // namespace
 
-int inside_vertices(const CSPolygon& plg1, const CSPolygon& plg2, int& pout) {
+int inside_vertices(const ConvexSphericalPolygon& plg1, const ConvexSphericalPolygon& plg2, int& pout) {
     int points_in = 0;
     pout          = 0;
     for (int j = 0; j < plg2.size(); j++) {
         int i = 0;
         for (; i < plg1.size(); i++) {
             int in   = (i != plg1.size() - 1) ? i + 1 : 0;
-            auto gss = CSPolygon::GreatCircleSegment(plg1[i], plg1[in]);
+            auto gss = ConvexSphericalPolygon::GreatCircleSegment(plg1[i], plg1[in]);
             if (not gss.inLeftHemisphere(plg2[j], -std::numeric_limits<double>::epsilon())) {
                 pout++;
                 break;
@@ -124,7 +126,8 @@ int inside_vertices(const CSPolygon& plg1, const CSPolygon& plg2, int& pout) {
     return points_in;
 }
 
-ConservativeMethod::ConservativeMethod(const Config& config): Method(config) {
+ConservativeSphericalPolygonInterpolation::ConservativeSphericalPolygonInterpolation(const Config& config):
+    Method(config) {
     config.get("order", order_ = 1);
     config.get("normalise_intersections", normalise_intersections_ = 0);
     config.get("matrix_free", matrix_free_ = false);
@@ -135,26 +138,26 @@ ConservativeMethod::ConservativeMethod(const Config& config): Method(config) {
     config.get("statistics.intersection", statistics_intersection_ = false);
     config.get("statistics.conservation", statistics_conservation_ = false);
 
-    cachable_data_shared_ = std::make_shared<CachableData>();
-    cache_                = Cache(cachable_data_shared_);
-    cachable_data_        = cachable_data_shared_.get();
+    sharable_data_ = std::make_shared<Data>();
+    cache_         = Cache(sharable_data_);
+    data_          = sharable_data_.get();
 
-    ATLAS_ASSERT(cachable_data_shared_.use_count() == 2);
+    ATLAS_ASSERT(sharable_data_.use_count() == 2);
 }
 
-int ConservativeMethod::next_index(int current_index, int size, int offset) const {
+int ConservativeSphericalPolygonInterpolation::next_index(int current_index, int size, int offset) const {
     ATLAS_ASSERT(current_index >= 0 && current_index < size);
     ATLAS_ASSERT(offset >= 0 && offset <= size);
     return (current_index < size - offset) ? current_index + offset : current_index + offset - size;
 }
-int ConservativeMethod::prev_index(int current_index, int size, int offset) const {
+int ConservativeSphericalPolygonInterpolation::prev_index(int current_index, int size, int offset) const {
     ATLAS_ASSERT(current_index >= 0 && current_index < size);
     ATLAS_ASSERT(offset >= 0 && offset <= size);
     return (current_index >= offset) ? current_index - offset : current_index - offset + size;
 }
 
 // get counter-clockwise sorted neighbours of a cell
-std::vector<idx_t> ConservativeMethod::get_cell_neighbours(Mesh& mesh, idx_t cell) const {
+std::vector<idx_t> ConservativeSphericalPolygonInterpolation::get_cell_neighbours(Mesh& mesh, idx_t cell) const {
     const auto& cell2node = mesh.cells().node_connectivity();
     const auto& nodes_ll  = array::make_view<double, 2>(mesh.nodes().lonlat());
     const idx_t n_nodes   = cell2node.cols(cell);
@@ -198,7 +201,7 @@ std::vector<idx_t> ConservativeMethod::get_cell_neighbours(Mesh& mesh, idx_t cel
 }
 
 // get cyclically sorted node neighbours without using edge connectivity
-std::vector<idx_t> ConservativeMethod::get_node_neighbours(Mesh& mesh, idx_t node_id) const {
+std::vector<idx_t> ConservativeSphericalPolygonInterpolation::get_node_neighbours(Mesh& mesh, idx_t node_id) const {
     const auto& cell2node = mesh.cells().node_connectivity();
     if (mesh.nodes().cell_connectivity().rows() == 0) {
         mesh::actions::build_node_to_cell_connectivity(mesh);
@@ -310,7 +313,8 @@ std::vector<idx_t> ConservativeMethod::get_node_neighbours(Mesh& mesh, idx_t nod
 }
 
 // Create polygons for cell-centred data. Here, the polygons are mesh cells
-CSPolygonArray ConservativeMethod::get_polygons_celldata(Mesh& mesh) const {
+ConservativeSphericalPolygonInterpolation::CSPolygonArray
+ConservativeSphericalPolygonInterpolation::get_polygons_celldata(Mesh& mesh) const {
     CSPolygonArray cspolygons;
     const idx_t n_cells = mesh.cells().size();
     cspolygons.resize(n_cells);
@@ -333,7 +337,7 @@ CSPolygonArray ConservativeMethod::get_polygons_celldata(Mesh& mesh) const {
         if (bitflag.check(util::Topology::PERIODIC) and mpi::rank() == cell_part(cell)) {
             halo_type = -1;
         }
-        std::get<0>(cspolygons[cell]) = CSPolygon(pts_ll);
+        std::get<0>(cspolygons[cell]) = ConvexSphericalPolygon(pts_ll);
         std::get<1>(cspolygons[cell]) = halo_type;
     }
     return cspolygons;
@@ -342,9 +346,10 @@ CSPolygonArray ConservativeMethod::get_polygons_celldata(Mesh& mesh) const {
 // Create polygons for cell-vertex data. Here, the polygons are subcells of mesh cells created as
 // 	 (cell_centre, edge_centre, cell_vertex, edge_centre)
 // additionally, subcell-to-node and node-to-subcells mapping are computed
-CSPolygonArray ConservativeMethod::get_polygons_nodedata(Mesh& mesh, std::vector<idx_t>& csp2node,
-                                                         std::vector<std::vector<idx_t>>& node2csp,
-                                                         std::array<double, 2>& errors) const {
+ConservativeSphericalPolygonInterpolation::CSPolygonArray
+ConservativeSphericalPolygonInterpolation::get_polygons_nodedata(Mesh& mesh, std::vector<idx_t>& csp2node,
+                                                                 std::vector<std::vector<idx_t>>& node2csp,
+                                                                 std::array<double, 2>& errors) const {
     CSPolygonArray cspolygons;
     csp2node.clear();
     node2csp.clear();
@@ -395,8 +400,8 @@ CSPolygonArray ConservativeMethod::get_polygons_nodedata(Mesh& mesh, std::vector
         }
         cell_mid                  = PointXYZ::div(cell_mid, PointXYZ::norm(cell_mid));
         PointLonLat cell_ll       = xyz2ll(cell_mid);
-        double loc_csp_area_shoot = CSPolygon(pts_ll).area();
-        // get CSPolygon for each valid edge
+        double loc_csp_area_shoot = ConvexSphericalPolygon(pts_ll).area();
+        // get ConvexSphericalPolygon for each valid edge
         for (int inode = 0; inode < pts_idx.size(); inode++) {
             int inode_n        = next_index(inode, pts_idx.size());
             idx_t node         = cell2node(cell, inode);
@@ -422,7 +427,7 @@ CSPolygonArray ConservativeMethod::get_polygons_nodedata(Mesh& mesh, std::vector
                 cell_part(cell) == mpi::rank()) {
                 halo_type = -1;
             }
-            CSPolygon cspi(subpol_pts_ll);
+            ConvexSphericalPolygon cspi(subpol_pts_ll);
             loc_csp_area_shoot -= cspi.area();
             cspolygons.emplace_back(cspi, halo_type);
             cspol_id++;
@@ -437,13 +442,13 @@ CSPolygonArray ConservativeMethod::get_polygons_nodedata(Mesh& mesh, std::vector
     return cspolygons;
 }
 
-void ConservativeMethod::do_setup_impl(const Grid& src_grid, const Grid& tgt_grid) {
+void ConservativeSphericalPolygonInterpolation::do_setup_impl(const Grid& src_grid, const Grid& tgt_grid) {
     ATLAS_TRACE("ConservativeMethod::do_setup( Grid, Grid )");
     ATLAS_ASSERT(src_grid);
     ATLAS_ASSERT(tgt_grid);
 
-    tgt_fs_ = cachable_data_->tgt_fs_;
-    src_fs_ = cachable_data_->src_fs_;
+    tgt_fs_ = data_->tgt_fs_;
+    src_fs_ = data_->src_fs_;
 
     if (not tgt_fs_) {
         auto tgt_mesh_config = tgt_grid.meshgenerator() | option::halo(0);
@@ -456,8 +461,8 @@ void ConservativeMethod::do_setup_impl(const Grid& src_grid, const Grid& tgt_gri
                 tgt_fs_ = functionspace::NodeColumns(tgt_mesh_, option::halo(0));
             }
         }
-        cachable_data_shared_->tgt_fs_ = tgt_fs_;
-        ATLAS_ASSERT(cachable_data_->tgt_fs_);
+        sharable_data_->tgt_fs_ = tgt_fs_;
+        ATLAS_ASSERT(data_->tgt_fs_);
     }
 
     if (not src_fs_) {
@@ -478,25 +483,26 @@ void ConservativeMethod::do_setup_impl(const Grid& src_grid, const Grid& tgt_gri
                 src_fs_ = functionspace::NodeColumns(src_mesh_, option::halo(2));
             }
         }
-        cachable_data_shared_->src_fs_ = src_fs_;
-        ATLAS_ASSERT(cachable_data_->tgt_fs_);
+        sharable_data_->src_fs_ = src_fs_;
+        ATLAS_ASSERT(data_->tgt_fs_);
     }
 
     do_setup(src_fs_, tgt_fs_);
 }
 
 
-void ConservativeMethod::do_setup(const Grid& src_grid, const Grid& tgt_grid, const interpolation::Cache& cache) {
+void ConservativeSphericalPolygonInterpolation::do_setup(const Grid& src_grid, const Grid& tgt_grid,
+                                                         const interpolation::Cache& cache) {
     ATLAS_TRACE();
 
     if (Cache(cache)) {
         Log::debug() << "Interpolation data found in cache -> no polygon intersections required" << std::endl;
-        cache_         = Cache(cache);
-        cachable_data_ = cache_.get();
-        cachable_data_shared_.reset();
+        cache_ = Cache(cache);
+        data_  = cache_.get();
+        sharable_data_.reset();
 
-        src_fs_ = cachable_data_->src_fs_;
-        tgt_fs_ = cachable_data_->tgt_fs_;
+        src_fs_ = data_->src_fs_;
+        tgt_fs_ = data_->tgt_fs_;
 
         src_cell_data_ = functionspace::CellColumns(src_fs_);
         tgt_cell_data_ = functionspace::CellColumns(tgt_fs_);
@@ -523,12 +529,12 @@ void ConservativeMethod::do_setup(const Grid& src_grid, const Grid& tgt_grid, co
     do_setup_impl(src_grid, tgt_grid);
 }
 
-void ConservativeMethod::do_setup(const FunctionSpace& src_fs, const FunctionSpace& tgt_fs) {
+void ConservativeSphericalPolygonInterpolation::do_setup(const FunctionSpace& src_fs, const FunctionSpace& tgt_fs) {
     ATLAS_TRACE("ConservativeMethod::do_setup( FunctionSpace, FunctionSpace )");
     ATLAS_ASSERT(src_fs);
     ATLAS_ASSERT(tgt_fs);
 
-    bool compute_cache = cachable_data_->src_points_.empty();
+    bool compute_cache = data_->src_points_.empty();
 
 
     src_cell_data_ = functionspace::CellColumns(src_fs_);
@@ -552,26 +558,26 @@ void ConservativeMethod::do_setup(const FunctionSpace& src_fs, const FunctionSpa
             src_csp = get_polygons_celldata(src_mesh_);
         }
         else {
-            src_csp = get_polygons_nodedata(src_mesh_, cachable_data_shared_->src_csp2node_,
-                                            cachable_data_shared_->src_node2csp_, errors);
+            src_csp =
+                get_polygons_nodedata(src_mesh_, sharable_data_->src_csp2node_, sharable_data_->src_node2csp_, errors);
         }
     }
-    remap_stat_.errors[RemapStat::Errors::SRC_PLG_L1]   = errors[0];
-    remap_stat_.errors[RemapStat::Errors::SRC_PLG_LINF] = errors[1];
+    remap_stat_.errors[Statistics::Errors::SRC_PLG_L1]   = errors[0];
+    remap_stat_.errors[Statistics::Errors::SRC_PLG_LINF] = errors[1];
     if (compute_cache) {
         ATLAS_TRACE("Get target polygons");
         if (tgt_cell_data_) {
             tgt_csp = get_polygons_celldata(tgt_mesh_);
         }
         else {
-            tgt_csp = get_polygons_nodedata(tgt_mesh_, cachable_data_shared_->tgt_csp2node_,
-                                            cachable_data_shared_->tgt_node2csp_, errors);
+            tgt_csp =
+                get_polygons_nodedata(tgt_mesh_, sharable_data_->tgt_csp2node_, sharable_data_->tgt_node2csp_, errors);
         }
     }
-    remap_stat_.counts[RemapStat::Counts::SRC_PLG]      = src_csp.size();
-    remap_stat_.counts[RemapStat::Counts::TGT_PLG]      = tgt_csp.size();
-    remap_stat_.errors[RemapStat::Errors::TGT_PLG_L1]   = errors[0];
-    remap_stat_.errors[RemapStat::Errors::TGT_PLG_LINF] = errors[1];
+    remap_stat_.counts[Statistics::Counts::SRC_PLG]      = src_csp.size();
+    remap_stat_.counts[Statistics::Counts::TGT_PLG]      = tgt_csp.size();
+    remap_stat_.errors[Statistics::Errors::TGT_PLG_L1]   = errors[0];
+    remap_stat_.errors[Statistics::Errors::TGT_PLG_LINF] = errors[1];
 
     n_spoints_ = src_fs_.size();
     n_tpoints_ = tgt_fs_.size();
@@ -579,12 +585,12 @@ void ConservativeMethod::do_setup(const FunctionSpace& src_fs, const FunctionSpa
     if (compute_cache) {
         intersect_polygons(src_csp, tgt_csp);
 
-        auto& src_points_ = cachable_data_shared_->src_points_;
-        auto& tgt_points_ = cachable_data_shared_->tgt_points_;
+        auto& src_points_ = sharable_data_->src_points_;
+        auto& tgt_points_ = sharable_data_->tgt_points_;
         src_points_.resize(n_spoints_);
         tgt_points_.resize(n_tpoints_);
-        cachable_data_shared_->src_areas_.resize(n_spoints_);
-        auto& src_areas_v = cachable_data_shared_->src_areas_;
+        sharable_data_->src_areas_.resize(n_spoints_);
+        auto& src_areas_v = sharable_data_->src_areas_;
         if (src_cell_data_) {
             for (idx_t spt = 0; spt < n_spoints_; ++spt) {
                 const auto& s_csp = std::get<0>(src_csp[spt]);
@@ -593,7 +599,7 @@ void ConservativeMethod::do_setup(const FunctionSpace& src_fs, const FunctionSpa
             }
         }
         else {
-            auto& src_node2csp_ = cachable_data_shared_->src_node2csp_;
+            auto& src_node2csp_ = sharable_data_->src_node2csp_;
             const auto lonlat   = array::make_view<double, 2>(src_mesh_.nodes().lonlat());
             for (idx_t spt = 0; spt < n_spoints_; ++spt) {
                 if (src_node2csp_[spt].size() == 0) {
@@ -618,8 +624,8 @@ void ConservativeMethod::do_setup(const FunctionSpace& src_fs, const FunctionSpa
                 src_points_[spt] = PointXYZ::div(src_points_[spt], src_point_norm);
             }
         }
-        cachable_data_shared_->tgt_areas_.resize(n_tpoints_);
-        auto& tgt_areas_v = cachable_data_shared_->tgt_areas_;
+        sharable_data_->tgt_areas_.resize(n_tpoints_);
+        auto& tgt_areas_v = sharable_data_->tgt_areas_;
         if (tgt_cell_data_) {
             for (idx_t tpt = 0; tpt < n_tpoints_; ++tpt) {
                 const auto& t_csp = std::get<0>(tgt_csp[tpt]);
@@ -628,7 +634,7 @@ void ConservativeMethod::do_setup(const FunctionSpace& src_fs, const FunctionSpa
             }
         }
         else {
-            auto& tgt_node2csp_ = cachable_data_shared_->tgt_node2csp_;
+            auto& tgt_node2csp_ = sharable_data_->tgt_node2csp_;
             const auto lonlat   = array::make_view<double, 2>(tgt_mesh_.nodes().lonlat());
             for (idx_t tpt = 0; tpt < n_tpoints_; ++tpt) {
                 if (tgt_node2csp_[tpt].size() == 0) {
@@ -674,7 +680,7 @@ void ConservativeMethod::do_setup(const FunctionSpace& src_fs, const FunctionSpa
         }
     }
 
-    cachable_data_->print(Log::debug());
+    data_->print(Log::debug());
 
     if (statistics_intersection_) {
         setup_stat();
@@ -705,7 +711,8 @@ struct ComparePointXYZ {
 };
 }  // namespace
 
-void ConservativeMethod::intersect_polygons(const CSPolygonArray& src_csp, const CSPolygonArray& tgt_csp) {
+void ConservativeSphericalPolygonInterpolation::intersect_polygons(const CSPolygonArray& src_csp,
+                                                                   const CSPolygonArray& tgt_csp) {
     ATLAS_TRACE();
     util::KDTree<idx_t> kdt_search;
     kdt_search.reserve(tgt_csp.size());
@@ -720,7 +727,7 @@ void ConservativeMethod::intersect_polygons(const CSPolygonArray& src_csp, const
     kdt_search.build();
 
     std::set<PointXYZ, ComparePointXYZ> src_cent;
-    auto polygon_point = [](const CSPolygon& pol) {
+    auto polygon_point = [](const ConvexSphericalPolygon& pol) {
         PointXYZ p{0., 0., 0.};
         for (int i = 0; i < pol.size(); i++) {
             p = p + pol[i];
@@ -750,7 +757,7 @@ void ConservativeMethod::intersect_polygons(const CSPolygonArray& src_csp, const
         MAX_SRC
     };
     std::array<double, 2> area_coverage{0., 0.};
-    auto& src_iparam_ = cachable_data_shared_->src_iparam_;
+    auto& src_iparam_ = sharable_data_->src_iparam_;
     src_iparam_.resize(src_csp.size());
 #if PLG_DEBUG
     std::vector<InterpolationParameters> tgt_iparam;
@@ -768,10 +775,10 @@ void ConservativeMethod::intersect_polygons(const CSPolygonArray& src_csp, const
         double src_cover_area   = 0.;
         auto tgt_cells = kdt_search.closestPointsWithinRadius(s_csp.centroid(), s_csp.radius() + max_tgtcell_rad);
         for (idx_t ttcell = 0; ttcell < tgt_cells.size(); ++ttcell) {
-            auto tcell        = tgt_cells[ttcell].payload();
-            const auto& t_csp = std::get<0>(tgt_csp[tcell]);
-            CSPolygon csp_i   = s_csp.intersect(t_csp);
-            double csp_i_area = csp_i.area();
+            auto tcell                   = tgt_cells[ttcell].payload();
+            const auto& t_csp            = std::get<0>(tgt_csp[tcell]);
+            ConvexSphericalPolygon csp_i = s_csp.intersect(t_csp);
+            double csp_i_area            = csp_i.area();
 #if PLG_DEBUG
             // check zero area intersections with inside_vertices
             int pout;
@@ -826,10 +833,10 @@ void ConservativeMethod::intersect_polygons(const CSPolygonArray& src_csp, const
         mpi::comm().allReduceInPlace(&num_pol[0], 4, eckit::mpi::sum());
         mpi::comm().allReduceInPlace(&area_coverage[0], 2, eckit::mpi::max());
     }
-    remap_stat_.counts[RemapStat::Counts::INT_PLG]   = num_pol[SRC_TGT_INTERSECT];
-    remap_stat_.counts[RemapStat::Counts::UNCVR_SRC] = num_pol[SRC_NONINTERSECT];
-    remap_stat_.errors[RemapStat::Errors::GEO_L1]    = area_coverage[TOTAL_SRC];
-    remap_stat_.errors[RemapStat::Errors::GEO_LINF]  = area_coverage[MAX_SRC];
+    remap_stat_.counts[Statistics::Counts::INT_PLG]   = num_pol[SRC_TGT_INTERSECT];
+    remap_stat_.counts[Statistics::Counts::UNCVR_SRC] = num_pol[SRC_NONINTERSECT];
+    remap_stat_.errors[Statistics::Errors::GEO_L1]    = area_coverage[TOTAL_SRC];
+    remap_stat_.errors[Statistics::Errors::GEO_LINF]  = area_coverage[MAX_SRC];
 
     double geo_err_l1   = 0.;
     double geo_err_linf = 0.;
@@ -850,8 +857,8 @@ void ConservativeMethod::intersect_polygons(const CSPolygonArray& src_csp, const
         mpi::comm().allReduceInPlace(&geo_err_l1, 1, eckit::mpi::sum());
         mpi::comm().allReduceInPlace(&geo_err_linf, 1, eckit::mpi::max());
     }
-    remap_stat_.errors[RemapStat::Errors::GEO_L1]   = 0.25 * M_1_PI * geo_err_l1;
-    remap_stat_.errors[RemapStat::Errors::GEO_LINF] = geo_err_linf;
+    remap_stat_.errors[Statistics::Errors::GEO_L1]   = 0.25 * M_1_PI * geo_err_l1;
+    remap_stat_.errors[Statistics::Errors::GEO_LINF] = geo_err_linf;
 
 #if PLG_DEBUG
     for (idx_t tcell = 0; tcell < tgt_csp.size(); ++tcell) {
@@ -870,12 +877,12 @@ void ConservativeMethod::intersect_polygons(const CSPolygonArray& src_csp, const
 #endif
 }
 
-eckit::linalg::SparseMatrix ConservativeMethod::compute_1st_order_matrix() {
+eckit::linalg::SparseMatrix ConservativeSphericalPolygonInterpolation::compute_1st_order_matrix() {
     ATLAS_TRACE("ConservativeMethod::setup: build cons-1 interpolant matrix");
     ATLAS_ASSERT(not matrix_free_);
     Triplets triplets;
     size_t triplets_size    = 0;
-    const auto& src_iparam_ = cachable_data_->src_iparam_;
+    const auto& src_iparam_ = data_->src_iparam_;
     // determine the size of array of triplets used to define the sparse matrix
     if (src_cell_data_) {
         for (idx_t scell = 0; scell < n_spoints_; ++scell) {
@@ -883,7 +890,7 @@ eckit::linalg::SparseMatrix ConservativeMethod::compute_1st_order_matrix() {
         }
     }
     else {
-        auto& src_node2csp_ = cachable_data_->src_node2csp_;
+        auto& src_node2csp_ = data_->src_node2csp_;
         for (idx_t snode = 0; snode < n_spoints_; ++snode) {
             for (idx_t isubcell = 0; isubcell < src_node2csp_[snode].size(); ++isubcell) {
                 idx_t subcell = src_node2csp_[snode][isubcell];
@@ -893,8 +900,8 @@ eckit::linalg::SparseMatrix ConservativeMethod::compute_1st_order_matrix() {
     }
     triplets.reserve(triplets_size);
     // assemble triplets to define the sparse matrix
-    const auto& src_areas_v = cachable_data_->src_areas_;
-    const auto& tgt_areas_v = cachable_data_->tgt_areas_;
+    const auto& src_areas_v = data_->src_areas_;
+    const auto& tgt_areas_v = data_->tgt_areas_;
     if (src_cell_data_ && tgt_cell_data_) {
         for (idx_t scell = 0; scell < n_spoints_; ++scell) {
             const auto& iparam = src_iparam_[scell];
@@ -905,7 +912,7 @@ eckit::linalg::SparseMatrix ConservativeMethod::compute_1st_order_matrix() {
         }
     }
     else if (not src_cell_data_ && tgt_cell_data_) {
-        auto& src_node2csp_ = cachable_data_->src_node2csp_;
+        auto& src_node2csp_ = data_->src_node2csp_;
         for (idx_t snode = 0; snode < n_spoints_; ++snode) {
             for (idx_t isubcell = 0; isubcell < src_node2csp_[snode].size(); ++isubcell) {
                 const idx_t subcell = src_node2csp_[snode][isubcell];
@@ -918,7 +925,7 @@ eckit::linalg::SparseMatrix ConservativeMethod::compute_1st_order_matrix() {
         }
     }
     else if (src_cell_data_ && not tgt_cell_data_) {
-        auto& tgt_csp2node_ = cachable_data_->tgt_csp2node_;
+        auto& tgt_csp2node_ = data_->tgt_csp2node_;
         for (idx_t scell = 0; scell < n_spoints_; ++scell) {
             const auto& iparam = src_iparam_[scell];
             for (idx_t icell = 0; icell < iparam.centroids.size(); ++icell) {
@@ -930,8 +937,8 @@ eckit::linalg::SparseMatrix ConservativeMethod::compute_1st_order_matrix() {
         }
     }
     else if (not src_cell_data_ && not tgt_cell_data_) {
-        auto& src_node2csp_ = cachable_data_->src_node2csp_;
-        auto& tgt_csp2node_ = cachable_data_->tgt_csp2node_;
+        auto& src_node2csp_ = data_->src_node2csp_;
+        auto& tgt_csp2node_ = data_->tgt_csp2node_;
         for (idx_t snode = 0; snode < n_spoints_; ++snode) {
             for (idx_t isubcell = 0; isubcell < src_node2csp_[snode].size(); ++isubcell) {
                 const idx_t subcell = src_node2csp_[snode][isubcell];
@@ -949,15 +956,15 @@ eckit::linalg::SparseMatrix ConservativeMethod::compute_1st_order_matrix() {
     return Matrix(n_tpoints_, n_spoints_, triplets);
 }
 
-eckit::linalg::SparseMatrix ConservativeMethod::compute_2nd_order_matrix() {
+eckit::linalg::SparseMatrix ConservativeSphericalPolygonInterpolation::compute_2nd_order_matrix() {
     ATLAS_TRACE("ConservativeMethod::setup: build cons-2 interpolant matrix");
     ATLAS_ASSERT(not matrix_free_);
-    const auto& src_points_ = cachable_data_->src_points_;
-    const auto& src_iparam_ = cachable_data_->src_iparam_;
+    const auto& src_points_ = data_->src_points_;
+    const auto& src_iparam_ = data_->src_iparam_;
 
     Triplets triplets;
     size_t triplets_size    = 0;
-    const auto& tgt_areas_v = cachable_data_->tgt_areas_;
+    const auto& tgt_areas_v = data_->tgt_areas_;
     if (src_cell_data_) {
         const auto src_halo = array::make_view<int, 1>(src_mesh_.cells().halo());
         for (idx_t scell = 0; scell < n_spoints_; ++scell) {
@@ -991,13 +998,13 @@ eckit::linalg::SparseMatrix ConservativeMethod::compute_2nd_order_matrix() {
                 idx_t nsj        = nb_cells[nj];
                 const auto& Csj  = src_points_[sj];
                 const auto& Cnsj = src_points_[nsj];
-                if (CSPolygon::GreatCircleSegment(Cs, Csj).inLeftHemisphere(Cnsj, -1e-16)) {
+                if (ConvexSphericalPolygon::GreatCircleSegment(Cs, Csj).inLeftHemisphere(Cnsj, -1e-16)) {
                     Rsj[j] = PointXYZ::cross(Cnsj, Csj);
-                    dual_area_inv += CSPolygon({Cs, Csj, Cnsj}).area();
+                    dual_area_inv += ConvexSphericalPolygon({Cs, Csj, Cnsj}).area();
                 }
                 else {
                     Rsj[j] = PointXYZ::cross(Csj, Cnsj);
-                    dual_area_inv += CSPolygon({Cs, Cnsj, Csj}).area();
+                    dual_area_inv += ConvexSphericalPolygon({Cs, Cnsj, Csj}).area();
                 }
             }
             dual_area_inv = (dual_area_inv > 0.) ? 1. / dual_area_inv : 0.;
@@ -1028,7 +1035,7 @@ eckit::linalg::SparseMatrix ConservativeMethod::compute_2nd_order_matrix() {
                 }
             }
             else {
-                auto& tgt_csp2node_ = cachable_data_->tgt_csp2node_;
+                auto& tgt_csp2node_ = data_->tgt_csp2node_;
                 for (idx_t icell = 0; icell < iparam.centroids.size(); ++icell) {
                     idx_t tcell            = iparam.cell_idx[icell];
                     idx_t tnode            = tgt_csp2node_[tcell];
@@ -1048,7 +1055,7 @@ eckit::linalg::SparseMatrix ConservativeMethod::compute_2nd_order_matrix() {
         }
     }
     else {  // if ( not src_cell_data_ )
-        auto& src_node2csp_ = cachable_data_->src_node2csp_;
+        auto& src_node2csp_ = data_->src_node2csp_;
         const auto src_halo = array::make_view<int, 1>(src_mesh_.nodes().halo());
         for (idx_t snode = 0; snode < n_spoints_; ++snode) {
             const auto nb_nodes = get_node_neighbours(src_mesh_, snode);
@@ -1086,13 +1093,13 @@ eckit::linalg::SparseMatrix ConservativeMethod::compute_2nd_order_matrix() {
                 idx_t snj        = nb_nodes[nj];
                 const auto& Nsj  = src_points_[sj];
                 const auto& Nsnj = src_points_[snj];
-                if (CSPolygon::GreatCircleSegment(Ns, Nsj).inLeftHemisphere(Nsnj, -1e-16)) {
+                if (ConvexSphericalPolygon::GreatCircleSegment(Ns, Nsj).inLeftHemisphere(Nsnj, -1e-16)) {
                     Rsj[j] = PointXYZ::cross(Nsnj, Nsj);
-                    dual_area_inv += CSPolygon({Ns, Nsj, Nsnj}).area();
+                    dual_area_inv += ConvexSphericalPolygon({Ns, Nsj, Nsnj}).area();
                 }
                 else {
                     Rsj[j] = PointXYZ::cross(Nsj, Nsnj);
-                    dual_area_inv += CSPolygon({Ns, Nsnj, Nsj}).area();
+                    dual_area_inv += ConvexSphericalPolygon({Ns, Nsnj, Nsj}).area();
                 }
             }
             dual_area_inv = (dual_area_inv > 0.) ? 1. / dual_area_inv : 0.;
@@ -1129,7 +1136,7 @@ eckit::linalg::SparseMatrix ConservativeMethod::compute_2nd_order_matrix() {
                     }
                 }
                 else {
-                    auto& tgt_csp2node_ = cachable_data_->tgt_csp2node_;
+                    auto& tgt_csp2node_ = data_->tgt_csp2node_;
                     for (idx_t icell = 0; icell < iparam.centroids.size(); ++icell) {
                         idx_t tcell            = iparam.cell_idx[icell];
                         idx_t tnode            = tgt_csp2node_[tcell];
@@ -1154,15 +1161,16 @@ eckit::linalg::SparseMatrix ConservativeMethod::compute_2nd_order_matrix() {
     return Matrix(n_tpoints_, n_spoints_, triplets);
 }
 
-void ConservativeMethod::do_execute(const Field& src_field, Field& tgt_field, Metadata& metadata) const {
+void ConservativeSphericalPolygonInterpolation::do_execute(const Field& src_field, Field& tgt_field,
+                                                           Metadata& metadata) const {
     ATLAS_TRACE("ConservativeMethod::do_execute()");
     {
         ATLAS_TRACE("halo exchange source");
         src_field.set_dirty(true);
         src_field.haloExchange();
     }
-    const auto& tgt_areas_v = cachable_data_->tgt_areas_;
-    const auto& src_iparam_ = cachable_data_->src_iparam_;
+    const auto& tgt_areas_v = data_->tgt_areas_;
+    const auto& src_iparam_ = data_->src_iparam_;
     if (order_ == 1) {
         if (matrix_free_) {
             ATLAS_TRACE("matrix_free_order_1");
@@ -1196,7 +1204,7 @@ void ConservativeMethod::do_execute(const Field& src_field, Field& tgt_field, Me
                 ATLAS_NOTIMPLEMENTED;
             }
 
-            auto& src_points_ = cachable_data_->src_points_;
+            auto& src_points_ = data_->src_points_;
 
             const auto src_vals = array::make_view<double, 1>(src_field);
             auto tgt_vals       = array::make_view<double, 1>(tgt_field);
@@ -1222,11 +1230,11 @@ void ConservativeMethod::do_execute(const Field& src_field, Field& tgt_field, Me
                     const auto& Pnn = src_points_[nncell];
                     if (ncell != scell && nncell != scell) {
                         double val = 0.5 * (src_vals(ncell) + src_vals(nncell)) - src_vals(scell);
-                        auto csp   = CSPolygon({Pn, Pnn, P});
+                        auto csp   = ConvexSphericalPolygon({Pn, Pnn, P});
                         if (csp.area() < std::numeric_limits<double>::epsilon()) {
-                            csp = CSPolygon({Pn, P, Pnn});
+                            csp = ConvexSphericalPolygon({Pn, P, Pnn});
                         }
-                        auto NsNsj = CSPolygon::GreatCircleSegment(P, Pn);
+                        auto NsNsj = ConvexSphericalPolygon::GreatCircleSegment(P, Pn);
                         val *= (NsNsj.inLeftHemisphere(Pnn, -1e-16) ? -1 : 1);
                         dual_area += std::abs(csp.area());
                         grad = grad + PointXYZ::mul(PointXYZ::cross(Pn, Pnn), val);
@@ -1275,15 +1283,15 @@ void ConservativeMethod::do_execute(const Field& src_field, Field& tgt_field, Me
         const auto tgt_cell_halo  = array::make_view<int, 1>(tgt_mesh_.cells().halo());
         const auto tgt_node_ghost = array::make_view<int, 1>(tgt_mesh_.nodes().ghost());
         const auto tgt_node_halo  = array::make_view<int, 1>(tgt_mesh_.nodes().halo());
-        const auto& src_areas_v   = cachable_data_->src_areas_;
-        const auto& tgt_areas_v   = cachable_data_->tgt_areas_;
+        const auto& src_areas_v   = data_->src_areas_;
+        const auto& tgt_areas_v   = data_->tgt_areas_;
 
         const auto src_vals = array::make_view<double, 1>(src_field);
         const auto tgt_vals = array::make_view<double, 1>(tgt_field);
 
         double err_remap_cons     = 0.;
-        const auto& tgt_csp2node_ = cachable_data_->tgt_csp2node_;
-        const auto& src_iparam_   = cachable_data_->src_iparam_;
+        const auto& tgt_csp2node_ = data_->tgt_csp2node_;
+        const auto& src_iparam_   = data_->src_iparam_;
         if (src_cell_data_) {
             for (idx_t spt = 0; spt < src_vals.size(); ++spt) {
                 if (src_cell_halo(spt)) {
@@ -1312,7 +1320,7 @@ void ConservativeMethod::do_execute(const Field& src_field, Field& tgt_field, Me
             }
         }
         else {
-            auto& src_node2csp_ = cachable_data_->src_node2csp_;
+            auto& src_node2csp_ = data_->src_node2csp_;
             for (idx_t spt = 0; spt < src_vals.size(); ++spt) {
                 if (src_node_ghost(spt) or src_areas_v[spt] < 1e-14) {
                     continue;
@@ -1337,7 +1345,7 @@ void ConservativeMethod::do_execute(const Field& src_field, Field& tgt_field, Me
                 }
             }
         }
-        auto& tgt_points_ = cachable_data_->tgt_points_;
+        auto& tgt_points_ = data_->tgt_points_;
         if (tgt_cell_data_) {
             for (idx_t tpt = 0; tpt < tgt_vals.size(); ++tpt) {
                 if (tgt_cell_halo(tpt)) {
@@ -1355,7 +1363,7 @@ void ConservativeMethod::do_execute(const Field& src_field, Field& tgt_field, Me
             }
         }
         ATLAS_TRACE_MPI(ALLREDUCE) { mpi::comm().allReduceInPlace(&err_remap_cons, 1, eckit::mpi::sum()); }
-        remap_stat.errors[RemapStat::Errors::REMAP_CONS] = std::sqrt(std::abs(err_remap_cons) * 0.25 * M_1_PI);
+        remap_stat.errors[Statistics::Errors::REMAP_CONS] = std::sqrt(std::abs(err_remap_cons) * 0.25 * M_1_PI);
     }
     if (statistics_intersection_ || statistics_conservation_) {
         remap_stat.fillMetadata(metadata);
@@ -1369,7 +1377,7 @@ void ConservativeMethod::do_execute(const Field& src_field, Field& tgt_field, Me
     }
 }
 
-void ConservativeMethod::print(std::ostream& out) const {
+void ConservativeSphericalPolygonInterpolation::print(std::ostream& out) const {
     out << "ConservativeMethod{";
     out << "order:" << order_;
     out << ", source:" << (src_cell_data_ ? "cells" : "nodes");
@@ -1379,21 +1387,30 @@ void ConservativeMethod::print(std::ostream& out) const {
     out << ", statistics.intersection:" << statistics_intersection_;
     out << ", statistics.conservation:" << statistics_conservation_;
     out << ", cached_matrix:" << bool(matrix_shared_.use_count() == 0);
-    out << ", cached_data:" << bool(cachable_data_shared_.use_count() == 0);
+    out << ", cached_data:" << bool(sharable_data_.use_count() == 0);
     size_t footprint{};
     if (not matrix_free_) {
         footprint += matrix_->footprint();
     }
-    footprint += cachable_data_->footprint();
+    footprint += data_->footprint();
     out << ", footprint:" << eckit::Bytes(footprint);
     out << "}";
 }
 
-void ConservativeMethod::setup_stat() const {
+Cache ConservativeSphericalPolygonInterpolation::createCache() const {
+    interpolation::Cache cache;
+    if (not matrix_free_) {
+        cache.add(matrix_cache_);
+    }
+    cache.add(cache_);
+    return cache;
+}
+
+void ConservativeSphericalPolygonInterpolation::setup_stat() const {
     const auto src_cell_halo  = array::make_view<int, 1>(src_mesh_.cells().halo());
     const auto src_node_ghost = array::make_view<int, 1>(src_mesh_.nodes().ghost());
-    const auto& src_areas_v   = cachable_data_->src_areas_;
-    const auto& tgt_areas_v   = cachable_data_->tgt_areas_;
+    const auto& src_areas_v   = data_->src_areas_;
+    const auto& tgt_areas_v   = data_->tgt_areas_;
     double geo_create_err     = 0.;
     double src_tgt_sums[2]    = {0., 0.};
     if (src_cell_data_) {
@@ -1427,18 +1444,19 @@ void ConservativeMethod::setup_stat() const {
         }
     }
     ATLAS_TRACE_MPI(ALLREDUCE) { mpi::comm().allReduceInPlace(src_tgt_sums, 2, eckit::mpi::sum()); }
-    geo_create_err                                  = std::abs(src_tgt_sums[0] - src_tgt_sums[1]) * 0.25 * M_1_PI;
-    remap_stat_.errors[RemapStat::Errors::GEO_DIFF] = geo_create_err;
+    geo_create_err                                   = std::abs(src_tgt_sums[0] - src_tgt_sums[1]) * 0.25 * M_1_PI;
+    remap_stat_.errors[Statistics::Errors::GEO_DIFF] = geo_create_err;
 }
 
-Field ConservativeMethod::RemapStat::diff(const Interpolation& interpolation, const Field source, const Field target) {
+Field ConservativeSphericalPolygonInterpolation::Statistics::diff(const Interpolation& interpolation,
+                                                                  const Field source, const Field target) {
     Field diff     = interpolation.source().createField(source, option::name("diff"));
     auto diff_vals = array::make_view<double, 1>(diff);
 
     const auto src_vals = array::make_view<double, 1>(source);
     const auto tgt_vals = array::make_view<double, 1>(target);
 
-    auto cachable_data_       = ConservativeMethod::Cache(interpolation).get();
+    auto cachable_data_       = ConservativeSphericalPolygonInterpolation::Cache(interpolation).get();
     const auto& src_areas_v   = cachable_data_->src_areas_;
     const auto& tgt_areas_v   = cachable_data_->tgt_areas_;
     const auto& tgt_csp2node_ = cachable_data_->tgt_csp2node_;
@@ -1512,15 +1530,12 @@ Field ConservativeMethod::RemapStat::diff(const Interpolation& interpolation, co
     return diff;
 }
 
-void ConservativeMethod::RemapStat::accuracy(const Interpolation& interpolation, const Field target,
-                                             std::function<double(const PointLonLat&)> func) {
-    accuracy(dynamic_cast<const ConservativeMethod&>(*interpolation.get()), target, func);
-}
 
-void ConservativeMethod::RemapStat::accuracy(const ConservativeMethod& consMethod, const Field target,
-                                             std::function<double(const PointLonLat&)> func) {
+void ConservativeSphericalPolygonInterpolation::Statistics::accuracy(const Interpolation& interpolation,
+                                                                     const Field target,
+                                                                     std::function<double(const PointLonLat&)> func) {
     auto tgt_vals             = array::make_view<double, 1>(target);
-    auto cachable_data_       = ConservativeMethod::Cache(consMethod.createCache()).get();
+    auto cachable_data_       = ConservativeSphericalPolygonInterpolation::Cache(interpolation).get();
     auto tgt_mesh_            = extract_mesh(cachable_data_->src_fs_);
     auto tgt_cell_data_       = extract_mesh(cachable_data_->tgt_fs_);
     const auto tgt_cell_halo  = array::make_view<int, 1>(tgt_mesh_.cells().halo());
@@ -1559,12 +1574,12 @@ void ConservativeMethod::RemapStat::accuracy(const ConservativeMethod& consMetho
         mpi::comm().allReduceInPlace(&err_remap_l2, 1, eckit::mpi::sum());
         mpi::comm().allReduceInPlace(&err_remap_linf, 1, eckit::mpi::max());
     }
-    this->errors[RemapStat::Errors::REMAP_L2]   = std::sqrt(err_remap_l2 * 0.25 * M_1_PI);
-    this->errors[RemapStat::Errors::REMAP_LINF] = err_remap_linf;
+    this->errors[Statistics::Errors::REMAP_L2]   = std::sqrt(err_remap_l2 * 0.25 * M_1_PI);
+    this->errors[Statistics::Errors::REMAP_LINF] = err_remap_linf;
 }
 
-auto debug_intersection = [](const CSPolygon& plg_1, const CSPolygon& plg_2, const CSPolygon& iplg,
-                             const CSPolygon& jplg) {
+auto debug_intersection = [](const ConvexSphericalPolygon& plg_1, const ConvexSphericalPolygon& plg_2,
+                             const ConvexSphericalPolygon& iplg, const ConvexSphericalPolygon& jplg) {
     const double intersection_comm_err = std::abs(iplg.area() - jplg.area()) / (plg_1.area() > 0 ? plg_1.area() : 1.);
     Log::info().indent();
     if (intersection_comm_err > 1e-6) {
@@ -1589,8 +1604,9 @@ auto debug_intersection = [](const CSPolygon& plg_1, const CSPolygon& plg_2, con
     Log::info().unindent();
 };
 
-void ConservativeMethod::dump_intersection(const CSPolygon& plg_1, const CSPolygonArray& plg_2_array,
-                                           const std::vector<idx_t>& plg_2_idx_array) const {
+void ConservativeSphericalPolygonInterpolation::dump_intersection(const ConvexSphericalPolygon& plg_1,
+                                                                  const CSPolygonArray& plg_2_array,
+                                                                  const std::vector<idx_t>& plg_2_idx_array) const {
     double plg_1_coverage = 0.;
     for (int i = 0; i < plg_2_idx_array.size(); ++i) {
         const auto plg_2_idx = plg_2_idx_array[i];
@@ -1620,8 +1636,9 @@ void ConservativeMethod::dump_intersection(const CSPolygon& plg_1, const CSPolyg
 }
 
 template <class TargetCellsIDs>
-void ConservativeMethod::dump_intersection(const CSPolygon& plg_1, const CSPolygonArray& plg_2_array,
-                                           const TargetCellsIDs& plg_2_idx_array) const {
+void ConservativeSphericalPolygonInterpolation::dump_intersection(const ConvexSphericalPolygon& plg_1,
+                                                                  const CSPolygonArray& plg_2_array,
+                                                                  const TargetCellsIDs& plg_2_idx_array) const {
     std::vector<idx_t> idx_array;
     idx_array.resize(plg_2_idx_array.size());
     for (int i = 0; i < plg_2_idx_array.size(); ++i) {
@@ -1630,16 +1647,16 @@ void ConservativeMethod::dump_intersection(const CSPolygon& plg_1, const CSPolyg
     dump_intersection(plg_1, plg_2_array, idx_array);
 }
 
-ConservativeMethod::Cache::Cache(std::shared_ptr<InterpolationCacheEntry> entry):
-    interpolation::Cache(entry), entry_(dynamic_cast<CachableData*>(entry.get())) {}
+ConservativeSphericalPolygonInterpolation::Cache::Cache(std::shared_ptr<InterpolationCacheEntry> entry):
+    interpolation::Cache(entry), entry_(dynamic_cast<Data*>(entry.get())) {}
 
-ConservativeMethod::Cache::Cache(const interpolation::Cache& c):
-    interpolation::Cache(c, CachableData::static_type()),
-    entry_{dynamic_cast<const CachableData*>(c.get(CachableData::static_type()))} {}
+ConservativeSphericalPolygonInterpolation::Cache::Cache(const interpolation::Cache& c):
+    interpolation::Cache(c, Data::static_type()), entry_{dynamic_cast<const Data*>(c.get(Data::static_type()))} {}
 
-ConservativeMethod::Cache::Cache(const Interpolation& interpolation): Cache(interpolation::Cache(interpolation)) {}
+ConservativeSphericalPolygonInterpolation::Cache::Cache(const Interpolation& interpolation):
+    Cache(interpolation::Cache(interpolation)) {}
 
-size_t ConservativeMethod::CachableData::footprint() const {
+size_t ConservativeSphericalPolygonInterpolation::Data::footprint() const {
     size_t mem_total{0};
     mem_total += memory_of(src_points_);
     mem_total += memory_of(tgt_points_);
@@ -1654,7 +1671,7 @@ size_t ConservativeMethod::CachableData::footprint() const {
 }
 
 
-void ConservativeMethod::CachableData::print(std::ostream& out) const {
+void ConservativeSphericalPolygonInterpolation::Data::print(std::ostream& out) const {
     out << "Memory usage of ConservativeMethod: " << eckit::Bytes(footprint()) << "\n";
     out << "- src_points_   \t" << eckit::Bytes(memory_of(src_points_)) << "\n";
     out << "- tgt_points_   \t" << eckit::Bytes(memory_of(tgt_points_)) << "\n";
@@ -1667,7 +1684,7 @@ void ConservativeMethod::CachableData::print(std::ostream& out) const {
     out << "- src_iparam_   \t" << eckit::Bytes(memory_of(src_iparam_)) << "\n";
 }
 
-void RemapStat::fillMetadata(Metadata& metadata) {
+void ConservativeSphericalPolygonInterpolation::Statistics::fillMetadata(Metadata& metadata) {
     // counts
     metadata.set("counts.SRC_PLG", counts[SRC_PLG]);
     metadata.set("counts.TGT_PLG", counts[TGT_PLG]);
@@ -1687,7 +1704,12 @@ void RemapStat::fillMetadata(Metadata& metadata) {
     metadata.set("errors.REMAP_LINF", errors[REMAP_LINF]);
 }
 
-RemapStat::RemapStat(const Metadata& metadata): RemapStat() {
+ConservativeSphericalPolygonInterpolation::Statistics::Statistics() {
+    std::fill(std::begin(counts), std::end(counts), 0);
+    std::fill(std::begin(errors), std::end(errors), 0.);
+}
+
+ConservativeSphericalPolygonInterpolation::Statistics::Statistics(const Metadata& metadata): Statistics() {
     // counts
     metadata.get("counts.SRC_PLG", counts[SRC_PLG]);
     metadata.get("counts.TGT_PLG", counts[TGT_PLG]);
