@@ -131,30 +131,6 @@ int ConservativeMethod::prev_index(int current_index, int size, int offset) cons
     return (current_index >= offset) ? current_index - offset : current_index - offset + size;
 }
 
-void ConservativeMethod::set_order(int order) {
-    if (order != order_) {
-        order_ = order;
-        if (matrix_free_ && (not src_cell_data_ or not tgt_cell_data_)) {
-            ATLAS_NOTIMPLEMENTED;
-        }
-        if (order == 1) {
-            if (not matrix_free_) {
-                auto M = compute_1st_order_matrix();
-                matrix_shared_->swap(M);
-            }
-        }
-        else if (order == 2) {
-            if (not matrix_free_) {
-                auto M = compute_2nd_order_matrix();
-                matrix_shared_->swap(M);
-            }
-        }
-        else {
-            ATLAS_NOTIMPLEMENTED;
-        }
-    }
-}
-
 // get counter-clockwise sorted neighbours of a cell
 std::vector<idx_t> ConservativeMethod::get_cell_neighbours(Mesh& mesh, idx_t cell) const {
     const auto& cell2node = mesh.cells().node_connectivity();
@@ -517,6 +493,7 @@ void ConservativeMethod::do_setup(const Grid& src_grid, const Grid& tgt_grid, co
         Log::debug() << "Matrix found in cache -> no setup required at all" << std::endl;
         matrix_cache_ = cache;
         matrix_       = &matrix_cache_.matrix();
+        matrix_shared_.reset();
         return;
     }
 
@@ -1371,6 +1348,26 @@ void ConservativeMethod::do_execute(const Field& src_field, Field& tgt_field, Me
     }
 }
 
+void ConservativeMethod::print(std::ostream& out) const {
+    out << "ConservativeMethod{";
+    out << "order:" << order_;
+    out << ", source:" << (src_cell_data_ ? "cells" : "nodes");
+    out << ", target:" << (tgt_cell_data_ ? "cells" : "nodes");
+    out << ", normalise_intersections:" << normalise_intersections_;
+    out << ", matrix_free:" << matrix_free_;
+    out << ", statistics.intersection:" << statistics_intersection_;
+    out << ", statistics.conservation:" << statistics_conservation_;
+    out << ", cached_matrix:" << bool(matrix_shared_.use_count() == 0);
+    out << ", cached_data:" << bool(cachable_data_shared_.use_count() == 0);
+    size_t footprint{};
+    if (not matrix_free_) {
+        footprint += matrix_->footprint();
+    }
+    footprint += cachable_data_->footprint();
+    out << ", footprint:" << eckit::Bytes(footprint);
+    out << "}";
+}
+
 void ConservativeMethod::setup_stat() const {
     const auto src_cell_halo  = array::make_view<int, 1>(src_mesh_.cells().halo());
     const auto src_node_ghost = array::make_view<int, 1>(src_mesh_.nodes().ghost());
@@ -1503,8 +1500,8 @@ void ConservativeMethod::RemapStat::accuracy(const ConservativeMethod& consMetho
                                              std::function<double(const PointLonLat&)> func) {
     auto tgt_vals             = array::make_view<double, 1>(target);
     auto cachable_data_       = ConservativeMethod::Cache(consMethod.createCache()).get();
-    auto tgt_mesh_            = consMethod.tgt_mesh();
-    auto tgt_cell_data_       = consMethod.tgt_cell_data();
+    auto tgt_mesh_            = extract_mesh(cachable_data_->src_fs_);
+    auto tgt_cell_data_       = extract_mesh(cachable_data_->tgt_fs_);
     const auto tgt_cell_halo  = array::make_view<int, 1>(tgt_mesh_.cells().halo());
     const auto tgt_node_ghost = array::make_view<int, 1>(tgt_mesh_.nodes().ghost());
     const auto& tgt_areas_v   = cachable_data_->tgt_areas_;

@@ -74,7 +74,6 @@ public:
         Cache(const Interpolation&);
 
         operator bool() const { return entry_; }
-        size_t footprint() const;
         const CachableData* get() const { return entry_; }
 
     private:
@@ -128,10 +127,9 @@ public:
 
 
 public:
-    typedef util::ConvexSphericalPolygon CSPolygon;
-    typedef std::vector<std::pair<CSPolygon, int>> PolygonArray;
-    typedef std::vector<std::tuple<CSPolygon, int>> CSPolygonArray;
-    typedef array::ArrayView<double, 1> FieldArray;
+    using CSPolygon      = util::ConvexSphericalPolygon;
+    using PolygonArray   = std::vector<std::pair<CSPolygon, int>>;
+    using CSPolygonArray = std::vector<std::tuple<CSPolygon, int>>;
 
     ConservativeMethod(const Config& = util::NoConfig());
 
@@ -141,19 +139,11 @@ public:
     void do_setup(const Grid& src_grid, const Grid& tgt_grid, const interpolation::Cache&) override;
     void do_execute(const Field& src_field, Field& tgt_field, Metadata&) const override;
 
-    void set_order(int order);
-    void print(std::ostream& out) const override { out << "ConservativeMethod[]"; }
+    void print(std::ostream& out) const override;
 
-    bool src_cell_data() const { return src_cell_data_; }
-    bool tgt_cell_data() const { return tgt_cell_data_; }
     const FunctionSpace& source() const override { return cachable_data_->src_fs_; }
     const FunctionSpace& target() const override { return cachable_data_->tgt_fs_; }
-    Mesh src_mesh() const { return src_mesh_; }
-    Mesh tgt_mesh() const { return tgt_mesh_; }
-    int normalise_intersections() const { return normalise_intersections_; }
-    int order() const { return order_; }
-    int matrix_free() const { return matrix_free_; }
-    inline const std::vector<InterpolationParameters>& iparam() const { return cachable_data_->src_iparam_; }
+
     inline const PointXYZ& src_points(size_t id) const { return cachable_data_->src_points_[id]; }
     inline const PointXYZ& tgt_points(size_t id) const { return cachable_data_->tgt_points_[id]; }
 
@@ -166,7 +156,7 @@ public:
         return cache;
     }
 
-protected:
+private:
     void intersect_polygons(const CSPolygonArray& src_csp, const CSPolygonArray& tgt_scp);
     Matrix compute_1st_order_matrix();
     Matrix compute_2nd_order_matrix();
@@ -184,16 +174,13 @@ protected:
                                          std::vector<std::vector<idx_t>>& node2csp,
                                          std::array<double, 2>& errors) const;
 
-private:
     int next_index(int current_index, int size, int offset = 1) const;
     int prev_index(int current_index, int size, int offset = 1) const;
 
-    void remap_stat(const FieldArray& src_field, const FieldArray& tgt_field, FieldArray* diff_field,
-                    double func(const PointLonLat&)) const;
 
     void setup_stat() const;
 
-protected:
+private:
     bool src_cell_data_;
     bool tgt_cell_data_;
     FunctionSpace src_fs_;

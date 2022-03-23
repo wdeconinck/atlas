@@ -48,6 +48,7 @@ void do_remapping_test(Grid src_grid, Grid tgt_grid, std::function<double(const 
     config.set("statistics.conservation", true);
 
     auto conservative_interpolation = Interpolation(config, src_grid, tgt_grid);
+    Log::info() << conservative_interpolation << std::endl;
 
     // create source field from analytic function "func"
     const auto& src_fs = conservative_interpolation.source();
@@ -83,15 +84,15 @@ void do_remapping_test(Grid src_grid, Grid tgt_grid, std::function<double(const 
             cfg.set("matrix_free", false);
             cfg.set("order", 1);
             auto interpolation = Interpolation(cfg, src_grid, tgt_grid, cache);
+            Log::info() << interpolation << std::endl;
             interpolation.execute(src_field, tgt_field);
-            Log::info() << interpolation.source().type() << std::endl;
-            Log::info() << interpolation.target().type() << std::endl;
         }
         {
             ATLAS_TRACE("cached -> 1st order constructing new matrix");
             cfg.set("matrix_free", false);
             cfg.set("order", 1);
             auto interpolation = Interpolation(cfg, src_grid, tgt_grid, ConservativeMethod::Cache(cache));
+            Log::info() << interpolation << std::endl;
             interpolation.execute(src_field, tgt_field);
         }
         {
@@ -99,6 +100,7 @@ void do_remapping_test(Grid src_grid, Grid tgt_grid, std::function<double(const 
             cfg.set("matrix_free", true);
             cfg.set("order", 1);
             auto interpolation = Interpolation(cfg, src_grid, tgt_grid, cache);
+            Log::info() << interpolation << std::endl;
             interpolation.execute(src_field, tgt_field);
         }
         auto cache_2 = interpolation::Cache{};
@@ -107,6 +109,7 @@ void do_remapping_test(Grid src_grid, Grid tgt_grid, std::function<double(const 
             cfg.set("matrix_free", false);
             cfg.set("order", 2);
             auto interpolation = Interpolation(cfg, src_grid, tgt_grid, ConservativeMethod::Cache(cache));
+            Log::info() << interpolation << std::endl;
             interpolation.execute(src_field, tgt_field);
             cache_2 = interpolation.createCache();
         }
@@ -115,6 +118,7 @@ void do_remapping_test(Grid src_grid, Grid tgt_grid, std::function<double(const 
             cfg.set("matrix_free", true);
             cfg.set("order", 2);
             auto interpolation = Interpolation(cfg, src_grid, tgt_grid, cache);
+            Log::info() << interpolation << std::endl;
             interpolation.execute(src_field, tgt_field);
         }
         {
@@ -122,6 +126,7 @@ void do_remapping_test(Grid src_grid, Grid tgt_grid, std::function<double(const 
             cfg.set("matrix_free", false);
             cfg.set("order", 2);
             auto interpolation = Interpolation(cfg, src_grid, tgt_grid, cache_2);
+            Log::info() << interpolation << std::endl;
             interpolation.execute(src_field, tgt_field);
         }
     }
@@ -131,7 +136,8 @@ void do_remapping_test(Grid src_grid, Grid tgt_grid, std::function<double(const 
         // project source field to target mesh in 2nd order
         config.set("order", 2);
         conservative_interpolation = Interpolation(config, src_grid, tgt_grid);
-        remap_stat_2               = RemapStat(conservative_interpolation.execute(src_field, tgt_field));
+        Log::info() << conservative_interpolation << std::endl;
+        remap_stat_2 = RemapStat(conservative_interpolation.execute(src_field, tgt_field));
         remap_stat_2.accuracy(conservative_interpolation, tgt_field, func);
     }
 }
