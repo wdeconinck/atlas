@@ -946,9 +946,7 @@ eckit::linalg::SparseMatrix ConservativeMethod::compute_1st_order_matrix() {
             }
         }
     }
-    std::sort(std::begin(triplets), std::end(triplets), [](const Triplet& t1, const Triplet& t2) {
-        return (t1.row() < t2.row() or (t1.row() == t2.row() and (t1.col() < t2.col())));
-    });
+    std::sort(std::begin(triplets), std::end(triplets));
     return Matrix(n_tpoints_, n_spoints_, triplets);
 }
 
@@ -1154,9 +1152,7 @@ eckit::linalg::SparseMatrix ConservativeMethod::compute_2nd_order_matrix() {
             }
         }
     }
-    std::sort(std::begin(triplets), std::end(triplets), [](const Triplet& t1, const Triplet& t2) {
-        return (t1.row() < t2.row() or (t1.row() == t2.row() and t1.col() < t2.col()));
-    });
+    std::sort(std::begin(triplets), std::end(triplets));
     return Matrix(n_tpoints_, n_spoints_, triplets);
 }
 
