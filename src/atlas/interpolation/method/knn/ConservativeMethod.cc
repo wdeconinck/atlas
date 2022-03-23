@@ -79,6 +79,28 @@ Mesh extract_mesh(FunctionSpace fs) {
     }
 }
 
+void sort_and_accumulate_triplets(std::vector<eckit::linalg::Triplet>& triplets) {
+    std::map<std::pair<int, int>, double> triplet_map;
+    for (auto& triplet : triplets) {
+        auto loc   = std::make_pair<int, int>(triplet.row(), triplet.col());
+        auto entry = triplet_map.find(loc);
+        if (entry == triplet_map.end()) {
+            triplet_map[loc] = triplet.value();
+        }
+        else {
+            entry->second += triplet.value();
+        }
+    }
+    triplets.clear();
+    for (auto& triplet : triplet_map) {
+        auto& row = triplet.first.first;
+        auto& col = triplet.first.second;
+        auto& val = triplet.second;
+        triplets.emplace_back(row, col, val);
+    }
+}
+
+
 }  // namespace
 
 int inside_vertices(const CSPolygon& plg1, const CSPolygon& plg2, int& pout) {
@@ -923,7 +945,7 @@ eckit::linalg::SparseMatrix ConservativeMethod::compute_1st_order_matrix() {
             }
         }
     }
-    std::sort(std::begin(triplets), std::end(triplets));
+    sort_and_accumulate_triplets(triplets);
     return Matrix(n_tpoints_, n_spoints_, triplets);
 }
 
@@ -970,7 +992,6 @@ eckit::linalg::SparseMatrix ConservativeMethod::compute_2nd_order_matrix() {
                 const auto& Csj  = src_points_[sj];
                 const auto& Cnsj = src_points_[nsj];
                 if (CSPolygon::GreatCircleSegment(Cs, Csj).inLeftHemisphere(Cnsj, -1e-16)) {
-                    ;
                     Rsj[j] = PointXYZ::cross(Cnsj, Csj);
                     dual_area_inv += CSPolygon({Cs, Csj, Cnsj}).area();
                 }
@@ -1129,7 +1150,7 @@ eckit::linalg::SparseMatrix ConservativeMethod::compute_2nd_order_matrix() {
             }
         }
     }
-    std::sort(std::begin(triplets), std::end(triplets));
+    sort_and_accumulate_triplets(triplets);
     return Matrix(n_tpoints_, n_spoints_, triplets);
 }
 
