@@ -493,7 +493,7 @@ void ConservativeSphericalPolygonInterpolation::do_setup_impl(const Grid& src_gr
 
 void ConservativeSphericalPolygonInterpolation::do_setup(const Grid& src_grid, const Grid& tgt_grid,
                                                          const interpolation::Cache& cache) {
-    ATLAS_TRACE();
+    ATLAS_TRACE("ConservativeSphericalPolygonInterpolation::do_setup(Grid, Grid, Cache)");
 
     if (Cache(cache)) {
         Log::debug() << "Interpolation data found in cache -> no polygon intersections required" << std::endl;
@@ -517,14 +517,16 @@ void ConservativeSphericalPolygonInterpolation::do_setup(const Grid& src_grid, c
         }
     }
 
-    if (not matrix_free_ && interpolation::MatrixCache(cache)) {
-        Log::debug() << "Matrix found in cache -> no setup required at all" << std::endl;
-        matrix_cache_ = cache;
-        matrix_       = &matrix_cache_.matrix();
-        matrix_shared_.reset();
-        return;
+    if (not matrix_free_) {
+        auto matrix_cache = interpolation::MatrixCache(cache);
+        if (matrix_cache) {
+            if (matrix_cache.uid() == std::to_string(order_) || matrix_cache.uid().empty()) {
+                Log::debug() << "Matrix found in cache -> no setup required at all" << std::endl;
+                setMatrix(matrix_cache);
+                return;
+            }
+        }
     }
-
 
     do_setup_impl(src_grid, tgt_grid);
 }
@@ -666,12 +668,12 @@ void ConservativeSphericalPolygonInterpolation::do_setup(const FunctionSpace& sr
         switch (order_) {
             case 1: {
                 auto M = compute_1st_order_matrix();
-                matrix_shared_->swap(M);
+                setMatrix(M, "1");
                 break;
             }
             case 2: {
                 auto M = compute_2nd_order_matrix();
-                matrix_shared_->swap(M);
+                setMatrix(M, "2");
                 break;
             }
             default: {
@@ -1386,11 +1388,11 @@ void ConservativeSphericalPolygonInterpolation::print(std::ostream& out) const {
     out << ", matrix_free:" << matrix_free_;
     out << ", statistics.intersection:" << statistics_intersection_;
     out << ", statistics.conservation:" << statistics_conservation_;
-    out << ", cached_matrix:" << bool(matrix_shared_.use_count() == 0);
+    out << ", cached_matrix:" << not(matrixAllocated() || matrix_free_);
     out << ", cached_data:" << bool(sharable_data_.use_count() == 0);
     size_t footprint{};
     if (not matrix_free_) {
-        footprint += matrix_->footprint();
+        footprint += matrix().footprint();
     }
     footprint += data_->footprint();
     out << ", footprint:" << eckit::Bytes(footprint);
@@ -1400,7 +1402,7 @@ void ConservativeSphericalPolygonInterpolation::print(std::ostream& out) const {
 Cache ConservativeSphericalPolygonInterpolation::createCache() const {
     interpolation::Cache cache;
     if (not matrix_free_) {
-        cache.add(matrix_cache_);
+        cache.add(Method::createCache());
     }
     cache.add(cache_);
     return cache;

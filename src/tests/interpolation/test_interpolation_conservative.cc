@@ -89,7 +89,9 @@ void do_remapping_test(Grid src_grid, Grid tgt_grid, std::function<double(const 
             ATLAS_TRACE("cached -> 1st order constructing new matrix");
             cfg.set("matrix_free", false);
             cfg.set("order", 1);
-            auto interpolation = Interpolation(cfg, src_grid, tgt_grid, ConservativeMethod::Cache(cache));
+            auto cache_without_matrix =
+                ConservativeMethod::Cache(cache);  // to mimick when cache was created with matrix_free option
+            auto interpolation = Interpolation(cfg, src_grid, tgt_grid, cache_without_matrix);
             Log::info() << interpolation << std::endl;
             interpolation.execute(src_field, tgt_field);
         }
@@ -106,7 +108,7 @@ void do_remapping_test(Grid src_grid, Grid tgt_grid, std::function<double(const 
             ATLAS_TRACE("cached -> 2nd order constructing new matrix");
             cfg.set("matrix_free", false);
             cfg.set("order", 2);
-            auto interpolation = Interpolation(cfg, src_grid, tgt_grid, ConservativeMethod::Cache(cache));
+            auto interpolation = Interpolation(cfg, src_grid, tgt_grid, cache);
             Log::info() << interpolation << std::endl;
             interpolation.execute(src_field, tgt_field);
             cache_2 = interpolation.createCache();
