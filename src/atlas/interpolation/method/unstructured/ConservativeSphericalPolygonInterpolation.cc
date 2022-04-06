@@ -1171,11 +1171,12 @@ void ConservativeSphericalPolygonInterpolation::do_execute(const Field& src_fiel
         src_field.set_dirty(true);
         src_field.haloExchange();
     }
-    const auto& tgt_areas_v = data_->tgt_areas_;
-    const auto& src_iparam_ = data_->src_iparam_;
     if (order_ == 1) {
         if (matrix_free_) {
             ATLAS_TRACE("matrix_free_order_1");
+            const auto& src_iparam_ = data_->src_iparam_;
+            const auto& tgt_areas_v = data_->tgt_areas_;
+
             if (not src_cell_data_ or not tgt_cell_data_) {
                 ATLAS_NOTIMPLEMENTED;
             }
@@ -1202,6 +1203,9 @@ void ConservativeSphericalPolygonInterpolation::do_execute(const Field& src_fiel
     else if (order_ == 2) {
         if (matrix_free_) {
             ATLAS_TRACE("matrix_free_order_2");
+            const auto& src_iparam_ = data_->src_iparam_;
+            const auto& tgt_areas_v = data_->tgt_areas_;
+
             if (not src_cell_data_ or not tgt_cell_data_) {
                 ATLAS_NOTIMPLEMENTED;
             }
@@ -1299,26 +1303,7 @@ void ConservativeSphericalPolygonInterpolation::do_execute(const Field& src_fiel
                 if (src_cell_halo(spt)) {
                     continue;
                 }
-                double diff = src_vals(spt) * src_areas_v[spt];
-                err_remap_cons += diff;
-                const auto& iparam = src_iparam_[spt];
-                if (tgt_cell_data_) {
-                    for (idx_t icell = 0; icell < iparam.src_weights.size(); ++icell) {
-                        idx_t tcell = iparam.cell_idx[icell];
-                        if (tgt_cell_halo(tcell) < 1) {
-                            diff -= tgt_vals(iparam.cell_idx[icell]) * iparam.src_weights[icell];
-                        }
-                    }
-                }
-                else {
-                    for (idx_t icell = 0; icell < iparam.src_weights.size(); ++icell) {
-                        idx_t tcell = iparam.cell_idx[icell];
-                        idx_t tnode = tgt_csp2node_[tcell];
-                        if (tgt_node_halo(tnode) < 1) {
-                            diff -= tgt_vals(tnode) * iparam.src_weights[icell];
-                        }
-                    }
-                }
+                err_remap_cons += src_vals(spt) * src_areas_v[spt];
             }
         }
         else {
@@ -1327,24 +1312,7 @@ void ConservativeSphericalPolygonInterpolation::do_execute(const Field& src_fiel
                 if (src_node_ghost(spt) or src_areas_v[spt] < 1e-14) {
                     continue;
                 }
-                double diff = src_vals(spt) * src_areas_v[spt];
-                err_remap_cons += diff;
-                const auto& node2csp = src_node2csp_[spt];
-                for (idx_t subcell = 0; subcell < node2csp.size(); ++subcell) {
-                    const auto& iparam = src_iparam_[node2csp[subcell]];
-                    if (tgt_cell_data_) {
-                        for (idx_t icell = 0; icell < iparam.src_weights.size(); ++icell) {
-                            diff -= tgt_vals(iparam.cell_idx[icell]) * iparam.src_weights[icell];
-                        }
-                    }
-                    else {
-                        for (idx_t icell = 0; icell < iparam.src_weights.size(); ++icell) {
-                            idx_t tcell = iparam.cell_idx[icell];
-                            idx_t tnode = tgt_csp2node_[tcell];
-                            diff -= tgt_vals(tnode) * iparam.src_weights[icell];
-                        }
-                    }
-                }
+                err_remap_cons += src_vals(spt) * src_areas_v[spt];
             }
         }
         auto& tgt_points_ = data_->tgt_points_;
