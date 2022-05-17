@@ -538,6 +538,14 @@ void ConservativeSphericalPolygonInterpolation::do_setup(const FunctionSpace& sr
 
     bool compute_cache = data_->src_points_.empty();
 
+    if (not data_->tgt_fs_) {
+        tgt_fs_                 = tgt_fs;
+        sharable_data_->tgt_fs_ = tgt_fs_;
+    }
+    if (not data_->src_fs_) {
+        src_fs_                 = src_fs;
+        sharable_data_->src_fs_ = src_fs_;
+    }
 
     src_cell_data_ = functionspace::CellColumns(src_fs_);
     tgt_cell_data_ = functionspace::CellColumns(tgt_fs_);
