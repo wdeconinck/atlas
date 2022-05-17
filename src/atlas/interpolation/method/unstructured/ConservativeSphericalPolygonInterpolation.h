@@ -55,6 +55,19 @@ private:
         std::vector<std::vector<idx_t>> src_node2csp_;
         std::vector<std::vector<idx_t>> tgt_node2csp_;
 
+
+        // Timings
+        struct Timings {
+            double source_polygons_assembly{0};
+            double target_polygons_assembly{0};
+            double target_kdtree_assembly{0};
+            double target_kdtree_search{0};
+            double source_polygons_filter{0};
+            double polygon_intersections{0};
+            double matrix_assembly{0};
+            double interpolation{0};
+        } timings;
+
         std::vector<InterpolationParameters> src_iparam_;  // TODO: remove after setup?
 
         // Reconstructible if need be
@@ -101,6 +114,9 @@ public:
             REMAP_LINF   // index, like REMAP_L2 but in L_infinity norm
         };
         std::array<double, 10> errors;
+
+        double tgt_area_sum;
+        double src_area_sum;
 
         void fillMetadata(Metadata&);
 
@@ -165,6 +181,7 @@ private:
     void setup_stat() const;
 
 private:
+    bool validate_;
     bool src_cell_data_;
     bool tgt_cell_data_;
     FunctionSpace src_fs_;

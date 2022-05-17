@@ -31,18 +31,21 @@
 
 #include "eckit/log/Bytes.h"
 
-#define PLG_DEBUG 1
-
 namespace atlas {
 namespace interpolation {
 namespace method {
 
+using runtime::trace::StopWatch;
 using util::ConvexSphericalPolygon;
-
 
 namespace {
 
 MethodBuilder<ConservativeSphericalPolygonInterpolation> __builder("conservative-spherical-polygon");
+
+constexpr double unit_sphere_area() {
+    // 4*pi*r^2  with r=1
+    return 4. * M_PI;
+}
 
 template <typename T>
 size_t memory_of(const std::vector<T>& vector) {
@@ -82,7 +85,9 @@ Mesh extract_mesh(FunctionSpace fs) {
 }
 
 void sort_and_accumulate_triplets(std::vector<eckit::linalg::Triplet>& triplets) {
+    ATLAS_TRACE();
     std::map<std::pair<int, int>, double> triplet_map;
+    ATLAS_TRACE_SCOPE("accumulate in map")
     for (auto& triplet : triplets) {
         auto loc   = std::make_pair<int, int>(triplet.row(), triplet.col());
         auto entry = triplet_map.find(loc);
@@ -94,6 +99,7 @@ void sort_and_accumulate_triplets(std::vector<eckit::linalg::Triplet>& triplets)
         }
     }
     triplets.clear();
+    ATLAS_TRACE_SCOPE("recontruct sorted vector from map")
     for (auto& triplet : triplet_map) {
         auto& row = triplet.first.first;
         auto& col = triplet.first.second;
@@ -128,6 +134,7 @@ int inside_vertices(const ConvexSphericalPolygon& plg1, const ConvexSphericalPol
 
 ConservativeSphericalPolygonInterpolation::ConservativeSphericalPolygonInterpolation(const Config& config):
     Method(config) {
+    config.get("validate", validate_ = false);
     config.get("order", order_ = 1);
     config.get("normalise_intersections", normalise_intersections_ = 0);
     config.get("matrix_free", matrix_free_ = false);
@@ -564,6 +571,8 @@ void ConservativeSphericalPolygonInterpolation::do_setup(const FunctionSpace& sr
     std::array<double, 2> errors = {0., 0.};
     if (compute_cache) {
         ATLAS_TRACE("Get source polygons");
+        StopWatch stopwatch;
+        stopwatch.start();
         if (src_cell_data_) {
             src_csp = get_polygons_celldata(src_mesh_);
         }
@@ -571,11 +580,15 @@ void ConservativeSphericalPolygonInterpolation::do_setup(const FunctionSpace& sr
             src_csp =
                 get_polygons_nodedata(src_mesh_, sharable_data_->src_csp2node_, sharable_data_->src_node2csp_, errors);
         }
+        stopwatch.stop();
+        sharable_data_->timings.source_polygons_assembly = stopwatch.elapsed();
     }
     remap_stat_.errors[Statistics::Errors::SRC_PLG_L1]   = errors[0];
     remap_stat_.errors[Statistics::Errors::SRC_PLG_LINF] = errors[1];
     if (compute_cache) {
         ATLAS_TRACE("Get target polygons");
+        StopWatch stopwatch;
+        stopwatch.start();
         if (tgt_cell_data_) {
             tgt_csp = get_polygons_celldata(tgt_mesh_);
         }
@@ -583,6 +596,8 @@ void ConservativeSphericalPolygonInterpolation::do_setup(const FunctionSpace& sr
             tgt_csp =
                 get_polygons_nodedata(tgt_mesh_, sharable_data_->tgt_csp2node_, sharable_data_->tgt_node2csp_, errors);
         }
+        stopwatch.stop();
+        sharable_data_->timings.target_polygons_assembly = stopwatch.elapsed();
     }
     remap_stat_.counts[Statistics::Counts::SRC_PLG]      = src_csp.size();
     remap_stat_.counts[Statistics::Counts::TGT_PLG]      = tgt_csp.size();
@@ -673,6 +688,8 @@ void ConservativeSphericalPolygonInterpolation::do_setup(const FunctionSpace& sr
 
 
     if (not matrix_free_) {
+        StopWatch stopwatch;
+        stopwatch.start();
         switch (order_) {
             case 1: {
                 auto M = compute_1st_order_matrix();
@@ -687,6 +704,10 @@ void ConservativeSphericalPolygonInterpolation::do_setup(const FunctionSpace& sr
             default: {
                 ATLAS_NOTIMPLEMENTED;
             }
+        }
+        stopwatch.stop();
+        if (compute_cache) {
+            sharable_data_->timings.matrix_assembly = stopwatch.elapsed();
         }
     }
 
@@ -724,6 +745,9 @@ struct ComparePointXYZ {
 void ConservativeSphericalPolygonInterpolation::intersect_polygons(const CSPolygonArray& src_csp,
                                                                    const CSPolygonArray& tgt_csp) {
     ATLAS_TRACE();
+    auto& timings = sharable_data_->timings;
+    StopWatch stopwatch;
+    stopwatch.start();
     util::KDTree<idx_t> kdt_search;
     kdt_search.reserve(tgt_csp.size());
     double max_tgtcell_rad = 0.;
@@ -735,7 +759,14 @@ void ConservativeSphericalPolygonInterpolation::intersect_polygons(const CSPolyg
         }
     }
     kdt_search.build();
+    stopwatch.stop();
+    timings.target_kdtree_assembly = stopwatch.elapsed();
 
+    StopWatch stopwatch_src_already_in;
+    StopWatch stopwatch_kdtree_search;
+    StopWatch stopwatch_polygon_intersections;
+
+    stopwatch_src_already_in.start();
     std::set<PointXYZ, ComparePointXYZ> src_cent;
     auto polygon_point = [](const ConvexSphericalPolygon& pol) {
         PointXYZ p{0., 0., 0.};
@@ -752,6 +783,7 @@ void ConservativeSphericalPolygonInterpolation::intersect_polygons(const CSPolyg
         }
         return true;
     };
+    stopwatch_src_already_in.stop();
 
     enum MeshSizeId
     {
@@ -769,38 +801,49 @@ void ConservativeSphericalPolygonInterpolation::intersect_polygons(const CSPolyg
     std::array<double, 2> area_coverage{0., 0.};
     auto& src_iparam_ = sharable_data_->src_iparam_;
     src_iparam_.resize(src_csp.size());
-#if PLG_DEBUG
-    std::vector<InterpolationParameters> tgt_iparam;
-    tgt_iparam.resize(tgt_csp.size());
-#endif
+
+    std::vector<InterpolationParameters> tgt_iparam;  // only used for debugging
+    if (validate_) {
+        tgt_iparam.resize(tgt_csp.size());
+    }
+
     eckit::Channel blackhole;
     eckit::ProgressTimer progress("Intersecting polygons ", src_csp.size(), " cell", double(10),
                                   src_csp.size() > 50 ? Log::info() : blackhole);
     for (idx_t scell = 0; scell < src_csp.size(); ++scell, ++progress) {
+        stopwatch_src_already_in.start();
         if (src_already_in(polygon_point(std::get<0>(src_csp[scell])))) {
+            stopwatch_src_already_in.stop();
             continue;
         }
+        stopwatch_src_already_in.stop();
+
         const auto& s_csp       = std::get<0>(src_csp[scell]);
         const double s_csp_area = s_csp.area();
         double src_cover_area   = 0.;
+
+        stopwatch_kdtree_search.start();
         auto tgt_cells = kdt_search.closestPointsWithinRadius(s_csp.centroid(), s_csp.radius() + max_tgtcell_rad);
+        stopwatch_kdtree_search.stop();
         for (idx_t ttcell = 0; ttcell < tgt_cells.size(); ++ttcell) {
-            auto tcell                   = tgt_cells[ttcell].payload();
-            const auto& t_csp            = std::get<0>(tgt_csp[tcell]);
+            auto tcell        = tgt_cells[ttcell].payload();
+            const auto& t_csp = std::get<0>(tgt_csp[tcell]);
+            stopwatch_polygon_intersections.start();
             ConvexSphericalPolygon csp_i = s_csp.intersect(t_csp);
             double csp_i_area            = csp_i.area();
-#if PLG_DEBUG
-            // check zero area intersections with inside_vertices
-            int pout;
-            if (inside_vertices(s_csp, t_csp, pout) > 2 && csp_i.area() < 3e-16) {
-                dump_intersection(s_csp, tgt_csp, tgt_cells);
+            stopwatch_polygon_intersections.stop();
+            if (validate_) {
+                // check zero area intersections with inside_vertices
+                int pout;
+                if (inside_vertices(s_csp, t_csp, pout) > 2 && csp_i.area() < 3e-16) {
+                    dump_intersection(s_csp, tgt_csp, tgt_cells);
+                }
             }
-#endif
             if (csp_i_area > 0.) {
-#if PLG_DEBUG
-                tgt_iparam[tcell].cell_idx.emplace_back(scell);
-                tgt_iparam[tcell].tgt_weights.emplace_back(csp_i_area);
-#endif
+                if (validate_) {
+                    tgt_iparam[tcell].cell_idx.emplace_back(scell);
+                    tgt_iparam[tcell].tgt_weights.emplace_back(csp_i_area);
+                }
                 src_iparam_[scell].cell_idx.emplace_back(tcell);
                 src_iparam_[scell].src_weights.emplace_back(csp_i_area);
                 double target_weight = csp_i_area / t_csp.area();
@@ -816,12 +859,13 @@ void ConservativeSphericalPolygonInterpolation::intersect_polygons(const CSPolyg
         if (src_cover_err_percent > 0.1 and std::get<1>(src_csp[scell]) == 0) {
             // HACK: source cell at process boundary will not be covered by target cells, skip them
             // TODO: mark these source cells beforehand and compute error in them among the processes
-#if PLG_DEBUG
-            if (mpi::size() == 1) {
-                Log::info() << "WARNING src cell covering error : " << src_cover_err_percent << "%\n";
-                dump_intersection(s_csp, tgt_csp, tgt_cells);
+
+            if (validate_) {
+                if (mpi::size() == 1) {
+                    Log::info() << "WARNING src cell covering error : " << src_cover_err_percent << "%\n";
+                    dump_intersection(s_csp, tgt_csp, tgt_cells);
+                }
             }
-#endif
             area_coverage[TOTAL_SRC] += src_cover_err;
             area_coverage[MAX_SRC] = std::max(area_coverage[MAX_SRC], src_cover_err);
         }
@@ -837,11 +881,14 @@ void ConservativeSphericalPolygonInterpolation::intersect_polygons(const CSPolyg
         }
         num_pol[SRC_TGT_INTERSECT] += src_iparam_[scell].src_weights.size();
     }
-    num_pol[SRC] = src_csp.size();
-    num_pol[TGT] = tgt_csp.size();
+    timings.polygon_intersections  = stopwatch_polygon_intersections.elapsed();
+    timings.target_kdtree_search   = stopwatch_kdtree_search.elapsed();
+    timings.source_polygons_filter = stopwatch_src_already_in.elapsed();
+    num_pol[SRC]                   = src_csp.size();
+    num_pol[TGT]                   = tgt_csp.size();
     ATLAS_TRACE_MPI(ALLREDUCE) {
-        mpi::comm().allReduceInPlace(&num_pol[0], 4, eckit::mpi::sum());
-        mpi::comm().allReduceInPlace(&area_coverage[0], 2, eckit::mpi::max());
+        mpi::comm().allReduceInPlace(num_pol.data(), num_pol.size(), eckit::mpi::sum());
+        mpi::comm().allReduceInPlace(area_coverage.data(), area_coverage.size(), eckit::mpi::max());
     }
     remap_stat_.counts[Statistics::Counts::INT_PLG]   = num_pol[SRC_TGT_INTERSECT];
     remap_stat_.counts[Statistics::Counts::UNCVR_SRC] = num_pol[SRC_NONINTERSECT];
@@ -864,27 +911,27 @@ void ConservativeSphericalPolygonInterpolation::intersect_polygons(const CSPolyg
         geo_err_linf = std::max(geo_err_linf, std::abs(diff_cell));
     }
     ATLAS_TRACE_MPI(ALLREDUCE) {
-        mpi::comm().allReduceInPlace(&geo_err_l1, 1, eckit::mpi::sum());
-        mpi::comm().allReduceInPlace(&geo_err_linf, 1, eckit::mpi::max());
+        mpi::comm().allReduceInPlace(geo_err_l1, eckit::mpi::sum());
+        mpi::comm().allReduceInPlace(geo_err_linf, eckit::mpi::max());
     }
-    remap_stat_.errors[Statistics::Errors::GEO_L1]   = 0.25 * M_1_PI * geo_err_l1;
+    remap_stat_.errors[Statistics::Errors::GEO_L1]   = geo_err_l1 / unit_sphere_area();
     remap_stat_.errors[Statistics::Errors::GEO_LINF] = geo_err_linf;
 
-#if PLG_DEBUG
-    for (idx_t tcell = 0; tcell < tgt_csp.size(); ++tcell) {
-        const auto& t_csp     = std::get<0>(tgt_csp[tcell]);
-        double tgt_cover_area = 0.;
-        const auto& tiparam   = tgt_iparam[tcell];
-        for (idx_t icell = 0; icell < tiparam.cell_idx.size(); ++icell) {
-            tgt_cover_area += tiparam.tgt_weights[icell];
-        }
-        const double tgt_cover_err_percent = 100. * std::abs(t_csp.area() - tgt_cover_area) / t_csp.area();
-        if (tgt_cover_err_percent > 0.1 and std::get<1>(tgt_csp[tcell]) == 0) {
-            Log::info() << "WARNING tgt cell covering error : " << tgt_cover_err_percent << " %\n";
-            dump_intersection(t_csp, src_csp, tiparam.cell_idx);
+    if (validate_) {
+        for (idx_t tcell = 0; tcell < tgt_csp.size(); ++tcell) {
+            const auto& t_csp     = std::get<0>(tgt_csp[tcell]);
+            double tgt_cover_area = 0.;
+            const auto& tiparam   = tgt_iparam[tcell];
+            for (idx_t icell = 0; icell < tiparam.cell_idx.size(); ++icell) {
+                tgt_cover_area += tiparam.tgt_weights[icell];
+            }
+            const double tgt_cover_err_percent = 100. * std::abs(t_csp.area() - tgt_cover_area) / t_csp.area();
+            if (tgt_cover_err_percent > 0.1 and std::get<1>(tgt_csp[tcell]) == 0) {
+                Log::info() << "WARNING tgt cell covering error : " << tgt_cover_err_percent << " %\n";
+                dump_intersection(t_csp, src_csp, tiparam.cell_idx);
+            }
         }
     }
-#endif
 }
 
 eckit::linalg::SparseMatrix ConservativeSphericalPolygonInterpolation::compute_1st_order_matrix() {
@@ -962,7 +1009,7 @@ eckit::linalg::SparseMatrix ConservativeSphericalPolygonInterpolation::compute_1
             }
         }
     }
-    sort_and_accumulate_triplets(triplets);
+    sort_and_accumulate_triplets(triplets);  // Very expensive!!! (90% of this routine). We need to avoid it
     return Matrix(n_tpoints_, n_spoints_, triplets);
 }
 
@@ -1167,7 +1214,7 @@ eckit::linalg::SparseMatrix ConservativeSphericalPolygonInterpolation::compute_2
             }
         }
     }
-    sort_and_accumulate_triplets(triplets);
+    sort_and_accumulate_triplets(triplets);  // Very expensive!!! (90% of this routine). We need to avoid it
     return Matrix(n_tpoints_, n_spoints_, triplets);
 }
 
@@ -1175,10 +1222,13 @@ void ConservativeSphericalPolygonInterpolation::do_execute(const Field& src_fiel
                                                            Metadata& metadata) const {
     ATLAS_TRACE("ConservativeMethod::do_execute()");
     {
-        ATLAS_TRACE("halo exchange source");
-        src_field.set_dirty(true);
-        src_field.haloExchange();
+        if (src_field.dirty()) {
+            ATLAS_TRACE("halo exchange source");
+            src_field.haloExchange();
+        }
     }
+    StopWatch stopwatch;
+    stopwatch.start();
     if (order_ == 1) {
         if (matrix_free_) {
             ATLAS_TRACE("matrix_free_order_1");
@@ -1289,6 +1339,8 @@ void ConservativeSphericalPolygonInterpolation::do_execute(const Field& src_fiel
         }
     }
 
+    stopwatch.stop();
+
     auto remap_stat = remap_stat_;
     if (statistics_conservation_) {
         const auto src_cell_halo  = array::make_view<int, 1>(src_mesh_.cells().halo());
@@ -1341,18 +1393,45 @@ void ConservativeSphericalPolygonInterpolation::do_execute(const Field& src_fiel
             }
         }
         ATLAS_TRACE_MPI(ALLREDUCE) { mpi::comm().allReduceInPlace(&err_remap_cons, 1, eckit::mpi::sum()); }
-        remap_stat.errors[Statistics::Errors::REMAP_CONS] = std::sqrt(std::abs(err_remap_cons) * 0.25 * M_1_PI);
+        remap_stat.errors[Statistics::Errors::REMAP_CONS] = std::sqrt(std::abs(err_remap_cons) / unit_sphere_area());
+
+        metadata.set("conservation_error", remap_stat.errors[Statistics::Errors::REMAP_CONS]);
     }
+    if (statistics_intersection_) {
+        metadata.set("polygons.source", remap_stat.counts[Statistics::SRC_PLG]);
+        metadata.set("polygons.target", remap_stat.counts[Statistics::TGT_PLG]);
+        metadata.set("polygons.intersections", remap_stat.counts[Statistics::INT_PLG]);
+        metadata.set("polygons.uncovered_source", remap_stat.counts[Statistics::UNCVR_SRC]);
+        metadata.set("source_area_error.L1", remap_stat.errors[Statistics::Errors::GEO_L1]);
+        metadata.set("source_area_error.Linf", remap_stat.errors[Statistics::Errors::GEO_LINF]);
+    }
+
     if (statistics_intersection_ || statistics_conservation_) {
         remap_stat.fillMetadata(metadata);
     }
 
-    {
-        // TODO: should disappear
-        ATLAS_TRACE("halo exchange target");
-        tgt_field.set_dirty(true);
-        tgt_field.haloExchange();
-    }
+    auto& timings = data_->timings;
+    metadata.set("timings.source_polygons_assembly", timings.source_polygons_assembly);
+    metadata.set("timings.target_polygons_assembly", timings.target_polygons_assembly);
+    metadata.set("timings.target_kdtree_assembly", timings.target_kdtree_assembly);
+    metadata.set("timings.target_kdtree_search", timings.target_kdtree_search);
+    metadata.set("timings.source_polygons_filter", timings.source_polygons_filter);
+    metadata.set("timings.polygon_intersections", timings.polygon_intersections);
+    metadata.set("timings.matrix_assembly", timings.matrix_assembly);
+    metadata.set("timings.interpolation", stopwatch.elapsed());
+
+    metadata.set("memory.matrix", matrix_free_ ? 0 : matrix().footprint());
+    metadata.set("memory.src_points", memory_of(data_->src_points_));
+    metadata.set("memory.tgt_points", memory_of(data_->tgt_points_));
+    metadata.set("memory.src_areas", memory_of(data_->src_points_));
+    metadata.set("memory.tgt_areas", memory_of(data_->tgt_areas_));
+    metadata.set("memory.src_csp2node", memory_of(data_->src_csp2node_));
+    metadata.set("memory.tgt_csp2node", memory_of(data_->tgt_csp2node_));
+    metadata.set("memory.src_node2csp", memory_of(data_->src_node2csp_));
+    metadata.set("memory.tgt_node2csp", memory_of(data_->tgt_node2csp_));
+    metadata.set("memory.src_iparam", memory_of(data_->src_iparam_));
+
+    tgt_field.set_dirty();
 }
 
 void ConservativeSphericalPolygonInterpolation::print(std::ostream& out) const {
@@ -1422,7 +1501,11 @@ void ConservativeSphericalPolygonInterpolation::setup_stat() const {
         }
     }
     ATLAS_TRACE_MPI(ALLREDUCE) { mpi::comm().allReduceInPlace(src_tgt_sums, 2, eckit::mpi::sum()); }
-    geo_create_err                                   = std::abs(src_tgt_sums[0] - src_tgt_sums[1]) * 0.25 * M_1_PI;
+
+    remap_stat_.src_area_sum = src_tgt_sums[0];
+    remap_stat_.tgt_area_sum = src_tgt_sums[1];
+
+    geo_create_err                                   = std::abs(src_tgt_sums[0] - src_tgt_sums[1]) / unit_sphere_area();
     remap_stat_.errors[Statistics::Errors::GEO_DIFF] = geo_create_err;
 }
 
@@ -1555,7 +1638,7 @@ void ConservativeSphericalPolygonInterpolation::Statistics::accuracy(const Inter
         mpi::comm().allReduceInPlace(&err_remap_l2, 1, eckit::mpi::sum());
         mpi::comm().allReduceInPlace(&err_remap_linf, 1, eckit::mpi::max());
     }
-    this->errors[Statistics::Errors::REMAP_L2]   = std::sqrt(err_remap_l2 * 0.25 * M_1_PI);
+    this->errors[Statistics::Errors::REMAP_L2]   = std::sqrt(err_remap_l2 / unit_sphere_area());
     this->errors[Statistics::Errors::REMAP_LINF] = err_remap_linf;
 }
 

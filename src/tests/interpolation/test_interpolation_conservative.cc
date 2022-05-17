@@ -24,7 +24,6 @@
 #include "atlas/mesh/Mesh.h"
 #include "atlas/meshgenerator.h"
 #include "atlas/option.h"
-#include "atlas/output/Gmsh.h"
 #include "atlas/util/Config.h"
 
 #include "tests/AtlasTestEnvironment.h"
@@ -42,6 +41,7 @@ void do_remapping_test(Grid src_grid, Grid tgt_grid, std::function<double(const 
     // setup conservative remap: compute weights, polygon intersection, etc
     util::Config config("type", "conservative-spherical-polygon");
     config.set("order", 1);
+    config.set("validate", true);
     config.set("statistics.intersection", true);
     config.set("statistics.conservation", true);
 
@@ -77,6 +77,7 @@ void do_remapping_test(Grid src_grid, Grid tgt_grid, std::function<double(const 
         auto cache = interpolation::Cache(conservative_interpolation);
         // cache = ConservativeMethod::Cache + MatrixCache (1st order)
         util::Config cfg(option::type("conservative-spherical-polygon"));
+        config.set("validate", true);
         {
             ATLAS_TRACE("cached -> 1st order using cached matrix");
             cfg.set("matrix_free", false);
