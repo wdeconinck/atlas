@@ -1,5 +1,5 @@
 /*
- * (C) Copyright 1996- ECMWF.
+ * (C) Copyright 2021- ECMWF.
  *
  * This software is licensed under the terms of the Apache Licence Version 2.0
  * which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
@@ -1043,7 +1043,7 @@ eckit::linalg::SparseMatrix ConservativeSphericalPolygonInterpolation::compute_2
             const double Cs_norm = PointXYZ::norm( Cs );
             ATLAS_ASSERT( Cs_norm > 0. );
             Cs = PointXYZ::div( Cs, Cs_norm );
-			*/
+            */
             const PointXYZ& Cs = src_points_[scell];
             // compute gradient from cells
             double dual_area_inv = 0.;
