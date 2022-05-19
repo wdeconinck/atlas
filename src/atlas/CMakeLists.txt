@@ -204,6 +204,8 @@ grid/detail/partitioner/MatchingMeshPartitioner.h
 grid/detail/partitioner/MatchingMeshPartitioner.cc
 grid/detail/partitioner/MatchingMeshPartitionerBruteForce.cc
 grid/detail/partitioner/MatchingMeshPartitionerBruteForce.h
+grid/detail/partitioner/MatchingMeshPartitionerCubedSphere.cc
+grid/detail/partitioner/MatchingMeshPartitionerCubedSphere.h
 grid/detail/partitioner/MatchingMeshPartitionerLonLatPolygon.cc
 grid/detail/partitioner/MatchingMeshPartitionerLonLatPolygon.h
 grid/detail/partitioner/MatchingMeshPartitionerSphericalPolygon.cc
@@ -556,6 +558,10 @@ interpolation/method/PointSet.cc
 interpolation/method/PointSet.h
 interpolation/method/Ray.cc
 interpolation/method/Ray.h
+interpolation/method/cubedsphere/CellFinder.cc
+interpolation/method/cubedsphere/CellFinder.h
+interpolation/method/cubedsphere/CubedSphereBilinear.cc
+interpolation/method/cubedsphere/CubedSphereBilinear.h
 interpolation/method/knn/GridBox.cc
 interpolation/method/knn/GridBox.h
 interpolation/method/knn/GridBoxAverage.cc
@@ -747,6 +753,8 @@ util/detail/BlackMagic.h
 util/detail/Cache.h
 util/detail/Debug.h
 util/detail/KDTree.h
+util/function/SphericalHarmonic.h
+util/function/SphericalHarmonic.cc
 util/function/VortexRollup.h
 util/function/VortexRollup.cc
 )
@@ -921,8 +929,8 @@ if( atlas_HAVE_TRANS )
 endif()
 
 if( atlas_HAVE_PROJ )
-    target_link_libraries( atlas PRIVATE ${PROJ4_LIBRARIES} )
-    target_include_directories( atlas PRIVATE ${PROJ4_INCLUDE_DIRS} )
+    target_link_libraries( atlas PRIVATE ${PROJ_LIBRARIES} )
+    target_include_directories( atlas PRIVATE ${PROJ_INCLUDE_DIRS} )
 endif()
 
 target_link_libraries( atlas PUBLIC

@@ -22,6 +22,8 @@
 #include <type_traits>
 #include <vector>
 
+#include "eckit/deprecated.h"
+
 #include "atlas/field/Field.h"
 #include "atlas/library/config.h"
 #include "atlas/runtime/Exception.h"
@@ -99,7 +101,7 @@ public:  // methods
 
     Field add(const Field&);
 
-    bool has_field(const std::string& name) const;
+    bool has(const std::string& name) const;
 
     Field& field(const std::string& name) const;
 
@@ -128,6 +130,7 @@ FieldSetImpl* atlas__FieldSet__new(char* name);
 void atlas__FieldSet__delete(FieldSetImpl* This);
 void atlas__FieldSet__add_field(FieldSetImpl* This, FieldImpl* field);
 int atlas__FieldSet__has_field(const FieldSetImpl* This, char* name);
+const char* atlas__FieldSet__name(FieldSetImpl* This);
 idx_t atlas__FieldSet__size(const FieldSetImpl* This);
 FieldImpl* atlas__FieldSet__field_by_name(FieldSetImpl* This, char* name);
 FieldImpl* atlas__FieldSet__field_by_idx(FieldSetImpl* This, idx_t idx);
@@ -195,7 +198,7 @@ public:  // methods
 
     Field add(const Field& field) { return get()->add(field); }
 
-    bool has_field(const std::string& name) const { return get()->has_field(name); }
+    bool has(const std::string& name) const { return get()->has(name); }
 
     Field& field(const std::string& name) const { return get()->field(name); }
 
@@ -208,6 +211,9 @@ public:  // methods
 
     void haloExchange(bool on_device = false) const { get()->haloExchange(on_device); }
     void set_dirty(bool = true) const;
+
+    // Deprecated API
+    DEPRECATED("use 'has' instead") bool has_field(const std::string& name) const { return get()->has(name); }
 };
 
 }  // namespace atlas
