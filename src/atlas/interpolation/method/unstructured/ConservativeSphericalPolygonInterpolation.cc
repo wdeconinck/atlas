@@ -1515,7 +1515,9 @@ void ConservativeSphericalPolygonInterpolation::Statistics::accuracy(const Inter
     double err_remap_linf     = 0.;
     auto& tgt_points_         = cachable_data_->tgt_points_;
     if (tgt_cell_data_) {
-        for (idx_t tpt = 0; tpt < tgt_vals.size(); ++tpt) {
+        size_t ncells = std::min<size_t>(tgt_vals.size(), tgt_mesh_.cells().size());
+        for (idx_t tpt = 0; tpt < ncells; ++tpt) {
+            ATLAS_ASSERT(tpt < tgt_cell_halo.size());
             if (tgt_cell_halo(tpt)) {
                 continue;
             }
@@ -1528,7 +1530,8 @@ void ConservativeSphericalPolygonInterpolation::Statistics::accuracy(const Inter
         }
     }
     else {
-        for (idx_t tpt = 0; tpt < tgt_vals.size(); ++tpt) {
+        size_t nnodes = std::min<size_t>(tgt_vals.size(), tgt_mesh_.nodes().size());
+        for (idx_t tpt = 0; tpt < nnodes; ++tpt) {
             if (tgt_node_ghost(tpt)) {
                 continue;
             }
