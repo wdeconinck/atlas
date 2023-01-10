@@ -15,12 +15,14 @@
 #define atlas_library_defines_h
 
 #define ATLAS_HAVE_OMP                       @atlas_HAVE_OMP_CXX@
+#define ATLAS_OMP_TASK_SUPPORTED             @ATLAS_OMP_TASK_SUPPORTED@
 #define ATLAS_OMP_TASK_UNTIED_SUPPORTED      @ATLAS_OMP_TASK_UNTIED_SUPPORTED@
 #define ATLAS_HAVE_ACC                       @atlas_HAVE_ACC@
 #define ATLAS_HAVE_TESSELATION               @atlas_HAVE_TESSELATION@
 #define ATLAS_HAVE_FORTRAN                   @atlas_HAVE_FORTRAN@
 #define ATLAS_HAVE_EIGEN                     @atlas_HAVE_EIGEN@
 #define ATLAS_HAVE_FFTW                      @atlas_HAVE_FFTW@
+#define ATLAS_HAVE_MPI                       @atlas_HAVE_MPI@
 #define ATLAS_BITS_GLOBAL                    @ATLAS_BITS_GLOBAL@
 #define ATLAS_ARRAYVIEW_BOUNDS_CHECKING      @atlas_HAVE_BOUNDSCHECKING@
 #define ATLAS_INDEXVIEW_BOUNDS_CHECKING      @atlas_HAVE_BOUNDSCHECKING@
@@ -30,6 +32,7 @@
 #define ATLAS_GRIDTOOLS_STORAGE_BACKEND_HOST @ATLAS_GRIDTOOLS_STORAGE_BACKEND_HOST@
 #define ATLAS_GRIDTOOLS_STORAGE_BACKEND_CUDA @ATLAS_GRIDTOOLS_STORAGE_BACKEND_CUDA@
 #define ATLAS_HAVE_TRANS                     @atlas_HAVE_TRANS@
+#define ATLAS_HAVE_ECTRANS                   @atlas_HAVE_ECTRANS@
 #define ATLAS_HAVE_FEENABLEEXCEPT            @atlas_HAVE_FEENABLEEXCEPT@
 #define ATLAS_HAVE_FEDISABLEEXCEPT           @atlas_HAVE_FEDISABLEEXCEPT@
 #define ATLAS_BUILD_TYPE_DEBUG               @atlas_BUILD_TYPE_DEBUG@

@@ -41,12 +41,13 @@ TYPE, extends(fckit_owned_object) :: atlas_FieldSet
 
 !------------------------------------------------------------------------------
 contains
-  procedure, public :: size => FieldSet__size
-  procedure, public :: has_field
+  procedure, public  :: name => FieldSet__name
+  procedure, public  :: size => FieldSet__size
+  procedure, public  :: has
   procedure, private :: field_by_name
   procedure, private :: field_by_idx_int
   procedure, private :: field_by_idx_long
-  procedure, public :: add
+  procedure, public  :: add
   generic :: field => field_by_name, field_by_idx_int, field_by_idx_long
 
   procedure, public :: set_dirty
@@ -55,6 +56,7 @@ contains
 #if FCKIT_FINAL_NOT_INHERITING
   final :: atlas_FieldSet__final_auto
 #endif
+  procedure, public  :: has_field => has ! deprecated !
 END TYPE atlas_FieldSet
 !------------------------------------------------------------------------------
 
@@ -93,6 +95,17 @@ function atlas_FieldSet__ctor(name) result(fieldset)
   call fieldset%return()
 end function
 
+function FieldSet__name(this) result(fieldset_name)
+  use, intrinsic :: iso_c_binding, only : c_ptr
+  use fckit_c_interop_module, only : c_ptr_to_string, c_str
+  use atlas_fieldset_c_binding
+  class(atlas_FieldSet), intent(in) :: this
+  character(len=:), allocatable :: fieldset_name
+  type(c_ptr) :: fieldset_name_c_str
+  fieldset_name_c_str = atlas__FieldSet__name(this%CPTR_PGIBUG_A)
+  fieldset_name = c_ptr_to_string(fieldset_name_c_str)
+end function FieldSet__name
+
 subroutine add(this,field)
   use atlas_fieldset_c_binding
   use atlas_Field_module, only: atlas_Field
@@ -101,7 +114,7 @@ subroutine add(this,field)
   call atlas__FieldSet__add_field(this%CPTR_PGIBUG_A, field%CPTR_PGIBUG_A)
 end subroutine
 
-function has_field(this,name) result(flag)
+function has(this,name) result(flag)
   use, intrinsic :: iso_c_binding, only: c_int
   use fckit_c_interop_module, only: c_str
   use atlas_fieldset_c_binding
@@ -116,6 +129,7 @@ function has_field(this,name) result(flag)
     flag = .True.
   end if
 end function
+
 
 function FieldSet__size(this) result(nb_fields)
   use atlas_fieldset_c_binding

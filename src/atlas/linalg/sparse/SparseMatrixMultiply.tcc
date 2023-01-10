@@ -12,13 +12,18 @@
 
 #include "SparseMatrixMultiply.h"
 
-#include <type_traits>
-
 #include "atlas/linalg/Indexing.h"
 #include "atlas/linalg/Introspection.h"
 #include "atlas/linalg/View.h"
 #include "atlas/linalg/sparse/Backend.h"
 #include "atlas/runtime/Exception.h"
+
+#if ATLAS_ECKIT_HAVE_ECKIT_585
+#include "eckit/linalg/LinearAlgebraSparse.h"
+#else
+#include "eckit/linalg/LinearAlgebra.h"
+#endif
+
 
 namespace atlas {
 namespace linalg {
@@ -69,11 +74,18 @@ template <typename Matrix, typename SourceView, typename TargetView>
 void sparse_matrix_multiply( const Matrix& matrix, const SourceView& src, TargetView& tgt, Indexing indexing,
                              const eckit::Configuration& config ) {
     std::string type = config.getString( "type", sparse::current_backend() );
-    if ( type == sparse::backend::omp::type() ) {
-        sparse::dispatch_sparse_matrix_multiply<sparse::backend::omp>( matrix, src, tgt, indexing, config );
+    if ( type == sparse::backend::openmp::type() ) {
+        sparse::dispatch_sparse_matrix_multiply<sparse::backend::openmp>( matrix, src, tgt, indexing, config );
     }
     else if ( type == sparse::backend::eckit_linalg::type() ) {
         sparse::dispatch_sparse_matrix_multiply<sparse::backend::eckit_linalg>( matrix, src, tgt, indexing, config );
+    }
+#if ATLAS_ECKIT_HAVE_ECKIT_585
+    else if( eckit::linalg::LinearAlgebraSparse::hasBackend(type) ) {
+#else
+    else if( eckit::linalg::LinearAlgebra::hasBackend(type) ) {
+#endif
+        sparse::dispatch_sparse_matrix_multiply<sparse::backend::eckit_linalg>( matrix, src, tgt, indexing, util::Config("backend",type)  );
     }
     else {
         throw_NotImplemented( "sparse_matrix_multiply cannot be performed with unsupported backend [" + type + "]",

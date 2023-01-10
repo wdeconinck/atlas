@@ -10,16 +10,26 @@ if( HAVE_FCTEST )
 
   if( NOT HAVE_TRANS )
     set( transi_HAVE_MPI 1 )
+    set( ectrans_HAVE_MPI 1 )
   endif()
 
   add_fctest( TARGET atlas_fctest_functionspace
     MPI             4
-    CONDITION       eckit_HAVE_MPI AND transi_HAVE_MPI
+    CONDITION       eckit_HAVE_MPI AND (transi_HAVE_MPI OR ectrans_HAVE_MPI)
     LINKER_LANGUAGE Fortran
     SOURCES         fctest_functionspace.F90
     LIBS            atlas_f
     ENVIRONMENT ${ATLAS_TEST_ENVIRONMENT}
   )
+
+  add_fctest( TARGET atlas_fctest_blockstructuredcolumns
+    MPI             4
+    CONDITION       eckit_HAVE_MPI
+    LINKER_LANGUAGE Fortran
+    SOURCES         fctest_blockstructuredcolumns.F90
+    LIBS            atlas_f
+    ENVIRONMENT ${ATLAS_TEST_ENVIRONMENT}
+)
 
 endif()
 
@@ -35,6 +45,14 @@ ecbuild_add_test( TARGET atlas_test_cellcolumns
   ENVIRONMENT ${ATLAS_TEST_ENVIRONMENT}
 )
 
+ecbuild_add_test( TARGET atlas_test_cubedsphere_functionspace
+  MPI        8
+  CONDITION  eckit_HAVE_MPI
+  SOURCES test_cubedsphere_functionspace.cc
+  LIBS atlas
+  ENVIRONMENT ${ATLAS_TEST_ENVIRONMENT}
+)
+
 ecbuild_add_test( TARGET test_structuredcolumns_biperiodic
   SOURCES  test_structuredcolumns_biperiodic.cc
   LIBS     atlas
@@ -42,6 +60,13 @@ ecbuild_add_test( TARGET test_structuredcolumns_biperiodic
   ENVIRONMENT ${ATLAS_TEST_ENVIRONMENT}
   CONDITION eckit_HAVE_MPI AND MPI_SLOTS GREATER_EQUAL 5
 )
+
+ecbuild_add_test( TARGET test_structuredcolumns_regional
+  SOURCES  test_structuredcolumns_regional.cc
+  LIBS     atlas
+  ENVIRONMENT ${ATLAS_TEST_ENVIRONMENT}
+)
+
 
 ecbuild_add_test( TARGET atlas_test_structuredcolumns
   SOURCES  test_structuredcolumns.cc
@@ -51,10 +76,20 @@ ecbuild_add_test( TARGET atlas_test_structuredcolumns
   CONDITION eckit_HAVE_MPI AND MPI_SLOTS GREATER_EQUAL 5
 )
 
+ecbuild_add_test( TARGET atlas_test_blockstructuredcolumns
+  MPI        3
+  SOURCES  test_blockstructuredcolumns.cc
+  LIBS     atlas
+  ENVIRONMENT ${ATLAS_TEST_ENVIRONMENT}
+  CONDITION eckit_HAVE_MPI AND MPI_SLOTS GREATER_EQUAL 3
+)
+
 ecbuild_add_test( TARGET atlas_test_pointcloud
   SOURCES  test_pointcloud.cc
   LIBS     atlas
+  MPI 2
   ENVIRONMENT ${ATLAS_TEST_ENVIRONMENT}
+  CONDITION eckit_HAVE_MPI AND NOT HAVE_GRIDTOOLS_STORAGE
 )
 
 ecbuild_add_test( TARGET atlas_test_reduced_halo

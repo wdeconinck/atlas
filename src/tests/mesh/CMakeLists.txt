@@ -110,6 +110,9 @@ ecbuild_add_test( TARGET atlas_test_cubedsphere_meshgen
   ENVIRONMENT ${ATLAS_TEST_ENVIRONMENT}
 )
 
+if( TEST atlas_test_cubedsphere_meshgen )
+    set_tests_properties( atlas_test_cubedsphere_meshgen PROPERTIES TIMEOUT 30 )
+endif()
 
 ecbuild_add_executable( TARGET atlas_test_mesh_reorder
   SOURCES  test_mesh_reorder.cc
@@ -131,6 +134,12 @@ ecbuild_add_test( TARGET atlas_test_mesh_reorder_unstructured
 atlas_add_cuda_test(
   TARGET atlas_test_connectivity_kernel
   SOURCES test_connectivity_kernel.cu
+  LIBS atlas
+  ENVIRONMENT ${ATLAS_TEST_ENVIRONMENT}
+)
+
+ecbuild_add_test( TARGET atlas_test_pentagon_element
+  SOURCES test_pentagon_element.cc
   LIBS atlas
   ENVIRONMENT ${ATLAS_TEST_ENVIRONMENT}
 )

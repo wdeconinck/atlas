@@ -32,6 +32,9 @@ endif()
 
 ecbuild_debug( "   eckit_FEATURES : [${eckit_FEATURES}]" )
 
+add_subdirectory(atlas_io)
+find_package(atlas_io)
+
 ################################################################################
 # Features that can be enabled / disabled with -DENABLE_<FEATURE>
 
@@ -52,6 +55,7 @@ include( features/INCLUDE_WHAT_YOU_USE )
 include( features/INIT_SNAN )
 include( features/DOCS )
 include( features/ATLAS_RUN )
+include( features/CXX17 )
 
 ################################################################################
 # sources
@@ -59,7 +63,6 @@ include( features/ATLAS_RUN )
 include( atlas_compile_flags )
 
 add_subdirectory( src )
-add_subdirectory( etc )
 add_subdirectory( doc )
 
 ################################################################################

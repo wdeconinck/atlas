@@ -11,7 +11,7 @@
 #include "MethodFactory.h"
 
 // for static linking
-#include "fe/FiniteElement.h"
+#include "cubedsphere/CubedSphereBilinear.h"
 #include "knn/GridBoxAverage.h"
 #include "knn/GridBoxMaximum.h"
 #include "knn/KNearestNeighbours.h"
@@ -22,6 +22,9 @@
 #include "structured/Linear3D.h"
 #include "structured/QuasiCubic2D.h"
 #include "structured/QuasiCubic3D.h"
+#include "unstructured/FiniteElement.h"
+#include "unstructured/UnstructuredBilinearLonLat.h"
+
 
 namespace atlas {
 namespace interpolation {
@@ -31,6 +34,7 @@ namespace {
 void force_link() {
     static struct Link {
         Link() {
+            MethodBuilder<method::UnstructuredBilinearLonLat>();
             MethodBuilder<method::FiniteElement>();
             MethodBuilder<method::KNearestNeighbours>();
             MethodBuilder<method::NearestNeighbour>();
@@ -42,16 +46,17 @@ void force_link() {
             MethodBuilder<method::QuasiCubic3D>();
             MethodBuilder<method::GridBoxAverage>();
             MethodBuilder<method::GridBoxMaximum>();
+            MethodBuilder<method::CubedSphereBilinear>();
         }
     } link;
 }
 
 }  // namespace
 
-Method* MethodFactory::build( const std::string& name, const Method::Config& config ) {
+Method* MethodFactory::build(const std::string& name, const Method::Config& config) {
     force_link();
-    auto factory = get( name );
-    return factory->make( config );
+    auto factory = get(name);
+    return factory->make(config);
 }
 
 }  // namespace interpolation

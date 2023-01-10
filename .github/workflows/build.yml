@@ -19,6 +19,7 @@ on:
 env:
   ATLAS_TOOLS: ${{ github.workspace }}/tools
   CTEST_PARALLEL_LEVEL: 1
+  CACHE_SUFFIX: v1
 
 jobs:
   ci:
@@ -90,11 +91,16 @@ jobs:
             compiler_cxx: ~
             compiler_fc: gfortran-11
             caching: true
+            cmake_options: -DMPI_SLOTS=4
 
     runs-on: ${{ matrix.os }}
     steps:
     - name: Checkout Repository
       uses: actions/checkout@v2
+
+    - name: Set up Homebrew
+      id: set-up-homebrew
+      uses: Homebrew/actions/setup-homebrew@master
 
     - name: Environment
       run:  |
@@ -105,6 +111,7 @@ jobs:
 
         if [[ "${{ matrix.os }}" =~ macos ]]; then
           brew install ninja
+          brew install libomp
         else
           sudo apt-get update
           sudo apt-get install ninja-build
@@ -136,6 +143,7 @@ jobs:
         ${ATLAS_TOOLS}/install-intel-oneapi.sh
         source /opt/intel/oneapi/setvars.sh
         printenv >> $GITHUB_ENV
+        echo "CACHE_SUFFIX=$(icc -dumpversion)" >> $GITHUB_ENV
 
     - name: Install MPI
       shell: bash -eux {0}
@@ -177,7 +185,7 @@ jobs:
       with:
         self_coverage: true
         force_build: true
-        cache_suffix: "${{ matrix.build_type }}-v1"
+        cache_suffix: "${{ matrix.build_type }}-${{ env.CACHE_SUFFIX }}"
         recreate_cache: ${{ matrix.caching == false }}
         dependencies: |
           ecmwf/ecbuild

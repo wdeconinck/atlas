@@ -16,22 +16,25 @@
 namespace atlas {
 namespace trans {
 
-TransIFSNodeColumns::TransIFSNodeColumns( const functionspace::NodeColumns& gp, const functionspace::Spectral& sp,
-                                          const eckit::Configuration& config ) :
-    TransIFSNodeColumns( Cache(), gp, sp, config ) {}
+TransIFSNodeColumns::TransIFSNodeColumns(const functionspace::NodeColumns& gp, const functionspace::Spectral& sp,
+                                         const eckit::Configuration& config):
+    TransIFSNodeColumns(Cache(), gp, sp, config) {}
 
-TransIFSNodeColumns::TransIFSNodeColumns( const Cache& cache, const functionspace::NodeColumns& gp,
-                                          const functionspace::Spectral& sp, const eckit::Configuration& config ) :
-    TransIFS( cache, gp.mesh().grid(), sp.truncation(), config ) {
-    assertCompatibleDistributions( gp, sp );
+TransIFSNodeColumns::TransIFSNodeColumns(const Cache& cache, const functionspace::NodeColumns& gp,
+                                         const functionspace::Spectral& sp, const eckit::Configuration& config):
+    TransIFS(cache, gp.mesh().grid(), sp.truncation(), config) {
+    assertCompatibleDistributions(gp, sp);
     spectral_ = sp;
 }
 
 TransIFSNodeColumns::~TransIFSNodeColumns() = default;
 
 namespace {
-static TransBuilderFunctionSpace<TransIFSNodeColumns> builder( "ifs(NodeColumns,Spectral)", "ifs" );
-}
+static TransBuilderFunctionSpace<TransIFSNodeColumns> builder_ifs("ifs(NodeColumns,Spectral)", "ifs");
+// Deprecated, use below
+
+static TransBuilderFunctionSpace<TransIFSNodeColumns> builder_ectrans("ectrans(NodeColumns,Spectral)", "ectrans");
+}  // namespace
 
 }  // namespace trans
 }  // namespace atlas

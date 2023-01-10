@@ -72,6 +72,7 @@ option/TransOptions.cc
 projection.h
 projection/Projection.cc
 projection/Projection.h
+projection/Jacobian.h
 projection/detail/CubedSphereEquiAnglProjection.cc
 projection/detail/CubedSphereEquiAnglProjection.h
 projection/detail/CubedSphereEquiDistProjection.cc
@@ -93,6 +94,8 @@ projection/detail/ProjectionImpl.h
 projection/detail/ProjectionUtilities.h
 projection/detail/SchmidtProjection.cc
 projection/detail/SchmidtProjection.h
+projection/detail/VariableResolutionProjection.cc
+projection/detail/VariableResolutionProjection.h
 
 domain.h
 domain/Domain.cc
@@ -158,6 +161,8 @@ grid/detail/grid/LonLat.h
 grid/detail/grid/LonLat.cc
 grid/detail/grid/Regional.h
 grid/detail/grid/Regional.cc
+grid/detail/grid/RegionalVariableResolution.h
+grid/detail/grid/RegionalVariableResolution.cc
 grid/detail/grid/Healpix.h
 grid/detail/grid/Healpix.cc
 
@@ -199,6 +204,8 @@ grid/detail/partitioner/MatchingMeshPartitioner.h
 grid/detail/partitioner/MatchingMeshPartitioner.cc
 grid/detail/partitioner/MatchingMeshPartitionerBruteForce.cc
 grid/detail/partitioner/MatchingMeshPartitionerBruteForce.h
+grid/detail/partitioner/MatchingMeshPartitionerCubedSphere.cc
+grid/detail/partitioner/MatchingMeshPartitionerCubedSphere.h
 grid/detail/partitioner/MatchingMeshPartitionerLonLatPolygon.cc
 grid/detail/partitioner/MatchingMeshPartitionerLonLatPolygon.h
 grid/detail/partitioner/MatchingMeshPartitionerSphericalPolygon.cc
@@ -332,6 +339,8 @@ mesh/actions/ExtendNodesGlobal.cc
 mesh/actions/BuildDualMesh.h
 mesh/actions/BuildCellCentres.cc
 mesh/actions/BuildCellCentres.h
+mesh/actions/Build2DCellCentres.cc
+mesh/actions/Build2DCellCentres.h
 mesh/actions/BuildConvexHull3D.cc
 mesh/actions/BuildConvexHull3D.h
 mesh/actions/BuildDualMesh.cc
@@ -365,6 +374,8 @@ meshgenerator/MeshGenerator.cc
 meshgenerator/MeshGenerator.h
 meshgenerator/detail/CubedSphereMeshGenerator.h
 meshgenerator/detail/CubedSphereMeshGenerator.cc
+meshgenerator/detail/CubedSphereDualMeshGenerator.h
+meshgenerator/detail/CubedSphereDualMeshGenerator.cc
 meshgenerator/detail/NodalCubedSphereMeshGenerator.h
 meshgenerator/detail/NodalCubedSphereMeshGenerator.cc
 meshgenerator/detail/DelaunayMeshGenerator.h
@@ -427,6 +438,8 @@ field/detail/MissingValue.h
 
 list( APPEND atlas_functionspace_srcs
 functionspace.h
+functionspace/BlockStructuredColumns.h
+functionspace/BlockStructuredColumns.cc
 functionspace/CellColumns.h
 functionspace/CellColumns.cc
 functionspace/EdgeColumns.h
@@ -441,6 +454,12 @@ functionspace/Spectral.h
 functionspace/Spectral.cc
 functionspace/PointCloud.h
 functionspace/PointCloud.cc
+functionspace/CubedSphereColumns.h
+functionspace/CubedSphereColumns.cc
+functionspace/detail/BlockStructuredColumns.h
+functionspace/detail/BlockStructuredColumns.cc
+functionspace/detail/BlockStructuredColumnsInterface.h
+functionspace/detail/BlockStructuredColumnsInterface.cc
 functionspace/detail/FunctionSpaceImpl.h
 functionspace/detail/FunctionSpaceImpl.cc
 functionspace/detail/FunctionSpaceInterface.h
@@ -458,6 +477,9 @@ functionspace/detail/StructuredColumns_setup.cc
 functionspace/detail/StructuredColumns_create_remote_index.cc
 functionspace/detail/PointCloudInterface.h
 functionspace/detail/PointCloudInterface.cc
+functionspace/detail/CubedSphereStructure.h
+functionspace/detail/CubedSphereStructure.cc
+
 )
 
 list( APPEND atlas_numerics_srcs
@@ -520,8 +542,12 @@ interpolation/Vector2D.cc
 interpolation/Vector2D.h
 interpolation/Vector3D.cc
 interpolation/Vector3D.h
+interpolation/element/Quad2D.h
+interpolation/element/Quad2D.cc
 interpolation/element/Quad3D.cc
 interpolation/element/Quad3D.h
+interpolation/element/Triag2D.cc
+interpolation/element/Triag2D.h
 interpolation/element/Triag3D.cc
 interpolation/element/Triag3D.h
 interpolation/method/Intersect.cc
@@ -532,12 +558,16 @@ interpolation/method/MethodFactory.cc
 interpolation/method/MethodFactory.h
 interpolation/method/PointIndex3.cc
 interpolation/method/PointIndex3.h
+interpolation/method/PointIndex2.cc
+interpolation/method/PointIndex2.h
 interpolation/method/PointSet.cc
 interpolation/method/PointSet.h
 interpolation/method/Ray.cc
 interpolation/method/Ray.h
-interpolation/method/fe/FiniteElement.cc
-interpolation/method/fe/FiniteElement.h
+interpolation/method/cubedsphere/CellFinder.cc
+interpolation/method/cubedsphere/CellFinder.h
+interpolation/method/cubedsphere/CubedSphereBilinear.cc
+interpolation/method/cubedsphere/CubedSphereBilinear.h
 interpolation/method/knn/GridBox.cc
 interpolation/method/knn/GridBox.h
 interpolation/method/knn/GridBoxAverage.cc
@@ -577,6 +607,12 @@ interpolation/method/structured/kernels/LinearVerticalKernel.h
 interpolation/method/structured/kernels/QuasiCubic3DKernel.cc
 interpolation/method/structured/kernels/QuasiCubic3DKernel.h
 interpolation/method/structured/kernels/QuasiCubicHorizontalKernel.h
+interpolation/method/unstructured/ConservativeSphericalPolygonInterpolation.cc
+interpolation/method/unstructured/ConservativeSphericalPolygonInterpolation.h
+interpolation/method/unstructured/FiniteElement.cc
+interpolation/method/unstructured/FiniteElement.h
+interpolation/method/unstructured/UnstructuredBilinearLonLat.cc
+interpolation/method/unstructured/UnstructuredBilinearLonLat.h
 interpolation/nonlinear/Missing.cc
 interpolation/nonlinear/Missing.h
 interpolation/nonlinear/NonLinear.cc
@@ -589,10 +625,18 @@ linalg/sparse.h
 linalg/sparse/Backend.h
 linalg/sparse/Backend.cc
 linalg/sparse/SparseMatrixMultiply.h
+linalg/sparse/SparseMatrixMultiply.tcc
 linalg/sparse/SparseMatrixMultiply_EckitLinalg.h
 linalg/sparse/SparseMatrixMultiply_EckitLinalg.cc
 linalg/sparse/SparseMatrixMultiply_OpenMP.h
 linalg/sparse/SparseMatrixMultiply_OpenMP.cc
+linalg/dense.h
+linalg/dense/Backend.h
+linalg/dense/Backend.cc
+linalg/dense/MatrixMultiply.h
+linalg/dense/MatrixMultiply.tcc
+linalg/dense/MatrixMultiply_EckitLinalg.h
+linalg/dense/MatrixMultiply_EckitLinalg.cc
 )
 
 
@@ -603,9 +647,10 @@ redistribution/detail/RedistributionImpl.h
 redistribution/detail/RedistributionImpl.cc
 redistribution/detail/RedistributionImplFactory.h
 redistribution/detail/RedistributionImplFactory.cc
-redistribution/detail/RedistributionUtils.h
-redistribution/detail/StructuredColumnsToStructuredColumns.h
-redistribution/detail/StructuredColumnsToStructuredColumns.cc
+redistribution/detail/RedistributeGeneric.h
+redistribution/detail/RedistributeGeneric.cc
+redistribution/detail/RedistributeStructuredColumns.h
+redistribution/detail/RedistributeStructuredColumns.cc
 )
 
 list( APPEND atlas_array_srcs
@@ -636,6 +681,7 @@ array/helpers/ArrayInitializer.h
 array/helpers/ArrayAssigner.h
 array/helpers/ArrayWriter.h
 array/helpers/ArraySlicer.h
+array/helpers/ArrayCopier.h
 #array/Table.h
 #array/Table.cc
 #array/TableView.h
@@ -682,6 +728,8 @@ runtime/Exception.h
 util/Config.cc
 util/Config.h
 util/Constants.h
+util/ConvexSphericalPolygon.cc
+util/ConvexSphericalPolygon.h
 util/Earth.h
 util/GaussianLatitudes.cc
 util/GaussianLatitudes.h
@@ -709,6 +757,10 @@ util/detail/BlackMagic.h
 util/detail/Cache.h
 util/detail/Debug.h
 util/detail/KDTree.h
+util/function/SphericalHarmonic.h
+util/function/SphericalHarmonic.cc
+util/function/VortexRollup.h
+util/function/VortexRollup.cc
 )
 
 list( APPEND atlas_internals_srcs
@@ -744,9 +796,12 @@ list( APPEND atlas_io_srcs
     io/detail/Checksum.h
     io/detail/Checksum.cc
     io/detail/DataInfo.h
+    io/detail/DataType.cc
+    io/detail/DataType.h
     io/detail/Decoder.cc
     io/detail/Decoder.h
     io/detail/Defaults.h
+    io/detail/Encoder.cc
     io/detail/Encoder.h
     io/detail/Endian.h
     io/detail/Link.cc
@@ -798,14 +853,19 @@ list( APPEND atlas_io_srcs
     io/types/array/ArrayMetadata.h
     io/types/array/ArrayReference.cc
     io/types/array/ArrayReference.h
-    io/types/array/adaptors/ArrayAdaptor.cc
-    io/types/array/adaptors/ArrayAdaptor.h
     io/types/array/adaptors/StdVectorAdaptor.h
-    io/types/array/adaptors/VectorAdaptor.h
     io/types/string.h
     io/types/scalar.h
     io/types/scalar.cc
 )
+
+
+list( APPEND atlas_io_adaptor_srcs
+  io/ArrayAdaptor.cc
+  io/ArrayAdaptor.h
+  io/VectorAdaptor.h
+)
+
 
 ### atlas c++ library
 
@@ -839,7 +899,7 @@ list( APPEND source_list
   ${atlas_numerics_srcs}
   ${atlas_output_srcs}
   ${atlas_util_srcs}
-  ${atlas_io_srcs}
+  ${atlas_io_adaptor_srcs}
   ${atlas_internals_srcs}
   ${CMAKE_CURRENT_BINARY_DIR}/library/git_sha1.h
   ${CMAKE_CURRENT_BINARY_DIR}/library/defines.h
@@ -860,6 +920,20 @@ atlas_host_device( source_list
     mesh/Connectivity.cc
 )
 
+#ecbuild_add_library( TARGET atlas_io
+
+#    INSTALL_HEADERS    ALL
+#    HEADER_DESTINATION include/atlas_io
+#    SOURCES            ${atlas_io_srcs}
+#    PUBLIC_LIBS        eckit
+#    PUBLIC_INCLUDES
+#      $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/src>
+#      $<BUILD_INTERFACE:${PROJECT_BINARY_DIR}/src>
+
+
+#)
+
+
 ecbuild_add_library( TARGET atlas
 
   AUTO_VERSION
@@ -870,59 +944,37 @@ ecbuild_add_library( TARGET atlas
 
   SOURCES
     ${source_list}
-)
 
-if( atlas_HAVE_FORTRAN )
-  target_link_libraries( atlas PRIVATE fckit )
-endif()
+  PRIVATE_LIBS
+    $<${atlas_HAVE_FORTRAN}:fckit>
+    $<${atlas_HAVE_TRANS}:transi>
+    $<${atlas_HAVE_ACC}:atlas_acc_support>
+    ${CGAL_LIBRARIES}
+    ${FFTW_LIBRARIES}
+    ${PROJ_LIBRARIES}
 
-if( atlas_HAVE_TRANS )
-    target_link_libraries( atlas PRIVATE transi )
-endif()
+  PUBLIC_LIBS
+    eckit
+    eckit_geometry
+    eckit_linalg
+    eckit_maths
+    eckit_mpi
+    eckit_option
+    atlas_io
+    $<${atlas_HAVE_EIGEN}:Eigen3::Eigen>
+    $<${atlas_HAVE_OMP_CXX}:OpenMP::OpenMP_CXX>
+    $<${atlas_HAVE_GRIDTOOLS_STORAGE}:GridTools::gridtools>
 
-if( atlas_HAVE_PROJ )
-    target_link_libraries( atlas PRIVATE ${PROJ4_LIBRARIES} )
-    target_include_directories( atlas PRIVATE ${PROJ4_INCLUDE_DIRS} )
-endif()
+  PRIVATE_INCLUDES
+    ${CGAL_INCLUDE_DIRS}
+    ${FFTW_INCLUDES}
+    ${PROJ_INCLUDE_DIRS}
 
-target_link_libraries( atlas PUBLIC
-  eckit
-  eckit_geometry
-  eckit_linalg
-  eckit_mpi
-  eckit_option
-)
-
-target_include_directories( atlas PUBLIC
+  PUBLIC_INCLUDES
     $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/src>
     $<BUILD_INTERFACE:${PROJECT_BINARY_DIR}/src>
     $<INSTALL_INTERFACE:include>
+
 )
-
-if( atlas_HAVE_TESSELATION )
-  target_link_libraries( atlas PRIVATE ${CGAL_LIBRARIES} )
-  target_include_directories( atlas PRIVATE ${CGAL_INCLUDE_DIRS} )
-endif()
-
-if( atlas_HAVE_FFTW )
-  target_link_libraries( atlas PRIVATE ${FFTW_LIBRARIES} )
-  target_include_directories( atlas PRIVATE ${FFTW_INCLUDES} )
-endif()
-
-if( atlas_HAVE_EIGEN )
-  target_link_libraries( atlas PUBLIC Eigen3::Eigen )
-endif()
-
-if( atlas_HAVE_OMP_CXX )
-  target_link_libraries( atlas PUBLIC OpenMP::OpenMP_CXX )
-endif()
-
-if( atlas_HAVE_GRIDTOOLS_STORAGE )
-  target_link_libraries( atlas PUBLIC GridTools::gridtools )
-endif()
-
-if( atlas_HAVE_ACC )
-  target_link_libraries( atlas PRIVATE atlas_acc_support )
-endif()
 
 target_compile_features( atlas PUBLIC cxx_std_11 )

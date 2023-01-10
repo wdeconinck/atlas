@@ -37,6 +37,16 @@ class MeshImpl;
 }  // namespace detail
 }  // namespace mesh
 }  // namespace atlas
+namespace atlas {
+namespace grid {
+namespace detail {
+namespace partitioner {
+class Partitioner;
+}  // namespace partitioner
+}  // namespace detail
+}  // namespace grid
+using PartitionerImpl = grid::detail::partitioner::Partitioner;
+}  // namespace atlas
 
 
 namespace atlas {
@@ -47,13 +57,16 @@ class MeshGeneratorImpl;
 //----------------------------------------------------------------------------------------------------------------------
 
 extern "C" {
-void atlas__MeshGenerator__delete( MeshGeneratorImpl* This );
-const MeshGeneratorImpl* atlas__MeshGenerator__create_noconfig( const char* name );
-const MeshGeneratorImpl* atlas__MeshGenerator__create( const char* name, const eckit::Parametrisation* params );
-mesh::detail::MeshImpl* atlas__MeshGenerator__generate__grid_griddist( const MeshGeneratorImpl* This,
-                                                                       const GridImpl* grid,
-                                                                       const grid::DistributionImpl* distribution );
-mesh::detail::MeshImpl* atlas__MeshGenerator__generate__grid( const MeshGeneratorImpl* This, const GridImpl* grid );
+void atlas__MeshGenerator__delete(MeshGeneratorImpl* This);
+const MeshGeneratorImpl* atlas__MeshGenerator__create_noconfig(const char* name);
+const MeshGeneratorImpl* atlas__MeshGenerator__create(const char* name, const eckit::Parametrisation* params);
+mesh::detail::MeshImpl* atlas__MeshGenerator__generate__grid_griddist(const MeshGeneratorImpl* This,
+                                                                      const GridImpl* grid,
+                                                                      const grid::DistributionImpl* distribution);
+mesh::detail::MeshImpl* atlas__MeshGenerator__generate__grid(const MeshGeneratorImpl* This, const GridImpl* grid);
+mesh::detail::MeshImpl* atlas__MeshGenerator__generate__grid_partitioner(const MeshGeneratorImpl* This,
+                                                                         const GridImpl* grid,
+                                                                         const PartitionerImpl* partitioner);
 }
 
 //----------------------------------------------------------------------------------------------------------------------

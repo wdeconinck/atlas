@@ -11,50 +11,63 @@
 #include <iostream>
 
 #include "atlas/array/native/NativeIndexView.h"
+#include "atlas/array/helpers/ArrayAssigner.h"
 
 //------------------------------------------------------------------------------------------------------
 
 namespace atlas {
 namespace array {
 
+#undef ENABLE_IF_NON_CONST
+#define ENABLE_IF_NON_CONST \
+    template <bool EnableBool, typename std::enable_if<(!std::is_const<Value>::value && EnableBool), int>::type*>
+
 //------------------------------------------------------------------------------------------------------
 
 template <typename Value, int Rank>
-IndexView<Value, Rank>::IndexView( Value* data, const idx_t shape[1] ) : data_( data ) {
+IndexView<Value, Rank>::IndexView(Value* data, const idx_t shape[1]): data_(data) {
     strides_[0] = 1;
     shape_[0]   = shape[0];
 }
 
 template <typename Value, int Rank>
-IndexView<Value, Rank>::IndexView( Value* data, const idx_t shape[1], const idx_t strides[1] ) :
-    data_( const_cast<Value*>( data ) ) {
+IndexView<Value, Rank>::IndexView(Value* data, const idx_t shape[1], const idx_t strides[1]):
+    data_(const_cast<Value*>(data)) {
     strides_[0] = strides[0];
     shape_[0]   = shape[0];
 }
 
 template <typename Value, int Rank>
-void IndexView<Value, Rank>::dump( std::ostream& os ) const {
+void IndexView<Value, Rank>::dump(std::ostream& os) const {
     os << "size: " << size() << " , values: ";
     os << "[ ";
-    for ( idx_t j = 0; j < size(); ++j ) {
-        os << ( *this )( j ) << " ";
+    for (idx_t j = 0; j < size(); ++j) {
+        os << (*this)(j) << " ";
     }
     os << "]" << std::endl;
 }
 
+template <typename Value, int Rank>
+ENABLE_IF_NON_CONST void IndexView<Value, Rank>::assign(const std::initializer_list<value_type>& list) {
+    helpers::array_assigner<Value, Rank>::apply(*this, list);
+}
+
+
 //------------------------------------------------------------------------------------------------------
 // Explicit template instatiation
 
-#define EXPLICIT_TEMPLATE_INSTANTIATION_TYPE_RANK( TYPE, RANK ) \
-    template class IndexView<TYPE, RANK>;                       \
-    template class IndexView<const TYPE, RANK>;
+#define EXPLICIT_TEMPLATE_INSTANTIATION_TYPE_RANK(TYPE, RANK) \
+    template class IndexView<TYPE, RANK>;                     \
+    template class IndexView<const TYPE, RANK>;               \
+    template void IndexView<TYPE, RANK>::assign<true, nullptr>(std::initializer_list<TYPE> const&);
 
-#define EXPLICIT_TEMPLATE_INSTANTIATION( RANK )            \
-    EXPLICIT_TEMPLATE_INSTANTIATION_TYPE_RANK( int, RANK ) \
-    EXPLICIT_TEMPLATE_INSTANTIATION_TYPE_RANK( long, RANK )
 
-EXPLICIT_TEMPLATE_INSTANTIATION( 1 )
-EXPLICIT_TEMPLATE_INSTANTIATION( 2 )
+#define EXPLICIT_TEMPLATE_INSTANTIATION(RANK)            \
+    EXPLICIT_TEMPLATE_INSTANTIATION_TYPE_RANK(int, RANK) \
+    EXPLICIT_TEMPLATE_INSTANTIATION_TYPE_RANK(long, RANK)
+
+EXPLICIT_TEMPLATE_INSTANTIATION(1)
+EXPLICIT_TEMPLATE_INSTANTIATION(2)
 
 #undef EXPLICIT_TEMPLATE_INSTANTIATION_TYPE_RANK
 #undef EXPLICIT_TEMPLATE_INSTANTIATION

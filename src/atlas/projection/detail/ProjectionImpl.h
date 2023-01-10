@@ -10,9 +10,13 @@
 
 #pragma once
 
+#include <initializer_list>
+#include <iostream>
 #include <memory>
 #include <string>
 
+#include "atlas/projection/Jacobian.h"
+#include "atlas/runtime/Exception.h"
 #include "atlas/util/Factory.h"
 #include "atlas/util/NormaliseLongitude.h"
 #include "atlas/util/Object.h"
@@ -38,139 +42,32 @@ namespace detail {
 
 class ProjectionImpl : public util::Object {
 public:
-    using Spec = atlas::util::Config;
-    class Jacobian : public std::array<std::array<double, 2>, 2> {
-    public:
-        static Jacobian identity() {
-            Jacobian id;
-            id[0] = {1.0, 0.0};
-            id[1] = {0.0, 1.0};
-            return id;
-        }
-
-        Jacobian inverse() const {
-            const Jacobian& jac = *this;
-            Jacobian inv;
-            double det = jac[0][0] * jac[1][1] - jac[0][1] * jac[1][0];
-            inv[0][0]  = +jac[1][1] / det;
-            inv[0][1]  = -jac[0][1] / det;
-            inv[1][0]  = -jac[1][0] / det;
-            inv[1][1]  = +jac[0][0] / det;
-            return inv;
-        };
-
-        Jacobian transpose() const {
-            Jacobian tra = *this;
-            std::swap( tra[0][1], tra[1][0] );
-            return tra;
-        };
-
-        Jacobian operator-( const Jacobian& jac2 ) const {
-            const Jacobian& jac1 = *this;
-            Jacobian jac;
-            jac[0][0] = jac1[0][0] - jac2[0][0];
-            jac[0][1] = jac1[0][1] - jac2[0][1];
-            jac[1][0] = jac1[1][0] - jac2[1][0];
-            jac[1][1] = jac1[1][1] - jac2[1][1];
-            return jac;
-        }
-
-        Jacobian operator+( const Jacobian& jac2 ) const {
-            const Jacobian& jac1 = *this;
-            Jacobian jac;
-            jac[0][0] = jac1[0][0] + jac2[0][0];
-            jac[0][1] = jac1[0][1] + jac2[0][1];
-            jac[1][0] = jac1[1][0] + jac2[1][0];
-            jac[1][1] = jac1[1][1] + jac2[1][1];
-            return jac;
-        }
-
-        double norm() const {
-            const Jacobian& jac = *this;
-            return sqrt( jac[0][0] * jac[0][0] + jac[0][1] * jac[0][1] + jac[1][0] * jac[1][0] +
-                         jac[1][1] * jac[1][1] );
-        }
-
-        Jacobian operator*( const Jacobian& jac2 ) const {
-            const Jacobian& jac1 = *this;
-            Jacobian jac;
-            jac[0][0] = jac1[0][0] * jac2[0][0] + jac1[0][1] * jac2[1][0];
-            jac[0][1] = jac1[0][0] * jac2[0][1] + jac1[0][1] * jac2[1][1];
-            jac[1][0] = jac1[1][0] * jac2[0][0] + jac1[1][1] * jac2[1][0];
-            jac[1][1] = jac1[1][0] * jac2[0][1] + jac1[1][1] * jac2[1][1];
-            return jac;
-        }
-
-        double dx_dlon() const {
-            const Jacobian& jac = *this;
-            return jac[JDX][JDLON];
-        }
-        double dy_dlon() const {
-            const Jacobian& jac = *this;
-            return jac[JDY][JDLON];
-        }
-        double dx_dlat() const {
-            const Jacobian& jac = *this;
-            return jac[JDX][JDLAT];
-        }
-        double dy_dlat() const {
-            const Jacobian& jac = *this;
-            return jac[JDY][JDLAT];
-        }
-
-        double dlon_dx() const {
-            const Jacobian& jac = *this;
-            return jac[JDLON][JDX];
-        }
-        double dlon_dy() const {
-            const Jacobian& jac = *this;
-            return jac[JDLON][JDY];
-        }
-        double dlat_dx() const {
-            const Jacobian& jac = *this;
-            return jac[JDLAT][JDX];
-        }
-        double dlat_dy() const {
-            const Jacobian& jac = *this;
-            return jac[JDLAT][JDY];
-        }
-
-    private:
-        enum
-        {
-            JDX = 0,
-            JDY = 1
-        };
-        enum
-        {
-            JDLON = 0,
-            JDLAT = 1
-        };
-    };
+    using Spec     = atlas::util::Config;
+    using Jacobian = projection::Jacobian;
 
 public:
-    static const ProjectionImpl* create( const eckit::Parametrisation& p );
-    static const ProjectionImpl* create( const std::string& type, const eckit::Parametrisation& p );
+    static const ProjectionImpl* create(const eckit::Parametrisation& p);
+    static const ProjectionImpl* create(const std::string& type, const eckit::Parametrisation& p);
 
     ProjectionImpl()          = default;
     virtual ~ProjectionImpl() = default;  // destructor should be virtual
 
     virtual std::string type() const = 0;
 
-    virtual void xy2lonlat( double crd[] ) const = 0;
-    virtual void lonlat2xy( double crd[] ) const = 0;
+    virtual void xy2lonlat(double crd[]) const = 0;
+    virtual void lonlat2xy(double crd[]) const = 0;
 
-    virtual Jacobian jacobian( const PointLonLat& ) const = 0;
+    virtual Jacobian jacobian(const PointLonLat&) const = 0;
 
-    void xy2lonlat( Point2& ) const;
-    void lonlat2xy( Point2& ) const;
+    void xy2lonlat(Point2&) const;
+    void lonlat2xy(Point2&) const;
 
-    PointLonLat lonlat( const PointXY& ) const;
-    PointXY xy( const PointLonLat& ) const;
-    virtual PointXYZ xyz( const PointLonLat& ) const;
+    PointLonLat lonlat(const PointXY&) const;
+    PointXY xy(const PointLonLat&) const;
+    virtual PointXYZ xyz(const PointLonLat&) const;
 
-    virtual bool strictlyRegional() const                                    = 0;
-    virtual RectangularLonLatDomain lonlatBoundingBox( const Domain& ) const = 0;
+    virtual bool strictlyRegional() const                                  = 0;
+    virtual RectangularLonLatDomain lonlatBoundingBox(const Domain&) const = 0;
 
     virtual Spec spec() const = 0;
 
@@ -178,15 +75,15 @@ public:
 
     virtual operator bool() const { return true; }
 
-    virtual void hash( eckit::Hash& ) const = 0;
+    virtual void hash(eckit::Hash&) const = 0;
 
     struct BoundLonLat {
         operator RectangularLonLatDomain() const;
-        void extend( PointLonLat p, PointLonLat eps );
+        void extend(PointLonLat p, PointLonLat eps);
 
-        bool crossesDateLine( bool );
-        bool includesNorthPole( bool );
-        bool includesSouthPole( bool );
+        bool crossesDateLine(bool);
+        bool includesNorthPole(bool);
+        bool includesSouthPole(bool);
 
         bool crossesDateLine() const { return crossesDateLine_; }
         bool includesNorthPole() const { return includesNorthPole_; }
@@ -202,16 +99,16 @@ public:
     };
 
     struct Normalise {
-        Normalise( const eckit::Parametrisation& );
-        Normalise( double west );
-        void hash( eckit::Hash& ) const;
-        void spec( Spec& ) const;
-        void operator()( double crd[] ) const {
-            if ( normalise_ ) {
-                crd[0] = ( *normalise_ )( crd[0] );
+        Normalise(const eckit::Parametrisation&);
+        Normalise(double west);
+        void hash(eckit::Hash&) const;
+        void spec(Spec&) const;
+        void operator()(double crd[]) const {
+            if (normalise_) {
+                crd[0] = (*normalise_)(crd[0]);
             }
         }
-        operator bool() const { return bool( normalise_ ); }
+        operator bool() const { return bool(normalise_); }
 
     private:
         std::unique_ptr<util::NormaliseLongitude> normalise_;
@@ -219,48 +116,48 @@ public:
     };
 
     struct Derivate {
-        Derivate( const ProjectionImpl& p, PointXY A, PointXY B, double h, double refLongitude = 0. );
+        Derivate(const ProjectionImpl& p, PointXY A, PointXY B, double h, double refLongitude = 0.);
         virtual ~Derivate();
-        virtual PointLonLat d( PointXY ) const = 0;
+        virtual PointLonLat d(PointXY) const = 0;
 
     protected:
         const ProjectionImpl& projection_;
         const PointXY H_;
         const double normH_;
         const double refLongitude_;
-        PointLonLat xy2lonlat( const PointXY& p ) const;
+        PointLonLat xy2lonlat(const PointXY& p) const;
     };
 
     struct DerivateFactory : public util::Factory<DerivateFactory> {
         static std::string className() { return "DerivateFactory"; }
-        static ProjectionImpl::Derivate* build( const std::string& type, const ProjectionImpl& p, PointXY A, PointXY B,
-                                                double h, double refLongitude = 0. );
+        static ProjectionImpl::Derivate* build(const std::string& type, const ProjectionImpl& p, PointXY A, PointXY B,
+                                               double h, double refLongitude = 0.);
 
     protected:
         using Factory::Factory;
         virtual ~DerivateFactory();
-        virtual ProjectionImpl::Derivate* make( const ProjectionImpl& p, PointXY A, PointXY B, double h,
-                                                double refLongitude = 0. ) = 0;
+        virtual ProjectionImpl::Derivate* make(const ProjectionImpl& p, PointXY A, PointXY B, double h,
+                                               double refLongitude = 0.) = 0;
     };
 };
 
-inline void ProjectionImpl::xy2lonlat( Point2& point ) const {
-    xy2lonlat( point.data() );
+inline void ProjectionImpl::xy2lonlat(Point2& point) const {
+    xy2lonlat(point.data());
 }
 
-inline void ProjectionImpl::lonlat2xy( Point2& point ) const {
-    lonlat2xy( point.data() );
+inline void ProjectionImpl::lonlat2xy(Point2& point) const {
+    lonlat2xy(point.data());
 }
 
-inline PointLonLat ProjectionImpl::lonlat( const PointXY& xy ) const {
-    PointLonLat lonlat( xy );
-    xy2lonlat( lonlat.data() );
+inline PointLonLat ProjectionImpl::lonlat(const PointXY& xy) const {
+    PointLonLat lonlat(xy);
+    xy2lonlat(lonlat.data());
     return lonlat;
 }
 
-inline PointXY ProjectionImpl::xy( const PointLonLat& lonlat ) const {
-    PointXY xy( lonlat );
-    lonlat2xy( xy.data() );
+inline PointXY ProjectionImpl::xy(const PointLonLat& lonlat) const {
+    PointXY xy(lonlat);
+    lonlat2xy(xy.data());
     return xy;
 }
 
@@ -270,16 +167,16 @@ class Rotated : public util::Rotation {
 public:
     using Spec = ProjectionImpl::Spec;
 
-    Rotated( const PointLonLat& south_pole, double rotation_angle = 0. );
-    Rotated( const eckit::Parametrisation& );
+    Rotated(const PointLonLat& south_pole, double rotation_angle = 0.);
+    Rotated(const eckit::Parametrisation&);
     virtual ~Rotated() = default;
 
     static std::string classNamePrefix() { return "Rotated"; }
     static std::string typePrefix() { return "rotated_"; }
 
-    void spec( Spec& ) const;
+    void spec(Spec&) const;
 
-    void hash( eckit::Hash& ) const;
+    void hash(eckit::Hash&) const;
 };
 
 class NotRotated {
@@ -287,29 +184,31 @@ public:
     using Spec = ProjectionImpl::Spec;
 
     NotRotated() = default;
-    NotRotated( const eckit::Parametrisation& ) {}
+    NotRotated(const eckit::Parametrisation&) {}
     virtual ~NotRotated() = default;
 
     static std::string classNamePrefix() { return ""; }  // deliberately empty
     static std::string typePrefix() { return ""; }       // deliberately empty
 
-    void rotate( double* ) const { /* do nothing */
+    void rotate(double*) const { /* do nothing */
     }
-    void unrotate( double* ) const { /* do nothing */
+    void unrotate(double*) const { /* do nothing */
     }
 
     bool rotated() const { return false; }
 
-    void spec( Spec& ) const {}
+    void spec(Spec&) const {}
 
-    void hash( eckit::Hash& ) const {}
+    void hash(eckit::Hash&) const {}
 };
 
 extern "C" {
-const ProjectionImpl* atlas__Projection__ctor_config( const eckit::Parametrisation* config );
-void atlas__Projection__type( const ProjectionImpl* This, char*& type, int& size );
-void atlas__Projection__hash( const ProjectionImpl* This, char*& hash, int& size );
-ProjectionImpl::Spec* atlas__Projection__spec( const ProjectionImpl* This );
+const ProjectionImpl* atlas__Projection__ctor_config(const eckit::Parametrisation* config);
+void atlas__Projection__type(const ProjectionImpl* This, char*& type, int& size);
+void atlas__Projection__hash(const ProjectionImpl* This, char*& hash, int& size);
+ProjectionImpl::Spec* atlas__Projection__spec(const ProjectionImpl* This);
+void atlas__Projection__xy2lonlat(const ProjectionImpl* This, const double x, const double y, double& lon, double& lat);
+void atlas__Projection__lonlat2xy(const ProjectionImpl* This, const double lon, const double lat, double& x, double& y);
 }
 
 }  // namespace detail

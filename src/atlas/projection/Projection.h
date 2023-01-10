@@ -14,6 +14,7 @@
 
 #include "atlas/domain/Domain.h"
 #include "atlas/library/config.h"
+#include "atlas/projection/Jacobian.h"
 #include "atlas/projection/detail/ProjectionImpl.h"
 #include "atlas/util/ObjectHandle.h"
 
@@ -46,31 +47,31 @@ class ProjectionImpl;
 }
 }  // namespace projection
 
-class Projection : DOXYGEN_HIDE( public util::ObjectHandle<projection::detail::ProjectionImpl> ) {
+class Projection : DOXYGEN_HIDE(public util::ObjectHandle<projection::detail::ProjectionImpl>) {
 public:
     using Spec     = util::Config;
-    using Jacobian = projection::detail::ProjectionImpl::Jacobian;
+    using Jacobian = projection::Jacobian;
 
 public:
     using Handle::Handle;
     Projection();
-    Projection( const eckit::Parametrisation& );
-    Projection( const std::string& type, const eckit::Parametrisation& );
+    Projection(const eckit::Parametrisation&);
+    Projection(const std::string& type, const eckit::Parametrisation&);
 
     operator bool() const;
 
-    void xy2lonlat( double crd[] ) const;
-    void xy2lonlat( Point2& ) const;
-    void lonlat2xy( double crd[] ) const;
-    void lonlat2xy( Point2& ) const;
+    void xy2lonlat(double crd[]) const;
+    void xy2lonlat(Point2&) const;
+    void lonlat2xy(double crd[]) const;
+    void lonlat2xy(Point2&) const;
 
-    Jacobian jacobian( const PointLonLat& ) const;
+    Jacobian jacobian(const PointLonLat&) const;
 
-    PointLonLat lonlat( const PointXY& ) const;
-    PointXY xy( const PointLonLat& ) const;
+    PointLonLat lonlat(const PointXY&) const;
+    PointXY xy(const PointLonLat&) const;
 
     bool strictlyRegional() const;
-    RectangularLonLatDomain lonlatBoundingBox( const Domain& ) const;
+    RectangularLonLatDomain lonlatBoundingBox(const Domain&) const;
 
     Spec spec() const;
 
@@ -78,7 +79,7 @@ public:
 
     std::string type() const;
 
-    void hash( eckit::Hash& ) const;
+    void hash(eckit::Hash&) const;
 };
 
 //---------------------------------------------------------------------------------------------------------------------

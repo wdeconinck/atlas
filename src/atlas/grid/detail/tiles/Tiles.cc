@@ -22,31 +22,39 @@ namespace grid {
 namespace detail {
 
 const CubedSphereTiles* CubedSphereTiles::create() {
-    // default: FV3 version (for now)
+    // default: LFRic version (for now)
     util::Config params;
-    params.set( "type", "cubedsphere_lfric" );
-    return CubedSphereTiles::create( params );
+    params.set("type", "cubedsphere_lfric");
+    return CubedSphereTiles::create(params);
 }
 
-const CubedSphereTiles* CubedSphereTiles::create( const std::string& s ) {
+const CubedSphereTiles* CubedSphereTiles::create(const std::string& s) {
     util::Config params;
-    if ( s == "" ) {
+    if (s == "") {
         return CubedSphereTiles::create();
     }
-    params.set( "type", s );
-    return CubedSphereTiles::create( params );
+    params.set("type", s);
+    return CubedSphereTiles::create(params);
 }
 
-const CubedSphereTiles* CubedSphereTiles::create( const eckit::Parametrisation& p ) {
+const CubedSphereTiles* CubedSphereTiles::create(const eckit::Parametrisation& p) {
     std::string CubedSphereTiles_type;
 
-    if ( p.has( "type" ) ) {
-        p.get( "type", CubedSphereTiles_type );
-        return CubedSphereTilesFactory::build( CubedSphereTiles_type, p );
+    if (p.has("type")) {
+        p.get("type", CubedSphereTiles_type);
+        return CubedSphereTilesFactory::build(CubedSphereTiles_type, p);
     }
     else {
         return create();
     }
+}
+
+idx_t CubedSphereTiles::indexFromXY(const PointXY& xy) const {
+    return indexFromXY(xy.data());
+}
+
+idx_t CubedSphereTiles::indexFromLonLat(const PointLonLat& lonlat) const {
+    return indexFromXY(lonlat.data());
 }
 
 }  // namespace detail

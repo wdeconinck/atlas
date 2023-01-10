@@ -7,14 +7,120 @@ This project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html
 
 ## [Unreleased]
 
-## [0.26.0] - 2021-08-23
+## [0.31.1] - 2022-11-11
+### Fixed
+- Fix bug introduced in StructuredMeshGenerator global numbering with release 0.31.0 in commit a63fc62a2
+- Fix healpix global numbering for pentagon pole elements in parallel
+- Fix validity check of atlas::HealpixGrid
+
+## [0.31.0] - 2022-11-10
 ### Added
-- Support for Cubed sphere grids and preliminary support for cubes sphere mesh generation.
+- Extend PointCloud functionspace to do halo exchanges, including Fortran API
+- Add FunctionSpace::gather and FunctionSpace::scatter abstraction
+
+### Changed
+- Improve performance of MatchingMeshPartitionerLonLatPolygon using OpenMP
+- Improve performance of BuildHalo using OpenMP and unordered_map
+- Improve performance of StructuredMeshGenerator using OpenMP
+- Improve performance of ATLAS_TRACE
+- Reduce memory peak in GatherScatter setup
+- Global element numbering of RegularLonLat grids is now following rows independent of partitioning
 
 ### Fixed
-- Compilation with ALTAS_BITS_LOCAL=64
-- Too aggressive optimisation with GNU 11
-- Compatibility with CMake 3.20 and NVHPC compilers
+- Running CI with Github Actions
+- Fix output of atlas-grids y-range for shifted grids
+- Fix building with ATLAS_BITS_LOCAL=64
+
+
+## [0.30.0] - 2022-08-22
+### Added
+- Fortran API for Interpolation::execute_adjoint()
+- Fortran API for FieldSet::name()
+- Fortran API for MeshGenerator::generate(grid,partitioner)
+- Pentagon element type
+- SphericalHarmonic function
+- New interpolation method: ConservativeSphericalPolygonInterpolation
+- Support 'variables' option in functionspace::PointCloud::createField
+
+### Changed
+- Atlas-IO is now standalone project, still embedded but only depending on eckit
+- Deprecate Trans naming of 'ifs' or 'trans' in favour of 'ectrans'
+- Default StructuredMeshGenerator partitioner is equal_regions instead of trans/ectrans
+
+### Fixed
+- Fix global numbering HEALPix grid to standard
+- Fix NodeColumns remote_index for parallel orca grids
+- Fix use of ATLAS_LINALG_DENSE_BACKEND environment variable
+
+## [0.29.0] - 2022-04-21
+### Added
+- MatchingMeshPartitioner "cubedsphere"
+- Interpolator "cubedsphere-bilinear"
+- Improvements to Interpolation::Cache
+- Add support for rank 2 fields when a nonlinear action is added to the interpolator
+- Create Array using ArraySpec only
+
+### Changed
+- FieldSet::has(...) replaces FieldSet::has_field(...)
+- Metadata return value to Interpolation::execute()
+- Rename BilinearRemapping to UnstructuredBilinearLonLat
+
+### Fixed
+- Compatibility with proj version >= 8
+- Compatibility with eckit version <= 1.18.5
+- Compatibility with GridTools backend and using 64bit idx_t
+- Wrongly computed Jacobian::transpose() introduced in 0.28.0
+- Fix bug where using ectrans was not enabling adjoint of invtrans
+- Avoid segfault when OpenMP tasking is broken, as it is with AppleClang and LLVM libomp
+
+## [0.28.1] - 2022-03-14
+### Fixed
+- Fix compilation for GNU 7.3
+
+## [0.28.0] - 2022-03-02
+### Added
+- Assignment of ArrayView from ArrayView
+- Grid "regional_variable_resolution" via a new VariableResolutionProjection
+- CubedSphereDualMeshGenerator
+- VortexRollup function as analytical field for initialising data
+- ConvexSphericalPolygon utility class
+- Improve Projection::Jacobian
+- Initial implementation for bilinear interpolation for unstructured meshes
+
+### Changed
+- Use new eckit (1.19.0) Sparse and Dense linear algebra API
+- General robustness improvements to CubedSphere to using functionspaces with various halos
+
+### Fixed
+- Workarounds to fix compilation with Fujitsu compiler
+- Workarounds to avoid Cray compiler problems with certain flag combinations
+- CellColumns::haloExchange for meshes with multiple element types
+- Computation of HEALPix mesh remote indices.
+
+
+## [0.27.0] - 2021-12-03
+### Added
+- Adjoint interpolation with some restrictions
+- Cubed sphere grid partitioner
+- Cubed sphere parallel mesh generation
+- Cubed sphere function spaces
+- Fortran interfaces to Projection methods
+- Support discovery of open-source ectrans
+- Dense linear Algebra matrix_multiply abstraction
+
+### Changed
+- Remove etc/atlas/config.yaml because defaults should be in code
+- Naming of sparse_matrix_multiply backend 'omp' -> 'openmp'
+- Applied clang-format 13.0.0 (all files touched)
+
+## [0.26.0] - 2021-08-23
+### Added
+- Support for cubed sphere grids and preliminary support for cubes sphere mesh generation.
+
+### Fixed
+- Compilation with altas_bits_local=64
+- Too aggressive optimisation with gnu 11
+- Compatibility with cmake 3.20 and nvhpc compilers
 
 
 ## [0.25.0] - 2021-05-18
@@ -305,7 +411,14 @@ This project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html
 ## 0.13.0 - 2018-02-16
 
 [Unreleased]: https://github.com/ecmwf/atlas/compare/master...develop
-[0.26.0]: https://github.com/ecmwf/atlas/compare/0.26.0...0.25.0
+[0.31.1]: https://github.com/ecmwf/atlas/compare/0.31.0...0.31.1
+[0.31.0]: https://github.com/ecmwf/atlas/compare/0.30.0...0.31.0
+[0.30.0]: https://github.com/ecmwf/atlas/compare/0.29.0...0.30.0
+[0.29.0]: https://github.com/ecmwf/atlas/compare/0.28.1...0.29.0
+[0.28.1]: https://github.com/ecmwf/atlas/compare/0.28.0...0.28.1
+[0.28.0]: https://github.com/ecmwf/atlas/compare/0.27.0...0.28.0
+[0.27.0]: https://github.com/ecmwf/atlas/compare/0.26.0...0.27.0
+[0.26.0]: https://github.com/ecmwf/atlas/compare/0.25.0...0.26.0
 [0.25.0]: https://github.com/ecmwf/atlas/compare/0.24.1...0.25.0
 [0.24.1]: https://github.com/ecmwf/atlas/compare/0.24.0...0.24.1
 [0.24.0]: https://github.com/ecmwf/atlas/compare/0.23.0...0.24.0
