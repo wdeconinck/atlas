@@ -31,7 +31,7 @@ jobs:
       matrix:
         build_type: [Debug]
         name:
-          - linux intel classic
+          - linux intel-classic
           - linux intel
 
         include:
