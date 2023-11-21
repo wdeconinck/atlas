@@ -37,6 +37,7 @@ jobs:
           - linux clang-12
 #          - linux nvhpc-22.11
           - linux intel
+          - linux intel-classic
           - macos
 
         include:
@@ -100,12 +101,23 @@ jobs:
 #            caching: false
 #            coverage: false
 
-          - name : linux intel
-            os: ubuntu-20.04
-            compiler: intel-oneapi
+          - name : linux intel-classic
+            os: ubuntu-latest
+            compiler: intel-classic
+            compiler_version: 2021.10
             compiler_cc: icc
             compiler_cxx: icpc
             compiler_fc: ifort
+            caching: true
+            coverage: false
+
+          - name : linux intel
+            os: ubuntu-latest
+            compiler: intel
+            compiler_version: 2023.2
+            compiler_cc: icx
+            compiler_cxx: icpx
+            compiler_fc: ifx
             caching: true
             coverage: false
 
@@ -173,13 +185,13 @@ jobs:
         echo "${NVHPC_DIR}/compilers/bin"                   >> $GITHUB_PATH
         [ -z ${MPI_HOME+x} ] || echo "MPI_HOME=${MPI_HOME}" >> $GITHUB_ENV
 
-    - name: Install Intel oneAPI compiler
-      if: contains( matrix.compiler, 'intel' )
-      run: |
-        ${ATLAS_TOOLS}/install-intel-oneapi.sh
-        source /opt/intel/oneapi/setvars.sh
-        printenv >> $GITHUB_ENV
-        echo "CACHE_SUFFIX=$(icc -dumpversion)" >> $GITHUB_ENV
+    - name: Setup Intel compiler
+      if: contains(matrix.compiler, 'intel')
+      uses: fortran-lang/setup-fortran@v1.3
+      id: setup-fortran
+      with:
+        compiler: ${{ matrix.compiler }}
+        version: ${{ matrix.compiler_version }}
 
     - name: Install MPI
       shell: bash -eux {0}
