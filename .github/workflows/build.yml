@@ -67,10 +67,11 @@ jobs:
 
     - name: Set Build & Test Environment
       run: |
-        which ifort
-        which ifx
+        set +e
+        ls $(which icx)
+        which icx
         which icc
         which icpc
-        which icx
-        ls $(which icc)
+        which ifort
+        which ifx
 
