@@ -36,7 +36,7 @@ jobs:
 
         include:
 
-          - name : linux intel classic
+          - name : linux intel-classic
             os: ubuntu-latest
             compiler: intel-classic
             compiler_version: 2021.10
@@ -58,21 +58,22 @@ jobs:
     - name: Checkout Repository
       uses: actions/checkout@v2
 
-    - name: Environment
-      run:  |
-        echo "CC=${{ matrix.compiler_cc }}"     >> $GITHUB_ENV
-        echo "CXX=${{ matrix.compiler_cxx }}"   >> $GITHUB_ENV
-        #echo "FC=${{ matrix.compiler_fc }}"     >> $GITHUB_ENV
-
-        printenv
-
-    - name: Setup Fortran compiler
+    - name: Setup Intel Fortran compiler
       if: contains(matrix.compiler, 'intel')
-      uses: fortran-lang/setup-fortran@v1
+      uses: fortran-lang/setup-fortran@v1.3
       id: setup-fortran
       with:
         compiler: ${{ matrix.compiler }}
         version: ${{ matrix.compiler_version }}
+
+    - name: Environment
+      run:  |
+        echo "CC=${{ matrix.compiler_cc }}"     >> $GITHUB_ENV
+        echo "CXX=${{ matrix.compiler_cxx }}"   >> $GITHUB_ENV
+        echo "FC=${{ matrix.compiler_fc }}"     >> $GITHUB_ENV
+
+        printenv
+
 
 #    - name: Install Intel oneAPI compiler
 #      if: contains( matrix.compiler, 'intel' )
@@ -85,21 +86,7 @@ jobs:
 
     - name: Set Build & Test Environment
       run: |
-        set -x
-        set +e
-        echo $PATH
-        echo $FC
-        echo $CC
-        echo $CXX
-        echo ${{ env.FC }}
-        #ls -l /opt/intel/oneapi
-        #ls -l /opt/intel/oneapi/compiler/
-        #ls -l /opt/intel/oneapi/basekit/
-        #ls -l /opt/intel/oneapi/hpckit/
-        #ls -l /opt/intel/oneapi/compiler/2023.2.2
-        #ls -l /opt/intel/oneapi/compiler/2023.2.2/linux
-        #ls -l /opt/intel/oneapi/compiler/2023.2.2/linux/bin
-        #ls -l /opt/intel/oneapi/compiler/2023.2.2/linux/bin/intel64
+        echo "PATH: $PATH"
         which icx
         which icpx
         which ifx
