@@ -67,11 +67,15 @@ jobs:
 
     - name: Set Build & Test Environment
       run: |
-        set +e
-        ls $(which icx)
+        set -x
+        ls -l /opt/intel/oneapi
+        ls -l /opt/intel/oneapi/compiler/
+        ls -l /opt/intel/oneapi/compiler/2023.2.2
+        ls -l /opt/intel/oneapi/compiler/2023.2.2/linux
+        ls -l /opt/intel/oneapi/compiler/2023.2.2/linux/bin
+        ls -l /opt/intel/oneapi/compiler/2023.2.2/linux/bin/intel64
         which icx
         which icc
         which icpc
-        which ifort
         which ifx
 
