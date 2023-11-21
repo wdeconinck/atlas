@@ -13,4 +13,4 @@ sudo apt-get update
 #    intel-oneapi-mpi-devel \
 #    intel-oneapi-mkl
 
-sudo apt-get isntall intel-basekit intel-hpckit
+sudo apt-get install intel-basekit intel-hpckit
