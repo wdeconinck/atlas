@@ -85,7 +85,9 @@ include( features/DOCS )
 include( features/ATLAS_RUN )
 
 add_subdirectory( hic )
-find_package(hic)
+find_package(hic REQUIRED)
+add_subdirectory( pluto )
+find_package(pluto REQUIRED)
 
 ################################################################################
 # sources
