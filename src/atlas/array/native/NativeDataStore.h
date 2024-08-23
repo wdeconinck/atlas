@@ -16,15 +16,14 @@
 #include <limits>   // std::numeric_limits<T>::signaling_NaN
 #include <sstream>
 
+#include "pluto/pluto.h"
+
 #include "atlas/array/ArrayDataStore.h"
 #include "atlas/library/Library.h"
 #include "atlas/library/config.h"
 #include "atlas/runtime/Exception.h"
 #include "atlas/runtime/Log.h"
 #include "eckit/log/Bytes.h"
-
-#include "hic/hic.h"
-
 
 #if ATLAS_HAVE_ACC
 #include "atlas_acc_support/atlas_acc_map_data.h"
@@ -95,10 +94,22 @@ template <typename Value>
 void initialise(Value[], size_t) {}
 #endif
 
+static auto host_memory_resource() {
+    return new pluto::TraceMemoryResource("host_memory", pluto::host::get_default_resource());
+}
+
+static auto device_memory_resource() {
+    return new pluto::TraceMemoryResource("device_memory", pluto::device::get_default_resource());
+}
+
 template <typename Value>
 class DataStore : public ArrayDataStore {
 public:
-    DataStore(size_t size): size_(size) {
+    DataStore(size_t size): size_(size),
+        host_memory_resource_(host_memory_resource()),
+        device_memory_resource_(device_memory_resource()),
+        host_allocator_{host_memory_resource_.get()},
+        device_allocator_{device_memory_resource_.get()} {
         allocateHost();
         initialise(host_data_, size_);
         if constexpr (ATLAS_HAVE_GPU) {
@@ -119,10 +130,7 @@ public:
             if (not device_allocated_) {
                 allocateDevice();
             }
-            hicError_t err = hicMemcpy(device_data_, host_data_, size_*sizeof(Value), hicMemcpyHostToDevice);
-            if (err != hicSuccess) {
-                throw_AssertionFailed("Failed to updateDevice: "+std::string(hicGetErrorString(err)), Here());
-            }
+            pluto::copy_host_to_device(device_data_, host_data_, size_);
             device_updated_ = true;
         }
     }
@@ -130,10 +138,7 @@ public:
     void updateHost() const override {
         if constexpr (ATLAS_HAVE_GPU) {
             if (device_allocated_) {
-                hicError_t err = hicMemcpy(host_data_, device_data_, size_*sizeof(Value), hicMemcpyDeviceToHost);
-                if (err != hicSuccess) {
-                    throw_AssertionFailed("Failed to updateHost: "+std::string(hicGetErrorString(err)), Here());
-                }
+                pluto::copy_device_to_host(host_data_, device_data_, size_);
                 host_updated_ = true;
             }
         }
@@ -167,10 +172,7 @@ public:
                 return;
             }
             if (size_) {
-                hicError_t err = hicMalloc((void**)&device_data_, sizeof(Value)*size_);
-                if (err != hicSuccess) {
-                    throw_AssertionFailed("Failed to allocate GPU memory: " + std::string(hicGetErrorString(err)), Here());
-                }
+                device_data_ = device_allocator_.allocate(size_);
                 device_allocated_ = true;
                 accMap();
             }
@@ -181,10 +183,7 @@ public:
         if constexpr (ATLAS_HAVE_GPU) {
             if (device_allocated_) {
                 accUnmap();
-                hicError_t err = hicFree(device_data_);
-                if (err != hicSuccess) {
-                    throw_AssertionFailed("Failed to deallocate GPU memory: " + std::string(hicGetErrorString(err)), Here());
-                }
+                device_allocator_.deallocate(device_data_,size_);
                 device_data_ = nullptr;
                 device_allocated_ = false;
             }
@@ -240,36 +239,22 @@ private:
         throw_Exception(ss.str(), loc);
     }
 
-    void alloc_aligned(Value*& ptr, size_t n) {
-        if (n > 0) {
-            const size_t alignment = 64 * sizeof(Value);
-            size_t bytes           = sizeof(Value) * n;
-            MemoryHighWatermark::instance() += bytes;
-
-            int err = posix_memalign((void**)&ptr, alignment, bytes);
-            if (err) {
-                throw_AllocationFailed(bytes, Here());
-            }
+    void allocateHost() {
+        if (size_ > 0) {
+            MemoryHighWatermark::instance() += footprint();
+            host_data_ = host_allocator_.allocate(size_);
         }
         else {
-            ptr = nullptr;
+            host_data_ = nullptr;
         }
-    }
-
-    void free_aligned(Value*& ptr) {
-        if (ptr) {
-            free(ptr);
-            ptr = nullptr;
-            MemoryHighWatermark::instance() -= footprint();
-        }
-    }
-
-    void allocateHost() {
-        alloc_aligned(host_data_, size_);
     }
 
     void deallocateHost() {
-        free_aligned(host_data_);
+        if (host_data_) {
+            host_allocator_.deallocate(host_data_, size_);
+            host_data_ = nullptr;
+            MemoryHighWatermark::instance() -= footprint();
+        }
     }
 
     size_t footprint() const { return sizeof(Value) * size_; }
@@ -283,6 +268,10 @@ private:
     mutable bool device_allocated_{false};
     mutable bool acc_mapped_{false};
 
+    std::unique_ptr<pluto::memory_resource> host_memory_resource_;
+    std::unique_ptr<pluto::memory_resource> device_memory_resource_;
+    pluto::host::allocator<Value>   host_allocator_;
+    pluto::device::allocator<Value> device_allocator_;
 };
 
 //------------------------------------------------------------------------------
@@ -290,7 +279,9 @@ private:
 template <typename Value>
 class WrappedDataStore : public ArrayDataStore {
 public:
-    WrappedDataStore(Value* host_data, size_t size): host_data_(host_data), size_(size) {
+    WrappedDataStore(Value* host_data, size_t size): host_data_(host_data), size_(size),
+        device_memory_resource_(device_memory_resource()),
+        device_allocator_{device_memory_resource_.get()} {
         if constexpr (ATLAS_HAVE_GPU) {
             device_updated_ = false;
         }
@@ -304,10 +295,7 @@ public:
             if (not device_allocated_) {
                 allocateDevice();
             }
-            hicError_t err = hicMemcpy(device_data_, host_data_, size_*sizeof(Value), hicMemcpyHostToDevice);
-            if (err != hicSuccess) {
-                throw_AssertionFailed("Failed to updateDevice: "+std::string(hicGetErrorString(err)), Here());
-            }
+            pluto::copy_host_to_device(device_data_, host_data_, size_);
             device_updated_ = true;
         }
     }
@@ -315,10 +303,7 @@ public:
     void updateHost() const override {
         if constexpr (ATLAS_HAVE_GPU) {
             if (device_allocated_) {
-                hicError_t err = hicMemcpy(host_data_, device_data_, size_*sizeof(Value), hicMemcpyDeviceToHost);
-                if (err != hicSuccess) {
-                    throw_AssertionFailed("Failed to updateHost: "+std::string(hicGetErrorString(err)), Here());
-                }
+                pluto::copy_device_to_host(host_data_, device_data_, size_);
                 host_updated_ = true;
             }
         }
@@ -352,10 +337,7 @@ public:
                 return;
             }
             if (size_) {
-                hicError_t err = hicMalloc((void**)&device_data_, sizeof(Value)*size_);
-                if (err != hicSuccess) {
-                    throw_AssertionFailed("Failed to allocate GPU memory: " + std::string(hicGetErrorString(err)), Here());
-                }
+                device_data_ = device_allocator_.allocate(size_);
                 device_allocated_ = true;
                 accMap();
             }
@@ -366,10 +348,7 @@ public:
         if constexpr (ATLAS_HAVE_GPU) {
             if (device_allocated_) {
                 accUnmap();
-                hicError_t err = hicFree(device_data_);
-                if (err != hicSuccess) {
-                    throw_AssertionFailed("Failed to deallocate GPU memory: " + std::string(hicGetErrorString(err)), Here());
-                }
+                device_allocator_.deallocate(device_data_,size_);
                 device_data_ = nullptr;
                 device_allocated_ = false;
             }
@@ -420,6 +399,10 @@ public:
 private:
     size_t size_;
     Value* host_data_;
+
+    std::unique_ptr<pluto::memory_resource> device_memory_resource_;
+    pluto::device::allocator<Value> device_allocator_;
+
     mutable Value* device_data_;
 
     mutable bool host_updated_{true};

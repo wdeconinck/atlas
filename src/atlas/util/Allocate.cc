@@ -13,10 +13,10 @@
 
 #include "eckit/log/CodeLocation.h"
 
+#include "pluto/pluto.h"
+
 #include "atlas/library/config.h"
 #include "atlas/runtime/Exception.h"
-
-#include "hic/hic.h"
 
 namespace atlas {
 namespace util {
@@ -29,30 +29,30 @@ void allocate_managed(void** ptr, size_t size) {
     if constexpr (not ATLAS_HAVE_GPU) {
         return allocate_host(ptr, size);
     }
-    HIC_CALL(hicMallocManaged(ptr, size));
+    *ptr = pluto::managed_resource()->allocate(size, pluto::default_alignment());
 }
 
 void deallocate_managed(void* ptr) {
     if constexpr (not ATLAS_HAVE_GPU) {
         return deallocate_host(ptr);
     }
-    HIC_CALL(hicDeviceSynchronize());
-    HIC_CALL(hicFree(ptr));
+    pluto::wait();
+    pluto::managed_resource()->deallocate(ptr, 0, pluto::default_alignment());
 }
 
 void allocate_device(void** ptr, size_t size) {
     if constexpr (not ATLAS_HAVE_GPU) {
         return allocate_host(ptr, size);
     }
-    HIC_CALL(hicMalloc(ptr, size));
+    *ptr = pluto::device_resource()->allocate(size, pluto::default_alignment());
 }
 
 void deallocate_device(void* ptr) {
     if constexpr (not ATLAS_HAVE_GPU) {
         return deallocate_host(ptr);
     }
-    HIC_CALL(hicDeviceSynchronize());
-    HIC_CALL(hicFree(ptr));
+    pluto::wait();
+    pluto::device_resource()->deallocate(ptr, 0, pluto::default_alignment());
 }
 
 void allocate_host(void** ptr, size_t size) {
