@@ -646,6 +646,8 @@ interpolation/Cache.cc
 interpolation/Cache.h
 interpolation/Interpolation.cc
 interpolation/Interpolation.h
+interpolation/Remap.cc
+interpolation/Remap.h
 interpolation/NonLinear.cc
 interpolation/NonLinear.h
 interpolation/AssembleGlobalMatrix.h

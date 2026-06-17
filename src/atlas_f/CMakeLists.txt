@@ -186,6 +186,7 @@ list( APPEND atlas_trans_srcs
 
 list( APPEND atlas_interpolation_srcs 
     interpolation/atlas_Interpolation_module.F90
+    interpolation/atlas_Remap_module.F90
 )
 
 list( APPEND atlas_numerics_srcs 

@@ -66,6 +66,8 @@ use atlas_HaloExchange_module, only: &
 #if ATLAS_HAVE_INTERPOLATION
 use atlas_Interpolation_module, only: &
     & atlas_Interpolation
+use atlas_Remap_module, only: &
+    & atlas_Remap
 #endif
 use atlas_GatherScatter_module, only: &
     & atlas_GatherScatter

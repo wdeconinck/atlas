@@ -11,3 +11,4 @@
 #pragma once
 
 #include "atlas/interpolation/Interpolation.h"
+#include "atlas/interpolation/Remap.h"
