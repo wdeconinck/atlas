@@ -7,6 +7,19 @@ This project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html
 
 ## [Unreleased]
 
+### Changed
+- Reduce trace call-stack hashing, copying, title formatting, timer registration, and report-generation overhead.
+- Fortran `atlas_Trace` now uses an allocatable C-pointer handle instead of extending `fckit_shared_object`.
+  Constructors, shared assignment, `%final()`, `%c_ptr()`, and `%is_null()` remain supported;
+  `%init(file,line,title)` initializes a trace without a constructor temporary.
+  Allocatable handle storage adds one allocation per initialized handle to avoid uninitialized Intel OpenMP-private arrays.
+  Other inherited FCKIT shared-object methods are no longer available.
+
+### Fixed
+- Correct trace sample variance, duplicated title suffixes, and call-stack restoration when stopping or finalizing paused traces.
+- Diagnose invalid pause/resume transitions and report orphaned timer details.
+- Handle Fortran trace copies, constructor ownership, array finalization, and OpenMP-private trace arrays without FCKIT shared-pointer handles.
+
 ## [0.47.0] - 2026-10-14
 
 ### Added

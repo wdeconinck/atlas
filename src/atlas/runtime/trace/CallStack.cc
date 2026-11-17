@@ -51,22 +51,15 @@ void CallStack::push(const CodeLocation& loc, const std::string& id) {
         stack_[size_] = hash;
     }
     ++size_;
-    hash_ = 0;
+    hash_ ^= (hash << 1);
 }
 
 void CallStack::pop() {
+    hash_ ^= (stack_[size_ - 1] << 1);
     --size_;
-    hash_ = 0;
 }
 
 size_t CallStack::hash() const {
-    if (hash_) {
-        return hash_;
-    }
-    for (long i = size_ - 1; i >= 0; --i) {
-        auto h = stack_[i];
-        hash_ ^= (h << 1);
-    }
     return hash_;
 }
 

@@ -42,18 +42,18 @@ public:
 
 public:
     CallStack() { stack_.reserve(64); }
-    CallStack(const CallStack& other): stack_(other.begin(), other.end()), size_(other.size_) {}
+    CallStack(const CallStack& other): stack_(other.begin(), other.end()), size_(other.size_), hash_(other.hash_) {}
     CallStack& operator=(const CallStack& other) {
         stack_.assign(other.begin(), other.end());
         size_  = other.size_;
-        hash_  = 0;
+        hash_  = other.hash_;
         return *this;
     }
 
 private:
     std::vector<size_t> stack_;
     size_t size_{0};
-    mutable size_t hash_{0};
+    size_t hash_{0};
 };
 
 }  // namespace trace

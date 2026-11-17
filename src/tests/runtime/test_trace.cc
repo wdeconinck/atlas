@@ -9,10 +9,13 @@
  */
 
 #include <chrono>
+#include <cmath>
+#include <sstream>
 #include <thread>
 
 #include "atlas/parallel/omp/omp.h"
 #include "atlas/runtime/Trace.h"
+#include "atlas/util/Config.h"
 #include "tests/AtlasTestEnvironment.h"
 
 
@@ -67,6 +70,95 @@ CASE("test trace OpenMP") {
             }
         }
     }
+}
+
+CASE("test paused trace finalization and restart") {
+    runtime::trace::Barriers barriers(false);
+    auto& stack             = runtime::trace::CurrentCallStack::instance();
+    const auto initial_size = stack.current().size();
+    const auto initial_hash = stack.current().hash();
+    {
+        Trace trace(Here(), "paused trace");
+        for (int i = 0; i < 32; ++i) {
+            trace.pause();
+            EXPECT(stack.current().size() == initial_size);
+            EXPECT_THROWS_AS(trace.pause(), eckit::AssertionFailed);
+            trace.resume();
+            EXPECT(stack.current().size() == initial_size + 1);
+            EXPECT_THROWS_AS(trace.resume(), eckit::AssertionFailed);
+        }
+        trace.pause();
+        trace.stop();
+        EXPECT(not trace.running());
+        EXPECT_THROWS_AS(trace.resume(), eckit::AssertionFailed);
+        {
+            Trace parent(Here(), "restart parent");
+            trace.start();
+            trace.pause();
+            trace.stop();
+        }
+        trace.start();
+        trace.pause();
+    }
+    EXPECT(stack.current().size() == initial_size);
+    EXPECT(stack.current().hash() == initial_hash);
+    EXPECT_NO_THROW(Trace::report());
+}
+
+CASE("test call stack hash restoration and copying") {
+    runtime::trace::CallStack stack;
+    stack.push(Here(), "parent");
+    const auto parent_hash = stack.hash();
+    stack.push(Here(), "child");
+    const auto child_hash = stack.hash();
+    auto copied           = stack;
+    runtime::trace::CallStack assigned;
+    assigned = stack;
+    stack.pop();
+    EXPECT(stack.hash() == parent_hash);
+    EXPECT(copied.hash() == child_hash);
+    EXPECT(assigned.hash() == child_hash);
+    copied.pop();
+    assigned.pop();
+    EXPECT(copied.hash() == parent_hash);
+    EXPECT(assigned.hash() == parent_hash);
+    stack.pop();
+    EXPECT(stack.hash() == 0);
+    EXPECT(stack.size() == 0);
+}
+
+CASE("test timing sample variance") {
+    using runtime::trace::CallStack;
+    using runtime::trace::Timings;
+    auto loc = Here();
+    CallStack stack;
+    stack.push(loc, "variance regression");
+    auto id = Timings::add(loc, stack, "variance regression", {});
+    Timings::update(id, 1.);
+    Timings::update(id, 3.);
+    Timings::update(id, 2.);
+    const auto report = Timings::report(util::Config("decimals", 8)("header", false));
+    const auto row    = report.find("variance regression");
+    EXPECT(row != std::string::npos);
+    const auto column = report.find("std: ", row);
+    EXPECT(column != std::string::npos);
+    std::istringstream value(report.substr(column + 5));
+    double deviation = 0.;
+    value >> deviation;
+    EXPECT(std::abs(deviation - 1.) < 1.e-8);
+}
+
+CASE("test trace title suffixes") {
+    runtime::trace::Barriers barriers(true);
+    {
+        Trace plain(Here(), "plain suffix");
+        Trace labelled(Here(), "labelled suffix", {"suffix"});
+    }
+    const auto report = Trace::report();
+    const std::string suffix = Trace::Barriers::state() ? " [b]" : "";
+    EXPECT(report.find("plain suffix" + suffix + " [b]") == std::string::npos);
+    EXPECT(report.find("plain suffix" + suffix) != std::string::npos);
+    EXPECT(report.find("labelled suffix" + suffix) != std::string::npos);
 }
 
 CASE("test barrier") {

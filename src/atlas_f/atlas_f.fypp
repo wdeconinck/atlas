@@ -76,7 +76,7 @@ end if
   #:if labels is not None
     ${trace}$ = atlas_Trace( "${_FILE_}$", ${_LINE_}$, ${title}$, ${labels}$ )
   #:else
-    ${trace}$ = atlas_Trace( "${_FILE_}$", ${_LINE_}$, ${title}$ )
+    call ${trace}$ % init( "${_FILE_}$", ${_LINE_}$, ${title}$ )
   #:endif
 #:enddef
 

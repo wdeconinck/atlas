@@ -33,6 +33,7 @@ public:
         return state;
     }
     operator CallStack() const { return stack_; }
+    const CallStack& current() const { return stack_; }
     CallStack& push(const CodeLocation& loc, const std::string& id) {
         if (Control::enabled())
             stack_.push(loc, id);

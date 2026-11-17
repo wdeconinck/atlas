@@ -37,10 +37,20 @@ endforeach()
 if( HAVE_FCTEST )
 
 add_fctest( TARGET atlas_fctest_trace
-  SOURCES     fctest_trace.fypp
+  SOURCES     fctest_trace.fypp trace_stack_size.cc
   LINKER_LANGUAGE Fortran
-  LIBS        atlas_f ${OMP_Fortran}
+  LIBS        atlas_f atlas ${OMP_Fortran}
   ENVIRONMENT ${ATLAS_TEST_ENVIRONMENT} ATLAS_TRACE_REPORT=1
 )
 
+endif()
+
+if( TARGET atlas_f AND HAVE_OMP_Fortran )
+ecbuild_add_test( TARGET atlas_test_trace_openmp_private_array
+  SOURCES     test_trace_openmp_private_array.F90
+  LINKER_LANGUAGE Fortran
+  LIBS        atlas_f ${OMP_Fortran}
+  ENVIRONMENT ${ATLAS_TEST_ENVIRONMENT} ATLAS_TRACE_REPORT=1 OMP_DYNAMIC=FALSE
+  OMP         2
+)
 endif()

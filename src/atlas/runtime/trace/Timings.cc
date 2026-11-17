@@ -14,9 +14,9 @@
 #include <cmath>
 #include <iomanip>
 #include <limits>
-#include <regex>
 #include <sstream>
 #include <string>
+#include <unordered_map>
 
 #include "eckit/config/Configuration.h"
 #include "eckit/filesystem/PathName.h"
@@ -45,7 +45,7 @@ private:
     std::vector<CodeLocation> locations_;
     std::vector<long> nest_;
     std::vector<CallStack> stack_;
-    std::map<size_t, size_t> index_;
+    std::unordered_map<size_t, size_t> index_;
 
     std::map<std::string, std::vector<size_t>> labels_;
 
@@ -137,8 +137,26 @@ struct Tree {
         std::vector<size_t> order;
         order.reserve(TimingsRegistry::instance().size());
         root.order(order);
-        ATLAS_ASSERT(order.size() == TimingsRegistry::instance().size(),
-                     "Likely a atlas_Trace has not finalised properly");
+        if (order.size() != TimingsRegistry::instance().size()) {
+            const auto& registry = TimingsRegistry::instance();
+            std::vector<bool> reachable(registry.size(), false);
+            for (size_t index : order) {
+                reachable[index] = true;
+            }
+            std::ostringstream message;
+            message << "Trace timing registry is inconsistent: reconstructed " << order.size() << " of "
+                    << registry.size() << " timer entries. Orphaned entries (check trace finalization and nesting):";
+            for (size_t index = 0; index < registry.size(); ++index) {
+                if (not reachable[index]) {
+                    message << "\n  timer[" << index << "] title='" << registry.titles_[index]
+                            << "' location=" << registry.locations_[index].asString()
+                            << " nesting=" << registry.nest_[index]
+                            << " call-stack-hash=" << registry.stack_[index].hash()
+                            << " updates=" << registry.counts_[index];
+                }
+            }
+            ATLAS_ASSERT(false, message.str());
+        }
         return order;
     }
 };
@@ -149,7 +167,21 @@ size_t TimingsRegistry::add(const CodeLocation& loc, const CallStack& stack, con
     auto it    = index_.find(key);
     if (it == index_.end()) {
         size_t idx  = size();
-        index_[key] = idx;
+        if (counts_.size() == counts_.capacity()) {
+            constexpr size_t initial_capacity = 64;
+            const auto capacity               = std::max<size_t>(2 * counts_.size(), initial_capacity);
+            counts_.reserve(capacity);
+            tot_timings_.reserve(capacity);
+            min_timings_.reserve(capacity);
+            max_timings_.reserve(capacity);
+            var_timings_.reserve(capacity);
+            titles_.reserve(capacity);
+            locations_.reserve(capacity);
+            nest_.reserve(capacity);
+            stack_.reserve(capacity);
+            index_.reserve(capacity);
+        }
+        index_.emplace(key, idx);
         counts_.emplace_back(0);
         tot_timings_.emplace_back(0);
         min_timings_.emplace_back(std::numeric_limits<double>::max());
@@ -173,8 +205,9 @@ size_t TimingsRegistry::add(const CodeLocation& loc, const CallStack& stack, con
 
 void TimingsRegistry::update(size_t idx, double seconds) {
     auto sqr          = [](double x) { return x * x; };
-    double n          = counts_[idx] + 1;
-    double avg_nm1    = tot_timings_[idx] / std::max(n, 1.);
+    double nm1        = static_cast<double>(counts_[idx]);
+    double n          = nm1 + 1.;
+    double avg_nm1    = nm1 > 0. ? tot_timings_[idx] / nm1 : 0.;
     double var_nm1    = var_timings_[idx];
     var_timings_[idx] = n == 1. ? 0. : (n - 2.) / (n - 1.) * var_nm1 + 1. / n * sqr(seconds - avg_nm1);
     min_timings_[idx] = std::min(seconds, min_timings_[idx]);
@@ -443,12 +476,11 @@ void TimingsRegistry::report(std::ostream& out, const eckit::Configuration& conf
 }
 
 std::string TimingsRegistry::filter_filepath(const std::string& filepath) const {
-    std::smatch matches;
     std::string basename = eckit::PathName(filepath).baseName();
-    if (std::regex_search(filepath, matches, std::regex{"(.*)?/atlas/src/(.*)"})) {
+    if (filepath.find("/atlas/src/") != std::string::npos) {
         return "[atlas] " + basename;
     }
-    if (std::regex_search(filepath, matches, std::regex{"(.*)?/atlas-io/src/(.*)"})) {
+    if (filepath.find("/atlas-io/src/") != std::string::npos) {
         return "[atlas-io] " + basename;
     }
     return basename;

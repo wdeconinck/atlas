@@ -27,6 +27,9 @@ atlas::Trace* new_atlas_Trace_labels_4(const char* file, int line, const char* t
 atlas::Trace* new_atlas_Trace_labels_5(const char* file, int line, const char* title, const char* label1,
                                        const char* label2, const char* label3, const char* label4, const char* label5);
 void delete_atlas_Trace(atlas::Trace* This);
+void retain_atlas_Trace(atlas::Trace* This);
+void return_atlas_Trace(atlas::Trace* This);
+void release_atlas_Trace(atlas::Trace* This);
 void atlas_Trace__start(atlas::Trace* This);
 void atlas_Trace__stop(atlas::Trace* This);
 void atlas_Trace__pause(atlas::Trace* This);

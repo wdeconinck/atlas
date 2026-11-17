@@ -10,6 +10,7 @@
 ! @author Willem Deconinck
 
 #include "fckit/fctest.h"
+#include "atlas/atlas_f.h"
 #:include "atlas/atlas_f.fypp"
 
 ! -----------------------------------------------------------------------------
@@ -19,6 +20,12 @@ use atlas_module
 use, intrinsic :: iso_c_binding
 @:ENABLE_ATLAS_MACROS()
 implicit none
+interface
+  function trace_stack_size() bind(C, name="atlas_test_trace_stack_size") result(size)
+    import c_size_t
+    integer(c_size_t) :: size
+  end function
+end interface
 contains
 end module
 
@@ -78,6 +85,80 @@ implicit none
   call trace%final()
 
 
+END_TEST
+! -----------------------------------------------------------------------------
+
+TEST( test_trace_ownership )
+implicit none
+  type(atlas_Trace) :: trace, copy, empty
+  type(atlas_Trace) :: traces(2), copies(2)
+  integer :: labels
+  integer(c_size_t) :: initial_size
+
+  initial_size = trace_stack_size()
+
+  trace = atlas_Trace("${_FILE_}$",${_LINE_}$,"constructor ownership")
+  copy = trace
+  call trace%final()
+  FCTEST_CHECK( copy%running() )
+  call copy%final()
+  call copy%final()
+  FCTEST_CHECK( copy%is_null() )
+  FCTEST_CHECK( trace_stack_size() == initial_size )
+
+  call trace%init("${_FILE_}$",${_LINE_}$,"explicit init")
+  copy = trace
+  copy = trace
+  call trace%final()
+  FCTEST_CHECK( copy%running() )
+  copy = empty
+  FCTEST_CHECK( copy%is_null() )
+  FCTEST_CHECK( trace_stack_size() == initial_size )
+
+  traces(1) = atlas_Trace("${_FILE_}$",${_LINE_}$,"array ownership")
+  copies = traces
+  call traces%final()
+  FCTEST_CHECK( copies(1)%running() )
+  FCTEST_CHECK( copies(2)%is_null() )
+  call copies%final()
+  FCTEST_CHECK( trace_stack_size() == initial_size )
+
+  traces = atlas_Trace("${_FILE_}$",${_LINE_}$,"broadcast ownership")
+  call traces(1)%final()
+  FCTEST_CHECK( traces(2)%running() )
+  call traces(2)%final()
+  FCTEST_CHECK( trace_stack_size() == initial_size )
+
+  do labels=1,5
+    select case(labels)
+    case(1)
+      trace = atlas_Trace("${_FILE_}$",${_LINE_}$,"label ownership","one")
+    case(2)
+      trace = atlas_Trace("${_FILE_}$",${_LINE_}$,"label ownership","one","two")
+    case(3)
+      trace = atlas_Trace("${_FILE_}$",${_LINE_}$,"label ownership","one","two","three")
+    case(4)
+      trace = atlas_Trace("${_FILE_}$",${_LINE_}$,"label ownership","one","two","three","four")
+    case(5)
+      trace = atlas_Trace("${_FILE_}$",${_LINE_}$,"label ownership","one","two","three","four","five")
+    end select
+    FCTEST_CHECK( trace%running() )
+    call trace%final()
+    FCTEST_CHECK( trace_stack_size() == initial_size )
+  enddo
+
+#if FCKIT_HAVE_FINAL
+  block
+    type(atlas_Trace) :: scoped
+    scoped = atlas_Trace("${_FILE_}$",${_LINE_}$,"automatic finalization")
+  end block
+  FCTEST_CHECK( trace_stack_size() == initial_size )
+  block
+    type(atlas_Trace) :: scoped(2)
+    scoped(1) = atlas_Trace("${_FILE_}$",${_LINE_}$,"automatic array finalization")
+  end block
+  FCTEST_CHECK( trace_stack_size() == initial_size )
+#endif
 END_TEST
 ! -----------------------------------------------------------------------------
 
