@@ -17,7 +17,6 @@
 #include "atlas/runtime/Exception.h"
 #include "atlas/runtime/Log.h"
 #include "atlas/runtime/Trace.h"
-#include "atlas/runtime/trace/CodeLocation.h"
 
 namespace atlas {
 
@@ -34,7 +33,8 @@ namespace {
 
 class OwnedTrace final : public Trace {
 public:
-    using Trace::Trace;
+    OwnedTrace(const char* file, int line, const char* title, const Labels& labels = {}):
+        Trace(file, line, title, labels) {}
 
     void retain() { count_.fetch_add(1, std::memory_order_relaxed); }
 
@@ -61,31 +61,31 @@ private:
 extern "C" {
 
 Trace* new_atlas_Trace(const char* file, int line, const char* title) {
-    return new OwnedTrace(CodeLocation(file, line, nullptr, true), std::string(title));
+    return new OwnedTrace(file, line, title);
 }
 
 Trace* new_atlas_Trace_labels_1(const char* file, int line, const char* title, const char* label1) {
     std::vector<std::string> labels{label1};
-    return new OwnedTrace(CodeLocation(file, line, nullptr, true), std::string(title), labels);
+    return new OwnedTrace(file, line, title, labels);
 }
 Trace* new_atlas_Trace_labels_2(const char* file, int line, const char* title, const char* label1, const char* label2) {
     std::vector<std::string> labels{label1, label2};
-    return new OwnedTrace(CodeLocation(file, line, nullptr, true), std::string(title), labels);
+    return new OwnedTrace(file, line, title, labels);
 }
 Trace* new_atlas_Trace_labels_3(const char* file, int line, const char* title, const char* label1, const char* label2,
                                 const char* label3) {
     std::vector<std::string> labels{label1, label2, label3};
-    return new OwnedTrace(CodeLocation(file, line, nullptr, true), std::string(title), labels);
+    return new OwnedTrace(file, line, title, labels);
 }
 Trace* new_atlas_Trace_labels_4(const char* file, int line, const char* title, const char* label1, const char* label2,
                                 const char* label3, const char* label4) {
     std::vector<std::string> labels{label1, label2, label3, label4};
-    return new OwnedTrace(CodeLocation(file, line, nullptr, true), std::string(title), labels);
+    return new OwnedTrace(file, line, title, labels);
 }
 Trace* new_atlas_Trace_labels_5(const char* file, int line, const char* title, const char* label1, const char* label2,
                                 const char* label3, const char* label4, const char* label5) {
     std::vector<std::string> labels{label1, label2, label3, label4, label5};
-    return new OwnedTrace(CodeLocation(file, line, nullptr, true), std::string(title), labels);
+    return new OwnedTrace(file, line, title, labels);
 }
 
 void delete_atlas_Trace(Trace* This) {

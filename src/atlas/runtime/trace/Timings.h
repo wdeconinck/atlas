@@ -11,6 +11,7 @@
 #pragma once
 
 #include <string>
+#include <string_view>
 #include <vector>
 
 //-----------------------------------------------------------------------------------------------------------
@@ -36,7 +37,7 @@ public:
     using Labels        = std::vector<std::string>;
 
 public:  // static methods
-    static Identifier add(const CodeLocation&, const CallStack&, const std::string& title, const Labels&);
+    static Identifier add(const CodeLocation&, const CallStack&, std::string_view title, const Labels&);
 
     static void update(const Identifier& id, double seconds);
 

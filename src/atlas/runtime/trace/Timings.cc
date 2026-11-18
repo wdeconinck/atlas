@@ -58,7 +58,7 @@ public:
         return *registry;
     }
 
-    size_t add(const CodeLocation&, const CallStack& stack, const std::string& title, const Timings::Labels&);
+    size_t add(const CodeLocation&, const CallStack& stack, std::string_view title, const Timings::Labels&);
 
     void update(size_t idx, double seconds);
 
@@ -161,7 +161,7 @@ struct Tree {
     }
 };
 
-size_t TimingsRegistry::add(const CodeLocation& loc, const CallStack& stack, const std::string& title,
+size_t TimingsRegistry::add(const CodeLocation& loc, const CallStack& stack, std::string_view title,
                             const Timings::Labels& labels) {
     size_t key = stack.hash();
     auto it    = index_.find(key);
@@ -486,7 +486,7 @@ std::string TimingsRegistry::filter_filepath(const std::string& filepath) const 
     return basename;
 }
 
-Timings::Identifier Timings::add(const CodeLocation& loc, const CallStack& stack, const std::string& title,
+Timings::Identifier Timings::add(const CodeLocation& loc, const CallStack& stack, std::string_view title,
                                  const Labels& labels) {
     return TimingsRegistry::instance().add(loc, stack, title, labels);
 }

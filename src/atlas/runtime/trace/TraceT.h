@@ -10,8 +10,12 @@
 
 #pragma once
 
+#include <charconv>
+#include <cstring>
 #include <iosfwd>
+#include <limits>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "atlas/parallel/omp/omp.h"
@@ -67,6 +71,10 @@ public:
 
     double elapsed() const;
 
+protected:
+    // Foreign callers may supply temporary strings. Own the location directly in the trace.
+    TraceT(const char* file, int line, const char* title, const Labels& = {});
+
 private:  // types
     using Identifier = Timings::Identifier;
 
@@ -77,14 +85,21 @@ private:  // member functions
 
     void registerTimer();
 
-    static std::string formatTitle(const std::string&);
+    void initialise(std::string_view title, const Labels&);
+
+    void formatTitle(std::string_view);
+
+    std::string_view title() const;
 
 private:  // member data
     bool running_{false};
     bool paused_{false};
     StopWatch stopwatch_;
     CodeLocation loc_;
-    std::string title_;
+    char short_title_[63]{};
+    // A size above the inline capacity selects long_title_; neither representation borrows storage.
+    unsigned char short_title_size_{0};
+    std::string long_title_;
     Identifier id_;
     Labels labels_;
 };
@@ -93,21 +108,45 @@ private:  // member data
 // Definitions
 
 template <typename TraceTraits>
-inline std::string TraceT<TraceTraits>::formatTitle(const std::string& _title) {
-    const bool barriers = Barriers::state();
-    const bool threaded = atlas_omp_get_num_threads() > 1;
-    std::string title;
-    title.reserve(_title.size() + (barriers ? 4 : 0) + (threaded ? 16 : 0));
-    title.append(_title);
-    if (barriers) {
-        title.append(" [b]");
+inline void TraceT<TraceTraits>::formatTitle(std::string_view base) {
+    const std::string_view barriers = Barriers::state() ? " [b]" : "";
+    std::string_view thread_prefix;
+    std::string_view thread_number;
+    std::string_view thread_end;
+    char number[std::numeric_limits<int>::digits10 + 2];
+    if (atlas_omp_get_num_threads() > 1) {
+        const auto result = std::to_chars(number, number + sizeof(number), atlas_omp_get_thread_num());
+        thread_prefix = " @thread[";
+        thread_number = {number, static_cast<std::size_t>(result.ptr - number)};
+        thread_end = "]";
     }
-    if (threaded) {
-        title.append(" @thread[");
-        title.append(std::to_string(atlas_omp_get_thread_num()));
-        title.push_back(']');
+    const std::string_view parts[] = {base, barriers, thread_prefix, thread_number, thread_end};
+    const auto size = base.size() + barriers.size() + thread_prefix.size() + thread_number.size() + thread_end.size();
+    if (size <= sizeof(short_title_)) {
+        auto* out = short_title_;
+        for (auto part : parts) {
+            if (!part.empty()) {
+                std::memcpy(out, part.data(), part.size());
+                out += part.size();
+            }
+        }
+        short_title_size_ = static_cast<unsigned char>(size);
     }
-    return title;
+    else {
+        short_title_size_ = sizeof(short_title_) + 1;
+        long_title_.reserve(size);
+        for (auto part : parts) {
+            long_title_.append(part);
+        }
+    }
+}
+
+template <typename TraceTraits>
+inline std::string_view TraceT<TraceTraits>::title() const {
+    if (short_title_size_ <= sizeof(short_title_)) {
+        return {short_title_, short_title_size_};
+    }
+    return long_title_;
 }
 
 template <typename TraceTraits>
@@ -118,8 +157,19 @@ inline TraceT<TraceTraits>::TraceT(const CodeLocation& loc): TraceT(loc, loc ? l
 
 template <typename TraceTraits>
 inline TraceT<TraceTraits>::TraceT(const CodeLocation& loc, const std::string& title, const Labels& labels): loc_(loc) {
+    initialise(title, labels);
+}
+
+template <typename TraceTraits>
+inline TraceT<TraceTraits>::TraceT(const char* file, int line, const char* title, const Labels& labels):
+    loc_(file, line, nullptr, true) {
+    initialise(title, labels);
+}
+
+template <typename TraceTraits>
+inline void TraceT<TraceTraits>::initialise(std::string_view title, const Labels& labels) {
     if (Control::enabled()) {
-        title_  = formatTitle(title);
+        formatTitle(title);
         labels_ = labels;
         start();
     }
@@ -137,7 +187,7 @@ inline void TraceT<TraceTraits>::barrier() const {
 
 template <typename TraceTraits>
 inline void TraceT<TraceTraits>::registerTimer() {
-    id_ = Timings::add(loc_, CurrentCallStack::instance().current(), title_, labels_);
+    id_ = Timings::add(loc_, CurrentCallStack::instance().current(), title(), labels_);
 }
 
 template <typename TraceTraits>
@@ -153,11 +203,11 @@ inline bool TraceT<TraceTraits>::running() const {
 template <typename TraceTraits>
 inline void TraceT<TraceTraits>::start() {
     if (Control::enabled()) {
-        ATLAS_ASSERT(not running_, "Cannot start an already running trace: " + title_);
+        ATLAS_ASSERT(not running_, "Cannot start an already running trace: " + std::string(title()));
         running_ = true;
-        CurrentCallStack::instance().push(loc_, title_);
+        CurrentCallStack::instance().push(loc_, title());
         registerTimer();
-        Tracing::start(title_);
+        Tracing::start(title());
         barrier();
         stopwatch_.start();
     }
@@ -172,7 +222,7 @@ inline void TraceT<TraceTraits>::stop() {
             CurrentCallStack::instance().pop();
         }
         updateTimings();
-        Tracing::stop(title_, stopwatch_.elapsed());
+        Tracing::stop(title(), stopwatch_.elapsed());
         running_ = false;
         paused_  = false;
     }
@@ -183,8 +233,8 @@ inline void TraceT<TraceTraits>::pause() {
     if (not Control::enabled()) {
         return;
     }
-    ATLAS_ASSERT(running_, "Cannot pause a stopped trace: " + title_);
-    ATLAS_ASSERT(not paused_, "Cannot pause an already paused trace: " + title_);
+    ATLAS_ASSERT(running_, "Cannot pause a stopped trace: " + std::string(title()));
+    ATLAS_ASSERT(not paused_, "Cannot pause an already paused trace: " + std::string(title()));
     barrier();
     stopwatch_.stop();
     CurrentCallStack::instance().pop();
@@ -196,10 +246,10 @@ inline void TraceT<TraceTraits>::resume() {
     if (not Control::enabled()) {
         return;
     }
-    ATLAS_ASSERT(running_, "Cannot resume a stopped trace: " + title_);
-    ATLAS_ASSERT(paused_, "Cannot resume a trace that is not paused: " + title_);
+    ATLAS_ASSERT(running_, "Cannot resume a stopped trace: " + std::string(title()));
+    ATLAS_ASSERT(paused_, "Cannot resume a trace that is not paused: " + std::string(title()));
     barrier();
-    CurrentCallStack::instance().push(loc_, title_);
+    CurrentCallStack::instance().push(loc_, title());
     stopwatch_.start();
     paused_ = false;
 }

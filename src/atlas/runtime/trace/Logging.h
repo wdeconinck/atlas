@@ -11,6 +11,7 @@
 #pragma once
 
 #include <iosfwd>
+#include <string_view>
 
 //-----------------------------------------------------------------------------------------------------------
 
@@ -34,8 +35,8 @@ public:
 public:  // static methods
     static std::ostream& channel();
     static bool enabled();
-    static void start(const std::string&) {}
-    static void stop(const std::string&, double) {}
+    static void start(std::string_view) {}
+    static void stop(std::string_view, double) {}
 };
 
 //-----------------------------------------------------------------------------------------------------------
@@ -53,8 +54,8 @@ public:
 public:  // static methods
     static std::ostream& channel();
     static bool enabled();
-    static void start(const std::string& title);
-    static void stop(const std::string& title, double seconds);
+    static void start(std::string_view title);
+    static void stop(std::string_view title, double seconds);
 
 private:
     std::ostream* previous_state_;
@@ -70,8 +71,8 @@ public:
     using Logging::Logging;
 
 public:  // static methods
-    static void start(const std::string&) {}
-    static void stop(const std::string& title, double seconds);
+    static void start(std::string_view) {}
+    static void stop(std::string_view title, double seconds);
 };
 
 //-----------------------------------------------------------------------------------------------------------

@@ -161,6 +161,56 @@ CASE("test trace title suffixes") {
     EXPECT(report.find("labelled suffix" + suffix) != std::string::npos);
 }
 
+CASE("test inline and long trace titles survive restart") {
+    runtime::trace::Barriers barriers(false);
+    auto& stack = runtime::trace::CurrentCallStack::instance();
+    const std::string inline_title = "inline title";
+    const std::string full_inline_title(31, 'a');
+    const std::string first_long_title(32, 'b');
+    const std::string long_title = "a considerably longer trace title that needs heap storage";
+    for (const auto& title : {std::string{}, inline_title, full_inline_title, first_long_title, long_title}) {
+        std::string input = title;
+        Trace trace(Here(), input);
+        const auto hash = stack.current().hash();
+        input.assign(input.size(), 'x');
+        trace.pause();
+        trace.resume();
+        EXPECT(stack.current().hash() == hash);
+        trace.stop();
+        trace.start();
+        EXPECT(stack.current().hash() == hash);
+    }
+    const auto report = Trace::report();
+    EXPECT(report.find(inline_title) != std::string::npos);
+    EXPECT(report.find(full_inline_title) != std::string::npos);
+    EXPECT(report.find(first_long_title) != std::string::npos);
+    EXPECT(report.find(long_title) != std::string::npos);
+}
+
+CASE("test trace titles at the 63 byte inline capacity") {
+    runtime::trace::Barriers barriers(false);
+    auto& stack = runtime::trace::CurrentCallStack::instance();
+    const std::string full_inline_title(63, 'c');
+    const std::string first_long_title(64, 'd');
+    const std::string long_title(200, 'e');
+    for (const auto& title : {full_inline_title, first_long_title, long_title}) {
+        std::string input = title;
+        Trace trace(Here(), input);
+        const auto hash = stack.current().hash();
+        input.assign(input.size(), 'x');
+        trace.pause();
+        trace.resume();
+        EXPECT(stack.current().hash() == hash);
+        trace.stop();
+        trace.start();
+        EXPECT(stack.current().hash() == hash);
+    }
+    const auto report = Trace::report();
+    EXPECT(report.find(full_inline_title) != std::string::npos);
+    EXPECT(report.find(first_long_title) != std::string::npos);
+    EXPECT(report.find(long_title) != std::string::npos);
+}
+
 CASE("test barrier") {
     EXPECT(runtime::trace::Barriers::state() == Library::instance().traceBarriers());
     {

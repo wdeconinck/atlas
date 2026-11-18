@@ -11,7 +11,7 @@
 #pragma once
 
 #include <cstddef>
-#include <string>
+#include <string_view>
 #include <vector>
 
 namespace atlas {
@@ -29,7 +29,7 @@ public:
     using const_iterator = std::vector<size_t>::const_iterator;
 
 public:
-    void push(const CodeLocation&, const std::string& id = "");
+    void push(const CodeLocation&, std::string_view id = {});
     void pop();
 
     const_iterator begin() const { return stack_.begin(); }

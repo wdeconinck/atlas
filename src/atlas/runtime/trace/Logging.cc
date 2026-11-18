@@ -80,13 +80,13 @@ bool Logging::enabled() {
     return LoggingState::instance();
 }
 
-void Logging::start(const std::string& title) {
+void Logging::start(std::string_view title) {
     if (enabled()) {
         channel() << title << " ..." << std::endl;
     }
 }
 
-void Logging::stop(const std::string& title, double seconds) {
+void Logging::stop(std::string_view title, double seconds) {
     if (enabled()) {
         if (!std::uncaught_exceptions()){
             channel() << title << " ... done : " << seconds << "s" << std::endl;
@@ -101,7 +101,7 @@ std::ostream& NoLogging::channel() {
 
 //-----------------------------------------------------------------------------------------------------------
 
-void LoggingResult::stop(const std::string& title, double seconds) {
+void LoggingResult::stop(std::string_view title, double seconds) {
     if (enabled()) {
         channel() << title << " : " << seconds << "s" << std::endl;
     }

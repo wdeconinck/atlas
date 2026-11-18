@@ -36,10 +36,10 @@ static size_t hash_codelocation( const CodeLocation& loc ) {
 }
 }
 
-void CallStack::push(const CodeLocation& loc, const std::string& id) {
+void CallStack::push(const CodeLocation& loc, std::string_view id) {
     auto hash = hash_codelocation(loc);
     if( ! id.empty() ) {
-      hash = hash_combine( hash, std::hash<std::string>{}(id) );
+      hash = hash_combine( hash, std::hash<std::string_view>{}(id) );
     }
     if (stack_.size() == size_) {
         if (stack_.capacity() == size_) {
