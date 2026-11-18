@@ -19,25 +19,13 @@ namespace runtime {
 namespace trace {
 
 namespace {
-static size_t hash_cstr(const char *s) {
-    // http://www.cse.yorku.ca/~oz/hash.html
-    size_t h = 5381;
-    int c;
-    while ((c = *s++)) {
-        h = ((h << 5) + h) + c;
-    }
-    return h;
-}
 static size_t hash_combine(size_t h1, size_t h2) {
       return h1 ^ (h2 << 1);
 };
-static size_t hash_codelocation( const CodeLocation& loc ) {
-    return hash_combine( hash_cstr(loc.file()), std::hash<int>{}(loc.line()) );
-}
 }
 
 void CallStack::push(const CodeLocation& loc, std::string_view id) {
-    auto hash = hash_codelocation(loc);
+    auto hash = loc.hash();
     if( ! id.empty() ) {
       hash = hash_combine( hash, std::hash<std::string_view>{}(id) );
     }

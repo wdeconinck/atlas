@@ -10,6 +10,7 @@
 
 #include <chrono>
 #include <cmath>
+#include <memory>
 #include <sstream>
 #include <thread>
 
@@ -209,6 +210,34 @@ CASE("test trace titles at the 63 byte inline capacity") {
     EXPECT(report.find(full_inline_title) != std::string::npos);
     EXPECT(report.find(first_long_title) != std::string::npos);
     EXPECT(report.find(long_title) != std::string::npos);
+}
+
+CASE("test trace does not keep temporary location strings") {
+    runtime::trace::Barriers barriers(false);
+    auto& stack = runtime::trace::CurrentCallStack::instance();
+    for (bool temporary : {false, true}) {
+        const std::string name = temporary ? "temporary_location_file.cc" : "interned_location_file.cc";
+        std::string file       = "/a/temporary/path/" + name;
+        std::string func       = "location_function";
+        std::unique_ptr<Trace> trace;
+        size_t hash;
+        {
+            const auto loc = temporary ? CodeLocation::temporary(file.c_str(), 4242, func.c_str())
+                                       : CodeLocation::interned(file.c_str(), 4242, func.c_str());
+            trace          = std::make_unique<Trace>(loc, name);
+            hash           = stack.current().hash();
+        }
+        file.assign(file.size(), 'x');
+        func.assign(func.size(), 'x');
+        trace->pause();
+        trace->resume();
+        EXPECT(stack.current().hash() == hash);
+        trace->stop();
+        trace->start();
+        EXPECT(stack.current().hash() == hash);
+        trace.reset();
+        EXPECT(Trace::report().find(name + " +4242") != std::string::npos);
+    }
 }
 
 CASE("test barrier") {

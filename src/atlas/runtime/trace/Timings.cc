@@ -60,6 +60,8 @@ public:
 
     size_t add(const CodeLocation&, const CallStack& stack, std::string_view title, const Timings::Labels&);
 
+    const CodeLocation& location(size_t idx) const { return locations_[idx]; }
+
     void update(size_t idx, double seconds);
 
     size_t size() const;
@@ -188,7 +190,7 @@ size_t TimingsRegistry::add(const CodeLocation& loc, const CallStack& stack, std
         max_timings_.emplace_back(0);
         var_timings_.emplace_back(0);
         titles_.emplace_back(title);
-        locations_.emplace_back(loc);
+        locations_.emplace_back(loc.persistent());
         nest_.emplace_back(stack.size());
         stack_.emplace_back(stack);
 
@@ -489,6 +491,10 @@ std::string TimingsRegistry::filter_filepath(const std::string& filepath) const 
 Timings::Identifier Timings::add(const CodeLocation& loc, const CallStack& stack, std::string_view title,
                                  const Labels& labels) {
     return TimingsRegistry::instance().add(loc, stack, title, labels);
+}
+
+const Timings::CodeLocation& Timings::location(const Identifier& id) {
+    return TimingsRegistry::instance().location(id);
 }
 
 void Timings::update(const Identifier& id, double seconds) {

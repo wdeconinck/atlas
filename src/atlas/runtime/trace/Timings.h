@@ -39,6 +39,9 @@ public:
 public:  // static methods
     static Identifier add(const CodeLocation&, const CallStack&, std::string_view title, const Labels&);
 
+    /// Persistent copy of the location registered for id
+    static const CodeLocation& location(const Identifier& id);
+
     static void update(const Identifier& id, double seconds);
 
     static std::string report();

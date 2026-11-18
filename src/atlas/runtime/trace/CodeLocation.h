@@ -10,32 +10,41 @@
 
 #pragma once
 
+#include <cstddef>
 #include <iosfwd>
 #include <string>
 #include "eckit/log/CodeLocation.h"
 
 namespace atlas {
 
+/// Cheap, copyable source location.
+///
+/// The file and function strings are referenced, never owned. How long they stay valid is chosen at construction:
+///
+///   CodeLocation(Here()), CodeLocation(file, line, function)
+///       The strings outlive the location, e.g. string literals or __FILE__.
+///   CodeLocation::temporary(file, line, function)
+///       The strings are only valid during the current call. Use persistent() before keeping the location.
+///   CodeLocation::interned(file, line, function)
+///       The strings are copied into storage that lives for the rest of the program
+///       (one copy per distinct string; thread-safe).
 class CodeLocation {
 public:
-    CodeLocation(const CodeLocation& loc): CodeLocation(loc.file(), loc.line(), loc.func(), loc.stored_) {}
-    CodeLocation(const eckit::CodeLocation& loc): loc_(loc), stored_(false) {}
-    CodeLocation(const char* file, int line, const char* function, bool store = false): stored_(store) {
-        if (stored_) {
-            if (file) {
-                file_str_ = std::string(file);
-                file_     = file_str_.c_str();
-            }
-            if (function) {
-                function_str_ = std::string(function);
-                function_     = function_str_.c_str();
-            }
-            loc_ = eckit::CodeLocation(file_, line, function_);
-        }
-        else {
-            loc_ = eckit::CodeLocation(file, line, function);
-        }
-    }
+    CodeLocation() = default;
+    CodeLocation(const eckit::CodeLocation& loc): loc_(loc) {}
+    CodeLocation(const char* file, int line, const char* function): loc_(file, line, function) {}
+
+    static CodeLocation temporary(const char* file, int line, const char* function);
+    static CodeLocation interned(const char* file, int line, const char* function);
+
+    bool isTemporary() const { return temporary_; }
+
+    /// This location, or an interned copy if it is temporary.
+    CodeLocation persistent() const;
+
+    /// Hash of file and line; computed on first use and cached.
+    size_t hash() const;
+
     operator const eckit::CodeLocation&() const { return loc_; }
 
     /// conversion to bool for checking if location was set
@@ -52,11 +61,8 @@ public:
 
 private:
     eckit::CodeLocation loc_;
-    bool stored_          = false;
-    const char* file_     = nullptr;
-    const char* function_ = nullptr;
-    std::string file_str_;
-    std::string function_str_;
+    mutable size_t hash_{0};
+    bool temporary_{false};
 };
 
 }  // namespace atlas

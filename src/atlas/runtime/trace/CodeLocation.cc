@@ -10,7 +10,81 @@
 
 #include "CodeLocation.h"
 
+#include <deque>
+#include <functional>
+#include <mutex>
+#include <string_view>
+#include <unordered_set>
+
 namespace atlas {
+
+namespace {
+
+class InternedStrings {
+public:
+    static InternedStrings& instance() {
+        // Leaked: interned strings are referenced by timings reported during static destruction.
+        static InternedStrings* strings = new InternedStrings();
+        return *strings;
+    }
+
+    const char* intern(const char* str) {
+        if (str == nullptr) {
+            return nullptr;
+        }
+        std::lock_guard<std::mutex> lock(mutex_);
+        auto it = index_.find(str);
+        if (it == index_.end()) {
+            it = index_.emplace(storage_.emplace_back(str)).first;
+        }
+        return it->data();
+    }
+
+private:
+    std::mutex mutex_;
+    // deque keeps element addresses stable, so views into the strings remain valid
+    std::deque<std::string> storage_;
+    std::unordered_set<std::string_view> index_;
+};
+
+size_t hash_cstr(const char* s) {
+    // http://www.cse.yorku.ca/~oz/hash.html
+    size_t h = 5381;
+    int c;
+    while ((c = *s++)) {
+        h = ((h << 5) + h) + c;
+    }
+    return h;
+}
+
+}  // namespace
+
+CodeLocation CodeLocation::temporary(const char* file, int line, const char* function) {
+    CodeLocation loc(file, line, function);
+    loc.temporary_ = true;
+    return loc;
+}
+
+CodeLocation CodeLocation::interned(const char* file, int line, const char* function) {
+    auto& strings = InternedStrings::instance();
+    return CodeLocation(strings.intern(file), line, strings.intern(function));
+}
+
+CodeLocation CodeLocation::persistent() const {
+    if (not temporary_) {
+        return *this;
+    }
+    CodeLocation loc = interned(file(), line(), func());
+    loc.hash_        = hash_;
+    return loc;
+}
+
+size_t CodeLocation::hash() const {
+    if (hash_ == 0) {
+        hash_ = hash_cstr(file() ? file() : "") ^ (std::hash<int>{}(line()) << 1);
+    }
+    return hash_;
+}
 
 std::ostream& operator<<(std::ostream& s, const CodeLocation& loc) {
     s << loc.loc_;

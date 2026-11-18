@@ -72,7 +72,7 @@ public:
     double elapsed() const;
 
 protected:
-    // Foreign callers may supply temporary strings. Own the location directly in the trace.
+    // file and title may be temporaries (e.g. from Fortran); they are only read during construction.
     TraceT(const char* file, int line, const char* title, const Labels& = {});
 
 private:  // types
@@ -162,7 +162,7 @@ inline TraceT<TraceTraits>::TraceT(const CodeLocation& loc, const std::string& t
 
 template <typename TraceTraits>
 inline TraceT<TraceTraits>::TraceT(const char* file, int line, const char* title, const Labels& labels):
-    loc_(file, line, nullptr, true) {
+    loc_(CodeLocation::temporary(file, line, nullptr)) {
     initialise(title, labels);
 }
 
@@ -172,6 +172,10 @@ inline void TraceT<TraceTraits>::initialise(std::string_view title, const Labels
         formatTitle(title);
         labels_ = labels;
         start();
+    }
+    else if (loc_.isTemporary()) {
+        // This trace is not recorded on this thread; drop the caller's strings rather than keep dangling pointers.
+        loc_ = CodeLocation("", loc_.line(), nullptr);
     }
 }
 
@@ -188,6 +192,10 @@ inline void TraceT<TraceTraits>::barrier() const {
 template <typename TraceTraits>
 inline void TraceT<TraceTraits>::registerTimer() {
     id_ = Timings::add(loc_, CurrentCallStack::instance().current(), title(), labels_);
+    if (loc_.isTemporary()) {
+        // The registry keeps a persistent copy of the location
+        loc_ = Timings::location(id_);
+    }
 }
 
 template <typename TraceTraits>
