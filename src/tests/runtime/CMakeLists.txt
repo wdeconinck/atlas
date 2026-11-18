@@ -41,6 +41,7 @@ add_fctest( TARGET atlas_fctest_trace
   LINKER_LANGUAGE Fortran
   LIBS        atlas_f atlas ${OMP_Fortran}
   ENVIRONMENT ${ATLAS_TEST_ENVIRONMENT} ATLAS_TRACE_REPORT=1
+  OMP         2
 )
 
 endif()

@@ -18,6 +18,9 @@
 module fcta_trace_fixture
 use atlas_module
 use, intrinsic :: iso_c_binding
+#if ATLAS_HAVE_OMP
+use omp_lib, only: omp_get_num_threads
+#endif
 @:ENABLE_ATLAS_MACROS()
 implicit none
 interface
@@ -159,6 +162,39 @@ implicit none
   end block
   FCTEST_CHECK( trace_stack_size() == initial_size )
 #endif
+END_TEST
+! -----------------------------------------------------------------------------
+
+TEST( test_trace_concurrent_ownership )
+implicit none
+  type(atlas_Trace) :: trace
+  integer(c_size_t) :: initial_size
+  integer :: completed, workers
+
+  initial_size = trace_stack_size()
+  call trace%init("${_FILE_}$",${_LINE_}$,"concurrent shared ownership")
+  completed = 0
+  workers = 1
+!$omp parallel reduction(+:completed)
+!$omp single
+#if ATLAS_HAVE_OMP
+  workers = omp_get_num_threads()
+#endif
+!$omp end single
+  block
+    type(atlas_Trace) :: copy
+    integer :: i
+    do i=1,4096
+      copy = trace
+      completed = completed + 1
+      call copy%final()
+    enddo
+  end block
+!$omp end parallel
+  FCTEST_CHECK( completed == 4096 * workers )
+  FCTEST_CHECK( trace%running() )
+  call trace%final()
+  FCTEST_CHECK( trace_stack_size() == initial_size )
 END_TEST
 ! -----------------------------------------------------------------------------
 

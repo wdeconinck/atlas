@@ -15,8 +15,8 @@
 ! samples, excluding thread creation and persistent-trace setup/finalization.
 ! no-trace makes no trace calls in the timed loop, representing instrumentation
 ! preprocessed out. net-ns/op subtracts this baseline at the same team size.
-! retain/release isolates registry locking/lookups without per-iteration allocation.
-! It does not isolate mutex cost from hash-table cost. Only thread zero records
+! retain/release isolates ownership reference updates without per-iteration allocation.
+! Compare this case between ownership implementations. Only thread zero records
 ! timings, but all threads exercise Fortran ownership. ATLAS_TRACE=0 mutes logging,
 ! not timer collection. Use the same build type and binding when comparing builds.
 

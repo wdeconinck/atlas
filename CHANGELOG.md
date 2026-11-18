@@ -14,6 +14,7 @@ This project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html
   `%init(file,line,title)` initializes a trace without a constructor temporary.
   Allocatable handle storage adds one allocation per initialized handle to avoid uninitialized Intel OpenMP-private arrays.
   Other inherited FCKIT shared-object methods are no longer available.
+- Use per-trace atomic reference counts for Fortran ownership, avoiding a global mutex and hash-table registry.
 
 ### Fixed
 - Correct trace sample variance, duplicated title suffixes, and call-stack restoration when stopping or finalizing paused traces.

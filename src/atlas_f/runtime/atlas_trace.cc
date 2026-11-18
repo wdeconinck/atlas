@@ -10,9 +10,8 @@
 
 #include "atlas_trace.h"
 
-#include <mutex>
+#include <atomic>
 #include <string>
-#include <unordered_map>
 #include <vector>
 
 #include "atlas/runtime/Exception.h"
@@ -33,55 +32,28 @@ namespace atlas {
 
 namespace {
 
-class Ownership {
+class OwnedTrace final : public Trace {
 public:
-    static Trace* add(Trace* value) {
-        std::lock_guard<std::mutex> lock(mutex());
-        counts().emplace(value, 1);
-        return value;
-    }
+    using Trace::Trace;
 
-    static void retain(Trace* value) {
-        std::lock_guard<std::mutex> lock(mutex());
-        auto it = counts().find(value);
-        ATLAS_ASSERT(it != counts().end(), "Cannot retain an unknown Atlas trace");
-        ++it->second;
-    }
+    void retain() { count_.fetch_add(1, std::memory_order_relaxed); }
 
-    static void returnValue(Trace* value) {
-        std::lock_guard<std::mutex> lock(mutex());
-        auto it = counts().find(value);
-        ATLAS_ASSERT(it != counts().end() && it->second == 1, "Cannot return a shared or unknown Atlas trace");
+    void returnValue() {
         // Fortran constructor results are acquired by defined assignment, not finalized.
-        it->second = 0;
+        const auto previous = count_.exchange(0, std::memory_order_relaxed);
+        ATLAS_ASSERT(previous == 1, "Cannot return a shared or unowned Atlas trace");
     }
 
-    static void release(Trace* value) {
-        bool destroy;
-        {
-            std::lock_guard<std::mutex> lock(mutex());
-            auto it = counts().find(value);
-            ATLAS_ASSERT(it != counts().end(), "Cannot release an unknown Atlas trace");
-            ATLAS_ASSERT(it->second > 0, "Cannot release an unowned Atlas trace");
-            destroy = --it->second == 0;
-            if (destroy) {
-                counts().erase(it);
-            }
-        }
-        if (destroy) {
-            delete value;
+    void release() {
+        const auto previous = count_.fetch_sub(1, std::memory_order_acq_rel);
+        ATLAS_ASSERT(previous > 0, "Cannot release an unowned Atlas trace");
+        if (previous == 1) {
+            delete this;
         }
     }
 
 private:
-    static std::mutex& mutex() {
-        static std::mutex value;
-        return value;
-    }
-    static std::unordered_map<Trace*, std::size_t>& counts() {
-        static std::unordered_map<Trace*, std::size_t> value;
-        return value;
-    }
+    std::atomic<std::size_t> count_{1};
 };
 
 }  // namespace
@@ -89,51 +61,51 @@ private:
 extern "C" {
 
 Trace* new_atlas_Trace(const char* file, int line, const char* title) {
-    return Ownership::add(new Trace(CodeLocation(file, line, nullptr, true), std::string(title)));
+    return new OwnedTrace(CodeLocation(file, line, nullptr, true), std::string(title));
 }
 
 Trace* new_atlas_Trace_labels_1(const char* file, int line, const char* title, const char* label1) {
     std::vector<std::string> labels{label1};
-    return Ownership::add(new Trace(CodeLocation(file, line, nullptr, true), std::string(title), labels));
+    return new OwnedTrace(CodeLocation(file, line, nullptr, true), std::string(title), labels);
 }
 Trace* new_atlas_Trace_labels_2(const char* file, int line, const char* title, const char* label1, const char* label2) {
     std::vector<std::string> labels{label1, label2};
-    return Ownership::add(new Trace(CodeLocation(file, line, nullptr, true), std::string(title), labels));
+    return new OwnedTrace(CodeLocation(file, line, nullptr, true), std::string(title), labels);
 }
 Trace* new_atlas_Trace_labels_3(const char* file, int line, const char* title, const char* label1, const char* label2,
                                 const char* label3) {
     std::vector<std::string> labels{label1, label2, label3};
-    return Ownership::add(new Trace(CodeLocation(file, line, nullptr, true), std::string(title), labels));
+    return new OwnedTrace(CodeLocation(file, line, nullptr, true), std::string(title), labels);
 }
 Trace* new_atlas_Trace_labels_4(const char* file, int line, const char* title, const char* label1, const char* label2,
                                 const char* label3, const char* label4) {
     std::vector<std::string> labels{label1, label2, label3, label4};
-    return Ownership::add(new Trace(CodeLocation(file, line, nullptr, true), std::string(title), labels));
+    return new OwnedTrace(CodeLocation(file, line, nullptr, true), std::string(title), labels);
 }
 Trace* new_atlas_Trace_labels_5(const char* file, int line, const char* title, const char* label1, const char* label2,
                                 const char* label3, const char* label4, const char* label5) {
     std::vector<std::string> labels{label1, label2, label3, label4, label5};
-    return Ownership::add(new Trace(CodeLocation(file, line, nullptr, true), std::string(title), labels));
+    return new OwnedTrace(CodeLocation(file, line, nullptr, true), std::string(title), labels);
 }
 
 void delete_atlas_Trace(Trace* This) {
     ATLAS_ASSERT(This != nullptr, "Cannot delete uninitialised atlas_Trace");
-    Ownership::release(This);
+    static_cast<OwnedTrace*>(This)->release();
 }
 
 void retain_atlas_Trace(Trace* This) {
     ATLAS_ASSERT(This != nullptr, "Cannot retain uninitialised atlas_Trace");
-    Ownership::retain(This);
+    static_cast<OwnedTrace*>(This)->retain();
 }
 
 void return_atlas_Trace(Trace* This) {
     ATLAS_ASSERT(This != nullptr, "Cannot return uninitialised atlas_Trace");
-    Ownership::returnValue(This);
+    static_cast<OwnedTrace*>(This)->returnValue();
 }
 
 void release_atlas_Trace(Trace* This) {
     ATLAS_ASSERT(This != nullptr, "Cannot release uninitialised atlas_Trace");
-    Ownership::release(This);
+    static_cast<OwnedTrace*>(This)->release();
 }
 
 void atlas_Trace__start(Trace* This) {
