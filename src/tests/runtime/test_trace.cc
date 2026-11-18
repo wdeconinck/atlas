@@ -240,6 +240,32 @@ CASE("test trace does not keep temporary location strings") {
     }
 }
 
+CASE("test copied trace titles own their storage") {
+    runtime::trace::Barriers barriers(false);
+    auto& stack = runtime::trace::CurrentCallStack::instance();
+    for (const auto& title : {std::string{}, std::string(63, 'f'), std::string(64, 'g'), std::string(200, 'h')}) {
+        std::unique_ptr<Trace> copy;
+        size_t hash;
+        {
+            Trace source(Here(), title);
+            hash = stack.current().hash();
+            source.stop();
+            copy = std::make_unique<Trace>(source);
+        }
+        copy->start();
+        EXPECT(stack.current().hash() == hash);
+        copy->stop();
+        for (const auto& initial : {std::string("short"), std::string(200, 'i')}) {
+            Trace assigned(Here(), initial);
+            assigned.stop();
+            assigned = *copy;
+            assigned.start();
+            EXPECT(stack.current().hash() == hash);
+            assigned.stop();
+        }
+    }
+}
+
 CASE("test barrier") {
     EXPECT(runtime::trace::Barriers::state() == Library::instance().traceBarriers());
     {
