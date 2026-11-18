@@ -28,3 +28,12 @@ ecbuild_add_executable(
   LIBS        atlas_f ${OMP_Fortran}
   LINKER_LANGUAGE Fortran
   CONDITION   HAVE_FORTRAN )
+
+if( TARGET atlas_f AND HAVE_OMP_Fortran )
+ecbuild_add_executable(
+  TARGET      atlas-benchmark-trace-fortran
+  SOURCES     atlas-benchmark-trace-fortran.F90
+  LIBS        atlas_f ${OMP_Fortran}
+  LINKER_LANGUAGE Fortran
+  NOINSTALL )
+endif()
