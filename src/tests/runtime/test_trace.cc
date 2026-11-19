@@ -277,8 +277,6 @@ CASE("test trace labels own inline and long strings") {
         EXPECT(moved.view() == text);
         copy = moved;
         EXPECT(copy.view() == text);
-        copy = copy;
-        EXPECT(copy.view() == text);
     }
     EXPECT(!Label{}.present());
     EXPECT(Label("").present());

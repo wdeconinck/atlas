@@ -238,6 +238,19 @@ implicit none
 END_TEST
 ! -----------------------------------------------------------------------------
 
+recursive subroutine exercise_trace_ownership(trace, completed)
+  type(atlas_Trace), intent(in) :: trace
+  integer, intent(inout) :: completed
+  type(atlas_Trace) :: copy
+  integer :: i
+
+  do i=1,4096
+    copy = trace
+    completed = completed + 1
+    call copy%final()
+  enddo
+end subroutine
+
 TEST( test_trace_concurrent_ownership )
 implicit none
   type(atlas_Trace) :: trace
@@ -254,15 +267,7 @@ implicit none
   workers = omp_get_num_threads()
 #endif
 !$omp end single
-  block
-    type(atlas_Trace) :: copy
-    integer :: i
-    do i=1,4096
-      copy = trace
-      completed = completed + 1
-      call copy%final()
-    enddo
-  end block
+  call exercise_trace_ownership(trace, completed)
 !$omp end parallel
   FCTEST_CHECK( completed == 4096 * workers )
   FCTEST_CHECK( trace%running() )
