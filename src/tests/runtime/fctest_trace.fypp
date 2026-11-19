@@ -142,11 +142,22 @@ implicit none
   call copies%final()
   FCTEST_CHECK( trace_stack_size() == initial_size )
 
-  traces = atlas_Trace("${_FILE_}$",${_LINE_}$,"broadcast ownership")
+  call trace%init("${_FILE_}$",${_LINE_}$,"broadcast ownership")
+  traces = trace
+  call trace%final()
   call traces(1)%final()
   FCTEST_CHECK( traces(2)%running() )
   call traces(2)%final()
   FCTEST_CHECK( trace_stack_size() == initial_size )
+
+  ! GNU Fortran 10 deallocates the constructor result after the first element.
+#if !defined(__GNUC__) || __GNUC__ > 10
+  traces = atlas_Trace("${_FILE_}$",${_LINE_}$,"constructor broadcast ownership")
+  call traces(1)%final()
+  FCTEST_CHECK( traces(2)%running() )
+  call traces(2)%final()
+  FCTEST_CHECK( trace_stack_size() == initial_size )
+#endif
 
   do labels=1,5
     select case(labels)

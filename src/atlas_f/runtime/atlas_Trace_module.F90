@@ -23,6 +23,7 @@ private
 ! atlas_Trace                !
 !-----------------------------
 
+! With GNU Fortran 10, assign constructor results to a scalar before broadcasting to an array.
 type :: atlas_Trace
   ! Allocatable storage is initialized reliably for Intel OpenMP PRIVATE arrays.
   type(c_ptr), allocatable, private :: ptr
