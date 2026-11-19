@@ -28,6 +28,22 @@ interface
     import c_size_t
     integer(c_size_t) :: size
   end function
+  function trace_report_contains(text) bind(C, name="atlas_test_trace_report_contains") result(found)
+    import c_char, c_int
+    character(c_char), intent(in) :: text(*)
+    integer(c_int) :: found
+  end function
+  function trace_report_excludes(title, label) bind(C, name="atlas_test_trace_report_excludes") result(excluded)
+    import c_char, c_int
+    character(c_char), intent(in) :: title(*), label(*)
+    integer(c_int) :: excluded
+  end function
+  function trace_report_contains_view(text, length) bind(C, name="atlas_test_trace_report_contains_view") result(found)
+    import c_char, c_int, c_size_t
+    character(c_char), intent(in) :: text(*)
+    integer(c_size_t), value :: length
+    integer(c_int) :: found
+  end function
 end interface
 contains
 end module
@@ -162,6 +178,63 @@ implicit none
   end block
   FCTEST_CHECK( trace_stack_size() == initial_size )
 #endif
+END_TEST
+! -----------------------------------------------------------------------------
+
+TEST( test_trace_string_views )
+implicit none
+  type(atlas_Trace) :: trace
+  character(len=80) :: file, title, labels(5)
+  character(len=20) :: name
+  integer :: count, index
+
+  labels(1) = 'view-label-one'
+  labels(2) = 'view-label-two'
+  labels(3) = 'view-label-three'
+  labels(4) = 'view-label-four'
+  labels(5) = repeat('z',64)
+  do count=0,5
+    write(name,'(A,I0)') 'view-title-',count
+    file = '/temporary/fortran-view-location.F90'
+    title = name
+    select case(count)
+    case(0)
+      call trace%init(file, 4567, title)
+    case(1)
+      trace = atlas_Trace(file, 4567, title, labels(1))
+    case(2)
+      trace = atlas_Trace(file, 4567, title, labels(1), labels(2))
+    case(3)
+      trace = atlas_Trace(file, 4567, title, labels(1), labels(2), labels(3))
+    case(4)
+      trace = atlas_Trace(file, 4567, title, labels(1), labels(2), labels(3), labels(4))
+    case(5)
+      trace = atlas_Trace(file, 4567, title, labels(1), labels(2), labels(3), labels(4), labels(5))
+    end select
+    file = 'overwritten'
+    title = 'overwritten'
+    call trace%pause()
+    call trace%resume()
+    call trace%stop()
+    call trace%start()
+    call trace%final()
+    FCTEST_CHECK( trace_report_contains(trim(name)//c_null_char) == 1 )
+    FCTEST_CHECK( trace_report_contains('fortran-view-location.F90 +4567'//c_null_char) == 1 )
+    do index=1,count
+      FCTEST_CHECK( trace_report_excludes(trim(name)//c_null_char, trim(labels(index))//c_null_char) == 1 )
+    enddo
+  enddo
+  trace = atlas_Trace('empty-label.F90', 4568, 'empty-label-title', '')
+  call trace%final()
+  FCTEST_CHECK( trace_report_contains('empty-label-title'//c_null_char) == 1 )
+  FCTEST_CHECK( trace_report_excludes('empty-label-title'//c_null_char, c_null_char) == 1 )
+  call trace%init('empty-title.F90', 4569, '')
+  FCTEST_CHECK( trace%running() )
+  call trace%final()
+  title = 'before'//c_null_char//'after'
+  call trace%init('embedded-null.F90', 4570, title)
+  call trace%final()
+  FCTEST_CHECK( trace_report_contains_view(title, len_trim(title, kind=c_size_t)) == 1 )
 END_TEST
 ! -----------------------------------------------------------------------------
 

@@ -70,7 +70,7 @@ public:
     Trace(const eckit::CodeLocation& loc, Operation c, const std::string& title): Base(loc, title, make_labels(c)) {}
 
 private:
-    static std::vector<std::string> make_labels(Operation c) { return {"mpi", name(c)}; }
+    static Base::Labels make_labels(Operation c) { return {"mpi", name(c)}; }
 };
 
 }  // namespace mpi

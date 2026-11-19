@@ -12,7 +12,6 @@
 
 #include <atomic>
 #include <string>
-#include <vector>
 
 #include "atlas/runtime/Exception.h"
 #include "atlas/runtime/Log.h"
@@ -20,20 +19,11 @@
 
 namespace atlas {
 
-//static std::vector<std::string> Labels( int size, const char* labels[] ) {
-//    std::vector<std::string> _labels;
-//    _labels.reserve( size );
-//    for ( int i = 0; i < size; ++i ) {
-//        _labels.emplace_back( labels[i] );
-//    }
-//    return _labels;
-//}
-
 namespace {
 
 class OwnedTrace final : public Trace {
 public:
-    OwnedTrace(const char* file, int line, const char* title, const Labels& labels = {}):
+    OwnedTrace(std::string_view file, int line, std::string_view title, const Labels& labels = {}):
         Trace(file, line, title, labels) {}
 
     void retain() { count_.fetch_add(1, std::memory_order_relaxed); }
@@ -56,41 +46,62 @@ private:
     std::atomic<std::size_t> count_{1};
 };
 
+std::string_view view(const char* data, size_t length) {
+    return length ? std::string_view(data, length) : std::string_view("");
+}
+
+template <typename... LabelViews>
+Trace* new_labelled_trace(std::string_view file, int line, std::string_view title, LabelViews... labels) {
+    Trace::Labels owned_labels{};
+    if (runtime::trace::Control::enabled()) {
+        size_t index = 0;
+        ((owned_labels[index++] = runtime::trace::Label(labels)), ...);
+    }
+    return new OwnedTrace(file, line, title, owned_labels);
+}
+
 }  // namespace
 
 extern "C" {
 
-Trace* new_atlas_Trace(const char* file, int line, const char* title) {
-    return new OwnedTrace(file, line, title);
+Trace* new_atlas_Trace_view(const char* file, size_t file_length, int line, const char* title, size_t title_length) {
+    return new OwnedTrace(view(file, file_length), line, view(title, title_length));
 }
 
-Trace* new_atlas_Trace_labels_1(const char* file, int line, const char* title, const char* label1) {
-    std::vector<std::string> labels{label1};
-    return new OwnedTrace(file, line, title, labels);
-}
-Trace* new_atlas_Trace_labels_2(const char* file, int line, const char* title, const char* label1, const char* label2) {
-    std::vector<std::string> labels{label1, label2};
-    return new OwnedTrace(file, line, title, labels);
-}
-Trace* new_atlas_Trace_labels_3(const char* file, int line, const char* title, const char* label1, const char* label2,
-                                const char* label3) {
-    std::vector<std::string> labels{label1, label2, label3};
-    return new OwnedTrace(file, line, title, labels);
-}
-Trace* new_atlas_Trace_labels_4(const char* file, int line, const char* title, const char* label1, const char* label2,
-                                const char* label3, const char* label4) {
-    std::vector<std::string> labels{label1, label2, label3, label4};
-    return new OwnedTrace(file, line, title, labels);
-}
-Trace* new_atlas_Trace_labels_5(const char* file, int line, const char* title, const char* label1, const char* label2,
-                                const char* label3, const char* label4, const char* label5) {
-    std::vector<std::string> labels{label1, label2, label3, label4, label5};
-    return new OwnedTrace(file, line, title, labels);
+Trace* new_atlas_Trace_labels_view_1(const char* file, size_t file_length, int line, const char* title,
+                                     size_t title_length, const char* label1, size_t length1) {
+    return new_labelled_trace(view(file, file_length), line, view(title, title_length), view(label1, length1));
 }
 
-void delete_atlas_Trace(Trace* This) {
-    ATLAS_ASSERT(This != nullptr, "Cannot delete uninitialised atlas_Trace");
-    static_cast<OwnedTrace*>(This)->release();
+Trace* new_atlas_Trace_labels_view_2(const char* file, size_t file_length, int line, const char* title,
+                                     size_t title_length, const char* label1, size_t length1,
+                                     const char* label2, size_t length2) {
+    return new_labelled_trace(view(file, file_length), line, view(title, title_length), view(label1, length1),
+                              view(label2, length2));
+}
+
+Trace* new_atlas_Trace_labels_view_3(const char* file, size_t file_length, int line, const char* title,
+                                     size_t title_length, const char* label1, size_t length1,
+                                     const char* label2, size_t length2, const char* label3, size_t length3) {
+    return new_labelled_trace(view(file, file_length), line, view(title, title_length), view(label1, length1),
+                              view(label2, length2), view(label3, length3));
+}
+
+Trace* new_atlas_Trace_labels_view_4(const char* file, size_t file_length, int line, const char* title,
+                                     size_t title_length, const char* label1, size_t length1,
+                                     const char* label2, size_t length2, const char* label3, size_t length3,
+                                     const char* label4, size_t length4) {
+    return new_labelled_trace(view(file, file_length), line, view(title, title_length), view(label1, length1),
+                              view(label2, length2), view(label3, length3), view(label4, length4));
+}
+
+Trace* new_atlas_Trace_labels_view_5(const char* file, size_t file_length, int line, const char* title,
+                                     size_t title_length, const char* label1, size_t length1,
+                                     const char* label2, size_t length2, const char* label3, size_t length3,
+                                     const char* label4, size_t length4, const char* label5, size_t length5) {
+    return new_labelled_trace(view(file, file_length), line, view(title, title_length), view(label1, length1),
+                              view(label2, length2), view(label3, length3), view(label4, length4),
+                              view(label5, length5));
 }
 
 void retain_atlas_Trace(Trace* This) {

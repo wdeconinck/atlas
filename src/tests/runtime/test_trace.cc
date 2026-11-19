@@ -240,6 +240,50 @@ CASE("test trace does not keep temporary location strings") {
     }
 }
 
+CASE("test length-delimited temporary locations") {
+    std::string file = "/a/long/temporary/location.F90 trailing bytes";
+    const std::string expected = "/a/long/temporary/location.F90";
+    auto temporary = CodeLocation::temporary(std::string_view(file.data(), expected.size()), 731, nullptr);
+    auto reference = CodeLocation::temporary(expected.c_str(), 731, nullptr);
+    EXPECT(temporary.hash() == reference.hash());
+    const auto cached_hash = temporary.hash();
+    file[0] = 'x';
+    EXPECT(temporary.hash() == cached_hash);
+    file[0] = '/';
+    auto persistent = temporary.persistent();
+    file.assign(file.size(), 'x');
+    EXPECT(std::string(persistent.file()) == expected);
+    EXPECT(persistent.hash() == reference.hash());
+    auto empty = CodeLocation::temporary(std::string_view{}, 731, nullptr);
+    EXPECT(empty.hash() == CodeLocation::temporary("", 731, nullptr).hash());
+    EXPECT(std::string(empty.persistent().file()).empty());
+
+    std::string zero_file = "a";
+    auto zero = CodeLocation::temporary(std::string_view(zero_file), 88835, nullptr);
+    EXPECT(zero.hash() == 0);
+    EXPECT(zero.persistent().hash() == 0);
+}
+
+CASE("test trace labels own inline and long strings") {
+    using runtime::trace::Label;
+    for (const auto& text : {std::string{}, std::string(62, 's'), std::string(63, 'l'),
+                             std::string(65536, 'x')}) {
+        Label label(std::string_view(text.data(), text.size()));
+        Label copy = label;
+        label = Label("replaced");
+        EXPECT(copy.present());
+        EXPECT(copy.view() == text);
+        Label moved = std::move(copy);
+        EXPECT(moved.view() == text);
+        copy = moved;
+        EXPECT(copy.view() == text);
+        copy = copy;
+        EXPECT(copy.view() == text);
+    }
+    EXPECT(!Label{}.present());
+    EXPECT(Label("").present());
+}
+
 CASE("test copied trace titles own their storage") {
     runtime::trace::Barriers barriers(false);
     auto& stack = runtime::trace::CurrentCallStack::instance();

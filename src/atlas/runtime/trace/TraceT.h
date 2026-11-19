@@ -47,7 +47,7 @@ public:
     using Traits   = TraceTraits;
     using Barriers = typename Traits::Barriers;
     using Tracing  = typename Traits::Tracing;
-    using Labels   = std::vector<std::string>;
+    using Labels   = Timings::Labels;
 
 public:  // static methods
     static std::string report();
@@ -75,6 +75,7 @@ public:
 protected:
     // file and title may be temporaries (e.g. from Fortran); they are only read during construction.
     TraceT(const char* file, int line, const char* title, const Labels& = {});
+    TraceT(std::string_view file, int line, std::string_view title, const Labels& = {});
 
 private:  // types
     using Identifier = Timings::Identifier;
@@ -202,6 +203,12 @@ inline TraceT<TraceTraits>::TraceT(const CodeLocation& loc, const std::string& t
 
 template <typename TraceTraits>
 inline TraceT<TraceTraits>::TraceT(const char* file, int line, const char* title, const Labels& labels):
+    loc_(CodeLocation::temporary(file, line, nullptr)) {
+    initialise(title, labels);
+}
+
+template <typename TraceTraits>
+inline TraceT<TraceTraits>::TraceT(std::string_view file, int line, std::string_view title, const Labels& labels):
     loc_(CodeLocation::temporary(file, line, nullptr)) {
     initialise(title, labels);
 }

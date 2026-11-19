@@ -65,7 +65,6 @@ contains
 function atlas_Trace__loc(file,line,title) result(this)
   use, intrinsic :: iso_c_binding, only : c_ptr
   use atlas_Trace_c_binding
-  use fckit_c_interop_module
   type(atlas_Trace) :: this
   character(len=*) , intent(in) :: file
   integer          , intent(in) :: line
@@ -76,36 +75,36 @@ function atlas_Trace__loc(file,line,title) result(this)
 end function
 
 function atlas_Trace__labels_1(file,line,title,label) result(this)
-  use, intrinsic :: iso_c_binding, only : c_ptr
+  use, intrinsic :: iso_c_binding, only : c_size_t
   use atlas_Trace_c_binding
-  use fckit_c_interop_module
   type(atlas_Trace) :: this
   character(len=*) , intent(in) :: file
   integer          , intent(in) :: line
   character(len=*) , intent(in) :: title
   character(len=*) , intent(in) :: label
-  this%ptr = new_atlas_Trace_labels_1( c_str(file), line, c_str(title), c_str(label) )
+  this%ptr = new_atlas_Trace_labels_view_1(file, len_trim(file, kind=c_size_t), line, &
+    & title, len_trim(title, kind=c_size_t), label, len_trim(label, kind=c_size_t))
   call return_atlas_Trace(this%ptr)
   this%return_value = .true.
 end function
 function atlas_Trace__labels_2(file,line,title,label1,label2) result(this)
-  use, intrinsic :: iso_c_binding, only : c_ptr
+  use, intrinsic :: iso_c_binding, only : c_size_t
   use atlas_Trace_c_binding
-  use fckit_c_interop_module
   type(atlas_Trace) :: this
   character(len=*) , intent(in) :: file
   integer          , intent(in) :: line
   character(len=*) , intent(in) :: title
   character(len=*) , intent(in) :: label1
   character(len=*) , intent(in) :: label2
-  this%ptr = new_atlas_Trace_labels_2( c_str(file), line, c_str(title), c_str(label1), c_str(label2) )
+  this%ptr = new_atlas_Trace_labels_view_2(file, len_trim(file, kind=c_size_t), line, &
+    & title, len_trim(title, kind=c_size_t), label1, len_trim(label1, kind=c_size_t), &
+    & label2, len_trim(label2, kind=c_size_t))
   call return_atlas_Trace(this%ptr)
   this%return_value = .true.
 end function
 function atlas_Trace__labels_3(file,line,title,label1,label2,label3) result(this)
-  use, intrinsic :: iso_c_binding, only : c_ptr
+  use, intrinsic :: iso_c_binding, only : c_size_t
   use atlas_Trace_c_binding
-  use fckit_c_interop_module
   type(atlas_Trace) :: this
   character(len=*) , intent(in) :: file
   integer          , intent(in) :: line
@@ -113,14 +112,15 @@ function atlas_Trace__labels_3(file,line,title,label1,label2,label3) result(this
   character(len=*) , intent(in) :: label1
   character(len=*) , intent(in) :: label2
   character(len=*) , intent(in) :: label3
-  this%ptr = new_atlas_Trace_labels_3( c_str(file), line, c_str(title), c_str(label1), c_str(label2), c_str(label3) )
+  this%ptr = new_atlas_Trace_labels_view_3(file, len_trim(file, kind=c_size_t), line, &
+    & title, len_trim(title, kind=c_size_t), label1, len_trim(label1, kind=c_size_t), &
+    & label2, len_trim(label2, kind=c_size_t), label3, len_trim(label3, kind=c_size_t))
   call return_atlas_Trace(this%ptr)
   this%return_value = .true.
 end function
 function atlas_Trace__labels_4(file,line,title,label1,label2,label3,label4) result(this)
-  use, intrinsic :: iso_c_binding, only : c_ptr
+  use, intrinsic :: iso_c_binding, only : c_size_t
   use atlas_Trace_c_binding
-  use fckit_c_interop_module
   type(atlas_Trace) :: this
   character(len=*) , intent(in) :: file
   integer          , intent(in) :: line
@@ -129,15 +129,16 @@ function atlas_Trace__labels_4(file,line,title,label1,label2,label3,label4) resu
   character(len=*) , intent(in) :: label2
   character(len=*) , intent(in) :: label3
   character(len=*) , intent(in) :: label4
-  this%ptr = new_atlas_Trace_labels_4( c_str(file), line, c_str(title), c_str(label1), c_str(label2), &
-    & c_str(label3), c_str(label4) )
+  this%ptr = new_atlas_Trace_labels_view_4(file, len_trim(file, kind=c_size_t), line, &
+    & title, len_trim(title, kind=c_size_t), label1, len_trim(label1, kind=c_size_t), &
+    & label2, len_trim(label2, kind=c_size_t), label3, len_trim(label3, kind=c_size_t), &
+    & label4, len_trim(label4, kind=c_size_t))
   call return_atlas_Trace(this%ptr)
   this%return_value = .true.
 end function
 function atlas_Trace__labels_5(file,line,title,label1,label2,label3,label4,label5) result(this)
-  use, intrinsic :: iso_c_binding, only : c_ptr
+  use, intrinsic :: iso_c_binding, only : c_size_t
   use atlas_Trace_c_binding
-  use fckit_c_interop_module
   type(atlas_Trace) :: this
   character(len=*) , intent(in) :: file
   integer          , intent(in) :: line
@@ -147,16 +148,18 @@ function atlas_Trace__labels_5(file,line,title,label1,label2,label3,label4,label
   character(len=*) , intent(in) :: label3
   character(len=*) , intent(in) :: label4
   character(len=*) , intent(in) :: label5
-  this%ptr = new_atlas_Trace_labels_5( c_str(file), line, c_str(title), c_str(label1), c_str(label2), &
-    & c_str(label3), c_str(label4), c_str(label5) )
+  this%ptr = new_atlas_Trace_labels_view_5(file, len_trim(file, kind=c_size_t), line, &
+    & title, len_trim(title, kind=c_size_t), label1, len_trim(label1, kind=c_size_t), &
+    & label2, len_trim(label2, kind=c_size_t), label3, len_trim(label3, kind=c_size_t), &
+    & label4, len_trim(label4, kind=c_size_t), label5, len_trim(label5, kind=c_size_t))
   call return_atlas_Trace(this%ptr)
   this%return_value = .true.
 end function
 !-------------------------------------------------------------------------------
 
 subroutine atlas_Trace__init(this, file, line, title)
+  use, intrinsic :: iso_c_binding, only : c_size_t
   use atlas_Trace_c_binding
-  use fckit_c_interop_module, only : c_str
   use fckit_exception_module, only : fckit_exception
   class(atlas_Trace), intent(inout) :: this
   character(len=*), intent(in) :: file, title
@@ -164,7 +167,8 @@ subroutine atlas_Trace__init(this, file, line, title)
   if (allocated(this%ptr)) then
     call fckit_exception%abort("atlas_Trace is already initialized; call %final() before %init()", file, line)
   endif
-  this%ptr = new_atlas_Trace(c_str(file), line, c_str(title))
+  this%ptr = new_atlas_Trace_view(file, len_trim(file, kind=c_size_t), line, title, &
+    & len_trim(title, kind=c_size_t))
   this%return_value = .false.
 end subroutine
 

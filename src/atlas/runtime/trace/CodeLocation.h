@@ -13,6 +13,7 @@
 #include <cstddef>
 #include <iosfwd>
 #include <string>
+#include <string_view>
 #include "eckit/log/CodeLocation.h"
 
 namespace atlas {
@@ -25,6 +26,7 @@ namespace atlas {
 ///       The strings outlive the location, e.g. string literals or __FILE__.
 ///   CodeLocation::temporary(file, line, function)
 ///       The strings are only valid during the current call. Use persistent() before keeping the location.
+///       When file is a string_view, file() is not necessarily NUL-terminated until persistent().
 ///   CodeLocation::interned(file, line, function)
 ///       The strings are copied into storage that lives for the rest of the program
 ///       (one copy per distinct string; thread-safe).
@@ -35,14 +37,16 @@ public:
     CodeLocation(const char* file, int line, const char* function): loc_(file, line, function) {}
 
     static CodeLocation temporary(const char* file, int line, const char* function);
+    static CodeLocation temporary(std::string_view file, int line, const char* function);
     static CodeLocation interned(const char* file, int line, const char* function);
+    static CodeLocation interned(std::string_view file, int line, const char* function);
 
     bool isTemporary() const { return temporary_; }
 
     /// This location, or an interned copy if it is temporary.
     CodeLocation persistent() const;
 
-    /// Hash of file and line; computed on first use and cached.
+    /// Hash of file and line; nonzero results are cached.
     size_t hash() const;
 
     operator const eckit::CodeLocation&() const { return loc_; }
@@ -61,8 +65,10 @@ public:
 
 private:
     eckit::CodeLocation loc_;
+    size_t file_length_{0};
     mutable size_t hash_{0};
     bool temporary_{false};
+    bool length_delimited_{false};
 };
 
 }  // namespace atlas

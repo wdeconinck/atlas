@@ -195,7 +195,9 @@ size_t TimingsRegistry::add(const CodeLocation& loc, const CallStack& stack, std
         stack_.emplace_back(stack);
 
         for (const auto& label : labels) {
-            labels_[label].emplace_back(idx);
+            if (label.present()) {
+                labels_[std::string(label.view())].emplace_back(idx);
+            }
         }
 
         return idx;

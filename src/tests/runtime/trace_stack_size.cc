@@ -9,7 +9,22 @@
  */
 
 #include "atlas/runtime/trace/Nesting.h"
+#include "atlas/runtime/Trace.h"
+#include "atlas/util/Config.h"
 
 extern "C" size_t atlas_test_trace_stack_size() {
     return atlas::runtime::trace::CurrentCallStack::instance().current().size();
+}
+
+extern "C" int atlas_test_trace_report_contains(const char* text) {
+    return atlas::Trace::report().find(text) != std::string::npos;
+}
+
+extern "C" int atlas_test_trace_report_excludes(const char* title, const char* label) {
+    auto config = atlas::util::Config("exclude", std::vector<std::string>{label});
+    return atlas::Trace::report(config).find(title) == std::string::npos;
+}
+
+extern "C" int atlas_test_trace_report_contains_view(const char* text, size_t length) {
+    return atlas::Trace::report().find(std::string(text, length)) != std::string::npos;
 }

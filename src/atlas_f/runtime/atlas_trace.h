@@ -10,24 +10,33 @@
 
 #pragma once
 
+#include <cstddef>
+
 namespace atlas {
 class Trace;
 }
 
 extern "C" {
 
-atlas::Trace* new_atlas_Trace(const char* file, int line, const char* title);
-atlas::Trace* new_atlas_Trace_labels_1(const char* file, int line, const char* title, const char* label1);
-atlas::Trace* new_atlas_Trace_labels_2(const char* file, int line, const char* title, const char* label1,
-                                       const char* label2);
-atlas::Trace* new_atlas_Trace_labels_3(const char* file, int line, const char* title, const char* label1,
-                                       const char* label2, const char* label3);
-atlas::Trace* new_atlas_Trace_labels_4(const char* file, int line, const char* title, const char* label1,
-                                       const char* label2, const char* label3, const char* label4);
-atlas::Trace* new_atlas_Trace_labels_5(const char* file, int line, const char* title, const char* label1,
-                                       const char* label2, const char* label3, const char* label4, const char* label5);
+atlas::Trace* new_atlas_Trace_view(const char* file, size_t file_length, int line, const char* title,
+                                   size_t title_length);
+atlas::Trace* new_atlas_Trace_labels_view_1(const char* file, size_t file_length, int line, const char* title,
+                                            size_t title_length, const char* label1, size_t length1);
+atlas::Trace* new_atlas_Trace_labels_view_2(const char* file, size_t file_length, int line, const char* title,
+                                            size_t title_length, const char* label1, size_t length1,
+                                            const char* label2, size_t length2);
+atlas::Trace* new_atlas_Trace_labels_view_3(const char* file, size_t file_length, int line, const char* title,
+                                            size_t title_length, const char* label1, size_t length1,
+                                            const char* label2, size_t length2, const char* label3, size_t length3);
+atlas::Trace* new_atlas_Trace_labels_view_4(const char* file, size_t file_length, int line, const char* title,
+                                            size_t title_length, const char* label1, size_t length1,
+                                            const char* label2, size_t length2, const char* label3, size_t length3,
+                                            const char* label4, size_t length4);
+atlas::Trace* new_atlas_Trace_labels_view_5(const char* file, size_t file_length, int line, const char* title,
+                                            size_t title_length, const char* label1, size_t length1,
+                                            const char* label2, size_t length2, const char* label3, size_t length3,
+                                            const char* label4, size_t length4, const char* label5, size_t length5);
 // Ownership functions require a live pointer returned by new_atlas_Trace*.
-void delete_atlas_Trace(atlas::Trace* This);
 void retain_atlas_Trace(atlas::Trace* This);
 void return_atlas_Trace(atlas::Trace* This);
 void release_atlas_Trace(atlas::Trace* This);
