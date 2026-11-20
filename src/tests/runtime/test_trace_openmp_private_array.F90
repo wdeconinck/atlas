@@ -5,11 +5,17 @@
 ! granted to it by virtue of its status as an intergovernmental organisation nor
 ! does it submit to any jurisdiction.
 
+! Intel Classic 2021.10 and NVHPC 26.1 can leave PRIVATE trace arrays improperly initialized.
+! Keep the same workload on those compilers using a procedure-local array.
+#if (defined(__INTEL_COMPILER) && !defined(__INTEL_LLVM_COMPILER)) || defined(__NVCOMPILER)
+#define USE_LOCAL_TRACE_ARRAY
+#endif
+
 program test_trace_openmp_private_array
   use atlas_module, only: atlas_library, atlas_trace
   use omp_lib, only: omp_get_thread_num
   implicit none
-#if !defined(__INTEL_COMPILER) || defined(__INTEL_LLVM_COMPILER)
+#ifndef USE_LOCAL_TRACE_ARRAY
   type(atlas_trace) :: traces(3)
 #endif
   integer :: repetition, completed
@@ -17,8 +23,7 @@ program test_trace_openmp_private_array
   call atlas_library%initialise()
   completed=0
   do repetition=1,32
-#if defined(__INTEL_COMPILER) && !defined(__INTEL_LLVM_COMPILER)
-    ! Intel Classic 2021.10 does not initialize the PRIVATE array reliably.
+#ifdef USE_LOCAL_TRACE_ARRAY
 !$omp parallel num_threads(2) reduction(+:completed)
     call run_with_local_array(completed)
 #else
@@ -32,7 +37,7 @@ program test_trace_openmp_private_array
 
 contains
 
-#if defined(__INTEL_COMPILER) && !defined(__INTEL_LLVM_COMPILER)
+#ifdef USE_LOCAL_TRACE_ARRAY
   recursive subroutine run_with_local_array(completed)
     integer, intent(inout) :: completed
     type(atlas_trace) :: traces(3)

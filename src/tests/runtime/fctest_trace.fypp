@@ -107,6 +107,51 @@ implicit none
 END_TEST
 ! -----------------------------------------------------------------------------
 
+TEST( test_trace_host_associated_ownership )
+implicit none
+  type(atlas_Trace) :: trace
+  integer(c_size_t) :: initial_size
+
+  initial_size = trace_stack_size()
+  call assign_host_trace()
+  FCTEST_CHECK( trace%running() )
+  call trace%final()
+  FCTEST_CHECK( trace_stack_size() == initial_size )
+contains
+  subroutine assign_host_trace()
+    trace = atlas_Trace("${_FILE_}$",${_LINE_}$,"host-associated ownership")
+  end subroutine
+END_TEST
+! -----------------------------------------------------------------------------
+
+TEST( test_trace_private_allocatable_ownership )
+implicit none
+  type(atlas_Trace), allocatable :: trace
+  integer(c_size_t) :: initial_size
+  integer :: completed, workers
+
+  initial_size = trace_stack_size()
+  completed = 0
+  workers = 1
+!$omp parallel private(trace) reduction(+:completed)
+!$omp single
+#if ATLAS_HAVE_OMP
+  workers = omp_get_num_threads()
+#endif
+!$omp end single
+  allocate(trace)
+  trace = atlas_Trace("${_FILE_}$",${_LINE_}$,"private allocatable ownership")
+  call trace%pause()
+  call trace%resume()
+  call trace%final()
+  deallocate(trace)
+  completed = completed + 1
+!$omp end parallel
+  FCTEST_CHECK( completed == workers )
+  FCTEST_CHECK( trace_stack_size() == initial_size )
+END_TEST
+! -----------------------------------------------------------------------------
+
 TEST( test_trace_ownership )
 implicit none
   type(atlas_Trace) :: trace, copy, empty

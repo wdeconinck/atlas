@@ -186,7 +186,14 @@ end subroutine
 impure elemental subroutine atlas_Trace__assign(lhs, rhs)
   use atlas_Trace_c_binding
   class(atlas_Trace), intent(inout) :: lhs
+#if defined(__NVCOMPILER_MAJOR__) && \
+    (__NVCOMPILER_MAJOR__ < 25 || (__NVCOMPILER_MAJOR__ == 25 && __NVCOMPILER_MINOR__ < 9))
+  ! NVHPC before 25.9 can bypass host-associated assignment unless RHS is polymorphic.
+  ! Required with tested versions 22.11, 23.7, 24.1, 24.5, 24.7, 24.9, 25.1, 25.3, 25.5 and 25.7.
+  class(atlas_Trace), intent(in) :: rhs
+#else
   type(atlas_Trace), intent(in) :: rhs
+#endif
   if (c_associated(lhs%c_ptr(), rhs%c_ptr())) return
   if (allocated(rhs%ptr)) call retain_atlas_Trace(rhs%ptr)
   call lhs%final()
