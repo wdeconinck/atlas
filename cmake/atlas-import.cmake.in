@@ -51,6 +51,11 @@ endif()
 
 ## OpenMP
 unset( atlas_OMP_COMPONENTS )
+# A Fortran-only OpenMP build of static libatlas exports the runtime dependency.
+if( atlas_HAVE_OMP_Fortran AND NOT atlas_HAVE_OMP_CXX AND
+    atlas_REQUIRES_PRIVATE_DEPENDENCIES AND NOT CMAKE_Fortran_COMPILER_LOADED )
+  enable_language( Fortran )
+endif()
 if( atlas_HAVE_OMP_Fortran AND 
     CMAKE_Fortran_COMPILER_LOADED AND
     atlas_REQUIRES_PRIVATE_DEPENDENCIES )

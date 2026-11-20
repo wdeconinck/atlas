@@ -18,6 +18,10 @@
 #include "atlas/library/Library.h"
 #include "atlas/parallel/omp/omp.h"
 
+#ifdef ATLAS_TRACE_USE_FORTRAN_OPENMP
+extern "C" int omp_get_thread_num(void);
+#endif
+
 //-----------------------------------------------------------------------------------------------------------
 
 namespace atlas {
@@ -26,8 +30,21 @@ namespace trace {
 
 //-----------------------------------------------------------------------------------------------------------
 
+namespace {
+
+int trace_thread_num() {
+#ifdef ATLAS_TRACE_USE_FORTRAN_OPENMP
+    // Trace can be called from a Fortran worker even when Atlas C++ runs serially.
+    return omp_get_thread_num();
+#else
+    return atlas_omp_get_thread_num();
+#endif
+}
+
+}  // namespace
+
 bool Control::enabled() {
-    return atlas_omp_get_thread_num() == 0;
+    return trace_thread_num() == 0;
 }
 
 class LoggingState {

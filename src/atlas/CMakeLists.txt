@@ -1075,3 +1075,8 @@ if( HAVE_ACC AND CMAKE_Fortran_COMPILER_ID MATCHES NVHPC )
 endif()
 
 target_compile_features( atlas PUBLIC cxx_std_17 )
+
+if( atlas_HAVE_OMP_Fortran AND NOT atlas_HAVE_OMP_CXX )
+  set_property( SOURCE runtime/trace/Logging.cc APPEND PROPERTY COMPILE_DEFINITIONS ATLAS_TRACE_USE_FORTRAN_OPENMP )
+  target_link_libraries( atlas PRIVATE OpenMP::OpenMP_Fortran )
+endif()

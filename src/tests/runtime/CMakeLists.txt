@@ -46,8 +46,7 @@ add_fctest( TARGET atlas_fctest_trace
 
 endif()
 
-# Trace recording requires C++ OpenMP to identify the master thread.
-if( TARGET atlas_f AND HAVE_OMP_Fortran AND HAVE_OMP_CXX )
+if( TARGET atlas_f AND HAVE_OMP_Fortran )
 ecbuild_add_test( TARGET atlas_test_trace_openmp_private_array
   SOURCES     test_trace_openmp_private_array.F90
   LINKER_LANGUAGE Fortran
