@@ -28,10 +28,7 @@ private:
 public:
     CurrentCallStack(CurrentCallStack const&) = delete;
     CurrentCallStack& operator=(CurrentCallStack const&) = delete;
-    static CurrentCallStack& instance() {
-        static CurrentCallStack state;
-        return state;
-    }
+    static CurrentCallStack& instance();
     operator CallStack() const { return stack_; }
     const CallStack& current() const { return stack_; }
     CallStack& push(const CodeLocation& loc, std::string_view id) {

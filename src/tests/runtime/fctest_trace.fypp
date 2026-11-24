@@ -28,6 +28,10 @@ interface
     import c_size_t
     integer(c_size_t) :: size
   end function
+  function trace_nested_cpp() bind(C, name="atlas_test_trace_nested_cpp") result(size)
+    import c_size_t
+    integer(c_size_t) :: size
+  end function
   function trace_report_contains(text) bind(C, name="atlas_test_trace_report_contains") result(found)
     import c_char, c_int
     character(c_char), intent(in) :: text(*)
@@ -121,6 +125,24 @@ contains
   subroutine assign_host_trace()
     trace = atlas_Trace("${_FILE_}$",${_LINE_}$,"host-associated ownership")
   end subroutine
+END_TEST
+! -----------------------------------------------------------------------------
+
+TEST( test_trace_cpp_nesting )
+implicit none
+  type(atlas_Trace) :: trace
+  integer(c_size_t) :: initial_size
+
+  initial_size = trace_stack_size()
+  trace = atlas_Trace("${_FILE_}$",${_LINE_}$,"Fortran input parent")
+  FCTEST_CHECK( trace_stack_size() == initial_size + 1 )
+  FCTEST_CHECK( trace_nested_cpp() == initial_size + 2 )
+  call trace%final()
+  trace = atlas_Trace("${_FILE_}$",${_LINE_}$,"Fortran output parent")
+  FCTEST_CHECK( trace_stack_size() == initial_size + 1 )
+  FCTEST_CHECK( trace_nested_cpp() == initial_size + 2 )
+  call trace%final()
+  FCTEST_CHECK( trace_stack_size() == initial_size )
 END_TEST
 ! -----------------------------------------------------------------------------
 

@@ -14,6 +14,14 @@
 
 namespace atlas {
 namespace runtime {
-namespace trace {}  // namespace trace
+namespace trace {
+
+CurrentCallStack& CurrentCallStack::instance() {
+    // Keep one stack across libatlas, libatlas_f and their callers.
+    static CurrentCallStack state;
+    return state;
+}
+
+}  // namespace trace
 }  // namespace runtime
 }  // namespace atlas

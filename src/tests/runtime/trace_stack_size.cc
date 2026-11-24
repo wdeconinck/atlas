@@ -16,6 +16,11 @@ extern "C" size_t atlas_test_trace_stack_size() {
     return atlas::runtime::trace::CurrentCallStack::instance().current().size();
 }
 
+extern "C" size_t atlas_test_trace_nested_cpp() {
+    atlas::Trace trace(Here(), "nested C++ trace");
+    return atlas::runtime::trace::CurrentCallStack::instance().current().size();
+}
+
 extern "C" int atlas_test_trace_report_contains(const char* text) {
     return atlas::Trace::report().find(text) != std::string::npos;
 }
